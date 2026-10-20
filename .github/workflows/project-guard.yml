@@ -1,0 +1,46 @@
+name: Commander Project Guard (E-13)
+
+# Server-side enforcement of the same rule project-guard.js enforces
+# locally. Closes the gap where a push made outside the ACA's own
+# session (e.g. GitHub's web "Add files via upload") bypasses every
+# local hook — the exact way Commander's own tracked-zip incident
+# (AUDIT-002) slipped through in v1.2.
+#
+# Inactive (skipped, not failed) if the repo has no
+# .claude/project-guard.config.json — same "no config, no guard"
+# contract the hook already has locally.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for project-guard config
+        id: cfg
+        run: |
+          if [ -f .claude/project-guard.config.json ]; then
+            echo "active=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "active=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node.js
+        if: steps.cfg.outputs.active == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run project-guard --scan
+        if: steps.cfg.outputs.active == 'true'
+        run: node .claude/hooks/project-guard.js --scan
+
+      - name: No guard config — skipped
+        if: steps.cfg.outputs.active == 'false'
+        run: echo "No .claude/project-guard.config.json found — guard inactive for this repo."

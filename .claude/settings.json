@@ -1,0 +1,45 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/version-check.js"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/log-change.js"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/project-guard.js"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/lessons-guard.js"
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/patterns-detect.js"
+          }
+        ]
+      }
+    ]
+  }
+}

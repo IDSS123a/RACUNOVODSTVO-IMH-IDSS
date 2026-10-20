@@ -1,0 +1,37 @@
+{
+  "_usage": "Commander E-13 project guard. Each 'forbidden' entry: 'pattern' (JS regex source), optional 'flags', 'reason'. Project-specific entries protect operator, parent and child personal data (CONSTITUTION BR-22, M-15).",
+  "forbidden": [
+    {
+      "pattern": "AIzaSy[A-Za-z0-9_-]{10,}",
+      "reason": "Google API key material must never appear in a tracked file"
+    },
+    {
+      "pattern": "-----BEGIN (RSA |EC )?PRIVATE KEY-----",
+      "reason": "Private key material must never appear in a tracked file"
+    },
+    {
+      "pattern": "eyJhbGciOi",
+      "reason": "JWT-looking token must never appear in a tracked file"
+    },
+    {
+      "pattern": "Rahmanovi",
+      "flags": "i",
+      "reason": "Operator name lives only in app settings (database), never in code or docs (BR-22, DL-P002)"
+    },
+    {
+      "pattern": "\\+?387\\s?61\\s?525\\s?301",
+      "reason": "Operator phone number lives only in app settings, never in code or docs (BR-22)"
+    },
+    {
+      "pattern": "financije@idss\\.ba",
+      "flags": "i",
+      "reason": "Operator contact email lives only in app settings, never in code or docs (BR-22)"
+    },
+    {
+      "pattern": "SQLCIPHER_KEY\\s*[:=]\\s*['\"][^'\"]{8,}",
+      "reason": "Database encryption key must never be committed (DL-P004)"
+    }
+  ],
+  "extensions": [".js", ".jsx", ".ts", ".tsx", ".rs", ".toml", ".md", ".json", ".html", ".css", ".sql", ".yml", ".yaml", ".txt", ".bat", ".sh", ".env"],
+  "exclude": ["node_modules", ".git", "dist", "build", "target", ".claude"]
+}
