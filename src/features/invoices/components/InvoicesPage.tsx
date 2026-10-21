@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { FilePlusIcon } from 'lucide-react';
+import { FilePlusIcon, SendIcon } from 'lucide-react';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '@/components/feedback';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,14 @@ import { listInvoices } from '../repository';
 import { PAYMENT_STATUS_LABEL } from '../types';
 import { InvoiceDetailDialog } from './InvoiceDetailDialog';
 import { InvoicePdfDialog } from './InvoicePdfDialog';
+import { ExportDialog, type ExportRequest } from './ExportDialog';
+
+function currentMonthRange(): ExportRequest {
+  const now = new Date();
+  const first = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+  const last = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 0));
+  return { from: first.toISOString().slice(0, 10), to: last.toISOString().slice(0, 10) };
+}
 import { IssueMonthDialog } from './IssueMonthDialog';
 
 type EntityFilter = LegalEntityCode | 'ALL';
@@ -26,6 +34,7 @@ export function InvoicesPage(): React.JSX.Element {
   const [issuing, setIssuing] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [pdfId, setPdfId] = useState<string | null>(null);
+  const [exportRequest, setExportRequest] = useState<ExportRequest | null>(null);
   const load = useCallback(() => listInvoices({ entity: entity === 'ALL' ? null : entity, month: month || null }), [entity, month]);
   const invoices = useAsyncResult(load);
 
@@ -45,9 +54,14 @@ export function InvoicesPage(): React.JSX.Element {
           <h1 className="text-2xl font-semibold tracking-tight">Računi</h1>
           <p className="text-sm text-muted-foreground">Izdati računi IMH i IDSS, uplate i otvoreni iznosi.</p>
         </div>
-        <Button onClick={() => setIssuing(true)}>
-          <FilePlusIcon aria-hidden /> Mjesečni računi
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setExportRequest(currentMonthRange())}>
+            <SendIcon aria-hidden /> Izvoz i slanje
+          </Button>
+          <Button onClick={() => setIssuing(true)}>
+            <FilePlusIcon aria-hidden /> Mjesečni računi
+          </Button>
+        </div>
       </header>
 
       <div className="flex flex-wrap items-end gap-4">
@@ -124,7 +138,15 @@ export function InvoicesPage(): React.JSX.Element {
         </Table>
       )}
 
-      <IssueMonthDialog open={issuing} onOpenChange={setIssuing} onIssued={invoices.reload} />
+      <IssueMonthDialog
+        open={issuing}
+        onOpenChange={setIssuing}
+        onIssued={(issueDate) => {
+          invoices.reload();
+          setExportRequest({ from: issueDate, to: issueDate });
+        }}
+      />
+      <ExportDialog request={exportRequest} onClose={() => setExportRequest(null)} />
       <InvoiceDetailDialog invoiceId={openId} onClose={() => setOpenId(null)} onChanged={invoices.reload} onShowPdf={(id) => { setOpenId(null); setPdfId(id); }} />
       <InvoicePdfDialog invoiceId={pdfId} onClose={() => setPdfId(null)} />
     </div>

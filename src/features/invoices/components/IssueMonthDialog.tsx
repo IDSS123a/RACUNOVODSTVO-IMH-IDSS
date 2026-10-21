@@ -20,7 +20,16 @@ function today(): string {
  * Two-step monthly billing for IMH and IDSS (BR-26): preview every invoice (IMH from the price list,
  * IDSS from the payment plans), then create all of them in one transaction after approval. Problems are listed, never skipped silently.
  */
-export function IssueMonthDialog({ open, onOpenChange, onIssued }: { open: boolean; onOpenChange: (open: boolean) => void; onIssued: () => void }): React.JSX.Element {
+export function IssueMonthDialog({
+  open,
+  onOpenChange,
+  onIssued,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Called with the issue date, so the caller can offer export / sending of the new invoices. */
+  onIssued: (issueDate: string) => void;
+}): React.JSX.Element {
   const [month, setMonth] = useState<string>(today().slice(0, 7));
   const [issueDate, setIssueDate] = useState<string>(today());
   const [preview, setPreview] = useState<MonthlyPreview | null>(null);
@@ -47,7 +56,7 @@ export function IssueMonthDialog({ open, onOpenChange, onIssued }: { open: boole
         const last = result.data[result.data.length - 1];
         toast.success(`Izdato ${result.data.length} računa (${first}${result.data.length > 1 ? ` – ${last}` : ''}).`);
         setPreview(null);
-        onIssued();
+        onIssued(issueDate);
         onOpenChange(false);
       } else toast.error(result.error);
     } finally {

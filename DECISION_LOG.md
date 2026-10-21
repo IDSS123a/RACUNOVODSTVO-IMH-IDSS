@@ -100,6 +100,7 @@
 - For approved invoices, the app creates an **Outlook message draft** addressed to `info-mejtas@montessorihouse.ba` with one PDF per invoice attached.
 - Azra reviews the draft and presses *Send* herself.
 - From that mailbox the invoices are forwarded individually to the parents (outside the app).
+- **Attachments (Director, 2026-10-21): both** — one PDF per invoice (for forwarding to each parent) **and** one .zip with all of them. The body lists number, child, buyer and amount. A draft larger than ~20 MB is split into several drafts.
 
 **Why:**
 - the app stays offline;
@@ -125,6 +126,8 @@
 **Rejected:** screenshot/HTML-to-image (not vector, M-4 forensic finding); browser print only (no file for email/zip); Rust `printpdf` (more code for text layout, no gain).
 
 **New dependencies (M-12):** `pdf-lib`, `@pdf-lib/fontkit` (pinned exact versions), font files (not a package).
+
+**Addendum (2026-10-21):** `fflate` 0.8.2 (MIT, pinned) builds the .zip for BR-31 and for the Outlook draft (DL-P006). The draft is an `.eml` written to `%TEMP%akturisanje-nacrti` and opened with the default mail program; drafts older than one hour are deleted on the next send because they contain personal data.
 
 ---
 

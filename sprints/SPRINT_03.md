@@ -10,7 +10,7 @@
 - Bulk monthly billing covers **IMH and IDSS** (IDSS from the payment plans), with review and approval (BR-26).
 - Official logos are bundled (BR-2).
 
-Email dispatch (Outlook draft, DL-P006), .zip export of a period (BR-31), dashboard, reports and audit-log viewer → **Sprint 04** (BR-28–BR-31). All of them build on the Sprint 03 PDF.
+Dashboard, reports and audit-log viewer → **Sprint 04** (BR-29, BR-30). Email dispatch (BR-28) and .zip export (BR-31) were pulled into Sprint 03 after the walkthrough.
 
 ## Goal
 
@@ -56,9 +56,11 @@ Payments from any family member are booked against invoices, and the open balanc
    - Content: letterhead data from Settings, official logo, invoice number and dates, buyer, child, lines, total, amount in words, bank details, "Fakturisao/la".
    - Done (DL-P007): pdf-lib + pre-subset Noto Sans; preview in the app (WebView2 PDF viewer) with „Štampaj“ and „Sačuvaj PDF“; saving is audited.
 
+## Walkthrough remarks (Director, 2026-10-21) — pulled into Sprint 03
+1. ✅ Monthly invoices: no bulk **.zip export** (BR-31) → „Izvoz i slanje“ on Računi; offered right after approving the monthly invoices.
+2. ✅ Monthly invoices: no sending to info-mejtas@montessorihouse.ba → Outlook draft with **each PDF and one .zip** attached (DL-P006); large periods split into several drafts.
+
 ## OUT of scope (Sprint 04)
-- Email dispatch to info-mejtas@montessorihouse.ba as an Outlook draft (BR-28, DL-P006).
-- Export of all invoices in a chosen period as one .zip of PDFs (BR-31).
 - Dashboard with statistics, printed reports, audit-log viewer (BR-29, BR-30).
 - Reminders (3, no interest), suspension.
 - Ministry invoice and refunds to parents.

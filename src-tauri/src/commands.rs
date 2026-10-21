@@ -379,3 +379,32 @@ pub fn save_document(state: State<'_, AppStore>, path: String, bytes: Vec<u8>, r
     fs::write(&target, &bytes)?;
     store.write(|tx| repo::audit(tx, "EXPORT", "document", &reference, &path))
 }
+
+const DRAFT_FOLDER: &str = "fakturisanje-nacrti";
+/// Drafts older than this are removed: Outlook has long read them by then, and they hold personal data.
+const DRAFT_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+/// Write an unsent e-mail (.eml, DL-P006) to a private temp folder and open it with the default
+/// mail program, where the operator reviews it and presses Send. Old drafts are cleaned up first.
+#[tauri::command]
+pub fn open_mail_draft(state: State<'_, AppStore>, file_name: String, content: String, reference: String) -> AppResult<()> {
+    let store = state.get()?;
+    if !file_name.ends_with(".eml") || !file_name.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
+        return Err(AppError::Validation("neispravan naziv nacrta".into()));
+    }
+    let dir = std::env::temp_dir().join(DRAFT_FOLDER);
+    fs::create_dir_all(&dir)?;
+    for entry in fs::read_dir(&dir)?.flatten() {
+        let old = entry.metadata().ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok());
+        if old.is_some_and(|age| age > DRAFT_MAX_AGE) {
+            let _ = fs::remove_file(entry.path()); // best effort: a draft still open in Outlook may be locked
+        }
+    }
+    let path = dir.join(&file_name);
+    fs::write(&path, content.as_bytes())?;
+    std::process::Command::new("explorer")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| AppError::NotFound(format!("program za e-mail nije pokrenut: {e}")))?;
+    store.write(|tx| repo::audit(tx, "MAIL_DRAFT", "document", &reference, &file_name))
+}

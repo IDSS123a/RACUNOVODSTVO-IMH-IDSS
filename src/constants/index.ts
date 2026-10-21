@@ -36,3 +36,9 @@ export const PRICE_CAP_TIERS: ReadonlyArray<{ readonly upToFenings: number | nul
   { upToFenings: 600_00, maxIncreaseBp: 500 },
   { upToFenings: null, maxIncreaseBp: 300 },
 ];
+
+/** Mailbox that receives approved invoices and forwards them to each parent (BR-28, DL-P006). */
+export const INVOICE_MAILBOX = 'info-mejtas@montessorihouse.ba';
+
+/** Max. raw size of the PDFs in one e-mail draft; with the .zip and base64 it stays under ~20 MB. */
+export const MAIL_DRAFT_PDF_BYTES = 7 * 1024 * 1024;
