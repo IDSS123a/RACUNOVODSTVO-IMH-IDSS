@@ -13,6 +13,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (4, include_str!("../migrations/004_invoice_per_child.sql")),
     (5, include_str!("../migrations/005_board_rules_breakfast.sql")),
     (6, include_str!("../migrations/006_institution_invoice_note.sql")),
+    (7, include_str!("../migrations/007_enrolment_fee_guard.sql")),
 ];
 
 /// Latest schema version this build understands.

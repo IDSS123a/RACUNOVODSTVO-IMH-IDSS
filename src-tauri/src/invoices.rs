@@ -162,7 +162,7 @@ pub fn issue_invoice(tx: &Transaction, draft: &InvoiceDraft) -> AppResult<String
     )
     .map_err(|e| match &e {
         rusqlite::Error::SqliteFailure(code, _) if code.code == rusqlite::ErrorCode::ConstraintViolation => {
-            AppError::Conflict("za ovo dijete i mjesec račun je već izdat".into())
+            AppError::Conflict("za ovo dijete i period ovakav račun je već izdat".into())
         }
         _ => AppError::Database(e),
     })?;
@@ -492,6 +492,16 @@ mod tests {
         let mut other_child = draft("i5", "2026-12", "2026-12-01", "MONTHLY");
         other_child.lines[0].child_id = "c2".into();
         assert!(matches!(issue_invoice(&tx, &other_child), Err(AppError::Validation(_))));
+    }
+
+    #[test]
+    fn one_enrolment_fee_invoice_per_child_and_school_year() {
+        let mut conn = db_with_family();
+        let tx = conn.transaction().unwrap();
+        issue_invoice(&tx, &draft("f1", "2026-09", "2026-08-01", "ENROLMENT_FEES")).unwrap();
+        assert!(matches!(issue_invoice(&tx, &draft("f2", "2026-09", "2026-08-02", "ENROLMENT_FEES")), Err(AppError::Conflict(_))));
+        // a monthly invoice for the same month is a different kind and still allowed
+        issue_invoice(&tx, &draft("m1", "2026-09", "2026-09-01", "MONTHLY")).unwrap();
     }
 
     #[test]

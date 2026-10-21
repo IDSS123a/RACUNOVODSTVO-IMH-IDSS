@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ArrowLeftIcon, CalendarRangeIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
+import { ArrowLeftIcon, CalendarRangeIcon, PencilIcon, PlusIcon, ReceiptIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import { ErrorBlock, LoadingBlock } from '@/components/feedback';
 import { FormDialog } from '@/components/form-dialog';
@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { EnrolmentFeeDialog } from '@/features/invoices/components/EnrolmentFeeDialog';
 import { PaymentPlanDialog } from '@/features/invoices/components/PaymentPlanDialog';
 import { listPriceItems, listSchoolYears } from '@/features/price-lists/repository';
 import { PROGRAM_ENTITY, PROGRAM_LABEL, type SchoolYear } from '@/features/price-lists/types';
@@ -27,7 +28,8 @@ type DialogState =
   | { kind: 'family' }
   | { kind: 'child'; child: Child }
   | { kind: 'enrolment'; enrolment: Enrolment }
-  | { kind: 'plan'; enrolment: Enrolment };
+  | { kind: 'plan'; enrolment: Enrolment }
+  | { kind: 'fees'; enrolment: Enrolment };
 
 /** One family: guardians, children, enrolments, and who pays the full / discounted price. */
 export function FamilyDetailView({
@@ -169,6 +171,11 @@ export function FamilyDetailView({
                     <span className="text-muted-foreground">od {formatDate(enrolment.startsOn)}{enrolment.endsOn ? ` do ${formatDate(enrolment.endsOn)}` : ''}</span>
                     <Badge variant="outline">{STATUS_LABEL[enrolment.status]}</Badge>
                     <div className="ml-auto flex flex-wrap gap-1">
+                      {(enrolment.status === 'AWAITING_ENROLMENT_PAYMENT' || enrolment.status === 'ACTIVE') && (
+                        <Button size="sm" variant="outline" onClick={() => setDialog({ kind: 'fees', enrolment })}>
+                          <ReceiptIcon aria-hidden /> Račun za upis
+                        </Button>
+                      )}
                       {PROGRAM_ENTITY[enrolment.program] === 'IDSS' && (
                         <Button size="sm" variant="outline" onClick={() => setDialog({ kind: 'plan', enrolment })}>
                           <CalendarRangeIcon aria-hidden /> Plan plaćanja
@@ -250,6 +257,7 @@ export function FamilyDetailView({
         )}
       </FormDialog>
       <PaymentPlanDialog detail={detail.state.data} enrolment={dialog.kind === 'plan' ? dialog.enrolment : null} onClose={close} />
+      <EnrolmentFeeDialog detail={detail.state.data} enrolment={dialog.kind === 'fees' ? dialog.enrolment : null} onClose={close} />
     </div>
   );
 }
