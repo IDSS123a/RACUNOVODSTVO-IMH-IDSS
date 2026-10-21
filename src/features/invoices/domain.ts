@@ -127,7 +127,16 @@ export function buildImhMonthlyInvoice(
       };
     })
     .sort((a, b) => a.dateOfBirth.localeCompare(b.dateOfBirth))
-    .map(({ dateOfBirth: _ignored, ...line }) => line);
+    .map((entry): InvoiceLine => ({
+      itemCode: entry.itemCode,
+      description: entry.description,
+      childId: entry.childId,
+      enrolmentId: entry.enrolmentId,
+      program: entry.program,
+      listAmount: entry.listAmount,
+      boardDecisionId: entry.boardDecisionId,
+      amount: entry.amount,
+    }));
 
   return {
     entity: 'IMH',

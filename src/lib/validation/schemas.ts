@@ -173,3 +173,69 @@ export const FamilyDetailSchema = z.object({
 });
 
 export const FamilySummariesSchema = z.array(FamilySummarySchema);
+
+// ---------- Invoices (Sprint 03) ----------
+
+export const InvoiceKindSchema = z.enum(['MONTHLY', 'ENROLMENT_FEES', 'INSTALMENT', 'OTHER']);
+
+export const InvoiceLineSchema = z.object({
+  itemCode: PriceItemCodeSchema,
+  description: z.string().min(1),
+  childId: z.string().min(1),
+  enrolmentId: z.string().min(1),
+  program: ProgramCodeSchema,
+  listAmount: fenings.nonnegative(),
+  boardDecisionId: z.string().nullable(),
+  amount: fenings.nonnegative(),
+});
+
+export const InvoiceDraftSchema = z.object({
+  id: uuid,
+  entity: LegalEntityCodeSchema,
+  kind: InvoiceKindSchema,
+  familyId: uuid,
+  buyerName: z.string().min(1),
+  buyerAddress: z.string(),
+  issueDate: isoDate,
+  dueDate: isoDate,
+  periodFrom: isoDate,
+  periodTo: isoDate,
+  lines: z.array(InvoiceLineSchema).min(1),
+  total: fenings.nonnegative(),
+});
+
+export const InvoiceSummarySchema = z.object({
+  id: z.string(),
+  number: z.string(),
+  entity: LegalEntityCodeSchema,
+  kind: InvoiceKindSchema,
+  familyId: z.string(),
+  familyName: z.string(),
+  buyerName: z.string(),
+  buyerAddress: z.string(),
+  issueDate: isoDate,
+  dueDate: isoDate,
+  periodFrom: isoDate,
+  periodTo: isoDate,
+  total: fenings,
+  paid: fenings,
+  status: z.enum(['ISSUED', 'CANCELLED']),
+});
+
+export const PaymentSchema = z.object({
+  id: uuid,
+  invoiceId: z.string().min(1),
+  paidOn: isoDate,
+  amount: fenings.positive('iznos mora biti veći od nule'),
+  payerName: z.string().trim().min(1, 'unesite ko je uplatio'),
+  reference: z.string().trim(),
+  note: z.string().trim(),
+});
+
+export const InvoiceDetailSchema = z.object({
+  invoice: InvoiceSummarySchema,
+  lines: z.array(InvoiceLineSchema),
+  payments: z.array(PaymentSchema),
+});
+
+export const InvoiceSummariesSchema = z.array(InvoiceSummarySchema);

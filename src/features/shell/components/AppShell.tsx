@@ -1,17 +1,19 @@
 import { useState } from 'react';
-import { MonitorIcon, MoonIcon, SettingsIcon, SunIcon, TableIcon, UsersIcon } from 'lucide-react';
+import { FileTextIcon, MonitorIcon, MoonIcon, SettingsIcon, SunIcon, TableIcon, UsersIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { FamiliesPage } from '@/features/families/components/FamiliesPage';
+import { InvoicesPage } from '@/features/invoices/components/InvoicesPage';
 import { PriceListPage } from '@/features/price-lists/components/PriceListPage';
 import type { SchoolYear } from '@/features/price-lists/types';
 import { SettingsPage } from '@/features/settings/components/SettingsPage';
 import type { Settings } from '@/features/settings/repository';
 
-type Page = 'families' | 'price-lists' | 'settings';
+type Page = 'invoices' | 'families' | 'price-lists' | 'settings';
 
 const NAV: ReadonlyArray<{ id: Page; label: string; icon: typeof TableIcon }> = [
+  { id: 'invoices', label: 'Računi', icon: FileTextIcon },
   { id: 'families', label: 'Porodice', icon: UsersIcon },
   { id: 'price-lists', label: 'Cjenovnik', icon: TableIcon },
   { id: 'settings', label: 'Postavke', icon: SettingsIcon },
@@ -60,6 +62,7 @@ export function AppShell({ settings, onSettingsChanged }: { settings: Settings; 
         </div>
       </aside>
       <main className="min-w-0 overflow-auto p-8">
+        {page === 'invoices' && <InvoicesPage />}
         {page === 'families' && <FamiliesPage defaultYear={settings.activeSchoolYear as SchoolYear} />}
         {page === 'price-lists' && <PriceListPage initialYear={settings.activeSchoolYear as SchoolYear} />}
         {page === 'settings' && <SettingsPage settings={settings} onSettingsChanged={onSettingsChanged} />}
