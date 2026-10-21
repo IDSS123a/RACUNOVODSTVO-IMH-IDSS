@@ -77,6 +77,7 @@ All of this happens without a single amount being computed in two different ways
 - **BR-29** The operator has a **dashboard** with statistics for IMH and IDSS, and can **print** invoices and reports.
 - **BR-30** **Every change** is written to the audit log, and the log is viewable in the app.
 - **BR-31** The operator can **export all invoices issued in a chosen period** (filterable by entity) as one **.zip** file of PDFs, saved wherever the operator chooses (Director, 2026-10-21).
+- **BR-32** At first start on the operator's PC, **all invoices of the previous solution** (Excel workbook `Faktura_IDSS_&_IMH_<year>.xlsm`, sheet `DB`) are imported in bulk from a path the Director chooses. Imported invoices keep their original numbers and amounts exactly; nothing is recalculated (Director, 2026-10-21). Details: SPRINT_03 "Legacy import".
 - **BR-25** A family has at most one mother and one father; further persons are recorded as "Staratelj". The guardian IBAN is optional and is used only for ministry-subsidy refunds.
 
 ### 4.3 One-time fees

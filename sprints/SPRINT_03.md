@@ -86,6 +86,14 @@ Payments from any family member are booked against invoices, and the open balanc
 - [x] The PDF opens, shows the correct entity data and amounts identical to the screen (rendered and checked; Director walkthrough).
 - [x] Director's walkthrough approved (2026-10-21): bulk invoices IMH + IDSS, PDF, print, save, .zip export, Outlook draft, file names.
 
+## Legacy import (BR-32) — analysis of the example workbook (structure only, no personal data copied)
+- Sheet `DB`: header in row 8, one row per invoice line, data from row 9. Columns: A institution name, B entity (IMH/IDSS), C number, D–E billing period, F invoice date, G due date, H father, I mother, J "dijete: <name>", K item text, M unit, N quantity, O price, Q discount, T line amount, U "plaćeno" (paid flag, no payment date).
+- Example file: ~1.570 invoices, ~4.630 lines, invoice dates 01–09/2026; 2–6 line rows per invoice (empty rows with quantity 0).
+- Numbering: IMH `NNN/26` and `NNN-B/26` share one sequence (max 896); IDSS `NNN/26` (max 568) plus 3 numbers `/23`; IDSS credit notes `KO-NN/26` with negative amounts.
+- Items are free text (tuition by month, materials, enrolment fee, breakfast, extended stay, summer school, scholarship decision) → mapped to item codes by keywords; unknown text kept as „Ostalo“.
+- Sheet `Setting`: register of families (father, mother, child, address, entity) — no dates of birth.
+- Open decisions (asked one at a time): scope (invoices only, or also the family register), numbering continuation, meaning of the `-B` series, payment date for "plaćeno".
+
 ## Still open before Sprint 03 closes
 - ✅ Enrolment-fee invoice („Račun za upis“ on each enrolment): one invoice per child and school year (migration 007), separate lines.
   - IMH: enrolment fee and deposit only for a new child (a child continuing in IMH, including the transfer Preschoolers → IDSS Preschoolers, keeps both); materials every year; deposit by sibling tier. Due before the start.
