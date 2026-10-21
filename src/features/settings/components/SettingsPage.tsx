@@ -1,6 +1,7 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { ErrorBlock, LoadingBlock } from '@/components/feedback';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BoardRulesPanel } from '@/features/board-rules/components/BoardRulesPanel';
@@ -78,6 +79,8 @@ export function SettingsPage({ settings, onSettingsChanged }: { settings: Settin
         </CardContent>
       </Card>
 
+      {import.meta.env.DEV && <DemoDataCard schoolYear={settings.activeSchoolYear as SchoolYear} />}
+
       <Card>
         <CardHeader>
           <CardTitle>Rezervne kopije</CardTitle>
@@ -88,5 +91,34 @@ export function SettingsPage({ settings, onSettingsChanged }: { settings: Settin
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/** DEVELOPMENT ONLY (never rendered in the installed build): load fictional demo families for walkthroughs. */
+function DemoDataCard({ schoolYear }: { schoolYear: SchoolYear }): React.JSX.Element {
+  const [busy, setBusy] = useState(false);
+  async function load(): Promise<void> {
+    setBusy(true);
+    try {
+      const { loadDemoData } = await import('@/features/dev/demo-data');
+      const result = await loadDemoData(schoolYear);
+      if (result.success) toast.success(result.data);
+      else toast.error(result.error);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Card className="border-dashed">
+      <CardHeader>
+        <CardTitle>Demo podaci (samo razvojna verzija)</CardTitle>
+        <CardDescription>Izmišljene porodice za probu, školska godina {schoolYear}. Ovo dugme ne postoji u verziji koja se instalira kod operatera.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button variant="outline" disabled={busy} onClick={() => void load()}>
+          {busy ? 'Učitavam…' : 'Učitaj demo podatke'}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
