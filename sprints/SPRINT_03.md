@@ -94,7 +94,8 @@ Payments from any family member are booked against invoices, and the open balanc
 - Sheet `Setting`: register of families (father, mother, child, address, entity) — no dates of birth.
 - ✅ Scope (Director, 2026-10-21): import the invoices **and** the family register from `Setting`; children come without a date of birth, which the operator adds later (a child without it cannot be billed by the new app until it is entered).
 - ✅ Numbering (Director, 2026-10-21): the state after the import at first start on the operator's PC is final; new invoices continue from the **next free number per entity and year** found by the import (e.g. IMH-897/26, IDSS-569/26). Imported numbers are kept as written.
-- Open decisions (asked one at a time): meaning of the `-B` series, payment date for "plaćeno".
+- ✅ `-B` series (Director, 2026-10-21): not relevant — imported as ordinary IMH invoices with the number as written (e.g. `754-B/26`); its numeric part counts for the continuation.
+- Open decision: payment date for "plaćeno".
 
 ## Still open before Sprint 03 closes
 - ✅ Enrolment-fee invoice („Račun za upis“ on each enrolment): one invoice per child and school year (migration 007), separate lines.
