@@ -60,6 +60,8 @@ Payments from any family member are booked against invoices, and the open balanc
 1. ✅ Monthly invoices: no bulk **.zip export** (BR-31) → „Izvoz i slanje“ on Računi; offered right after approving the monthly invoices.
 2. ✅ Monthly invoices: no sending to info-mejtas@montessorihouse.ba → Outlook draft with **each PDF and one .zip** attached (DL-P006); large periods split into several drafts.
 3. ✅ The invoice file name carries the child: `IMH-001-26_Emina_Begic.pdf` (ASCII in file names; the PDF keeps the exact spelling).
+4. ✅ No payment slip on the invoice → pre-filled slip in the bottom half of the last page, amount = open balance (DL-P008).
+5. ⏸ No QR code → intentionally not printed until a BiH bank confirms the QR format (DL-P008); Director to obtain it from Sparkasse.
 
 ## OUT of scope (Sprint 04)
 - Dashboard with statistics, printed reports, audit-log viewer (BR-29, BR-30).

@@ -209,6 +209,11 @@ function drawTotals(w: Writer, data: InvoicePdfData): void {
   w.text('UKUPNO ZA UPLATU', PAGE.width - MARGIN - 250, { size: 11, bold: true });
   w.rightText(formatKM(invoice.total), PAGE.width - MARGIN - 4, { size: 12, bold: true });
   w.y -= 18;
+  if (invoice.paid > 0) {
+    const open = Math.max(0, invoice.total - invoice.paid);
+    w.rightText(`Uplaćeno ${formatKM(invoice.paid)} · preostalo za uplatu ${formatKM(open)}`, PAGE.width - MARGIN - 4, { size: 9 });
+    w.y -= 14;
+  }
   for (const line of wrapText(`Slovima: ${amountInWords(invoice.total)}`, w.regular, 8.5, CONTENT_WIDTH)) {
     w.text(line, MARGIN, { size: 8.5, color: MUTED });
     w.y -= 11;
@@ -218,35 +223,89 @@ function drawTotals(w: Writer, data: InvoicePdfData): void {
 
 function drawPayment(w: Writer, data: InvoicePdfData): void {
   const { institution } = data;
-  const rows: Array<[string, string]> = [
-    ['Primalac', institution.shortName],
-    ['Banka', institution.bankName],
-    ['Broj računa', institution.bankAccount],
-    ['IBAN', institution.iban],
-    ['SWIFT', institution.swift],
-    ['Svrha uplate', `Račun ${data.detail.invoice.number}`],
-  ];
-  w.ensure(rows.length * 13 + 30);
-  w.text('PODACI ZA UPLATU', MARGIN, { size: 7.5, bold: true, color: MUTED });
-  w.y -= 14;
-  for (const [label, value] of rows) {
-    w.text(label, MARGIN, { color: MUTED });
-    w.text(value, MARGIN + 90, { bold: label === 'Svrha uplate' });
-    w.y -= 13;
+  // Domestic payers use the slip below; IBAN/SWIFT are for payments from abroad.
+  const bank = `Uplata na: ${institution.bankName} · račun ${institution.bankAccount} · IBAN ${institution.iban} · SWIFT ${institution.swift}`;
+  const lines = wrapText(bank, w.regular, 8.5, CONTENT_WIDTH);
+  w.ensure(lines.length * 11 + 40);
+  for (const line of lines) {
+    w.text(line, MARGIN, { size: 8.5 });
+    w.y -= 11;
   }
-  w.y -= 10;
+  w.y -= 6;
   if (institution.invoiceNote.trim()) {
-    const lines = wrapText(institution.invoiceNote.trim(), w.regular, 8.5, CONTENT_WIDTH);
-    w.ensure(lines.length * 11 + 10);
-    for (const line of lines) {
+    const note = wrapText(institution.invoiceNote.trim(), w.regular, 8.5, CONTENT_WIDTH);
+    w.ensure(note.length * 11 + 10);
+    for (const line of note) {
       w.text(line, MARGIN, { size: 8.5 });
       w.y -= 11;
     }
-    w.y -= 10;
+    w.y -= 6;
   }
   w.ensure(30);
   w.text('Fakturisao/la:', MARGIN, { color: MUTED });
   w.text(data.operatorName, MARGIN + 90, { bold: true });
+  w.y -= 14;
+}
+
+/** Payment slip area at the bottom of the last page (bottom half of A4). */
+const SLIP = { bottom: MARGIN + 24, height: 262 } as const;
+const SLIP_TOP = SLIP.bottom + SLIP.height;
+
+function box(w: Writer, x: number, top: number, width: number, height: number, label: string, value: string[], bold = false): void {
+  w.page.drawRectangle({ x, y: top - height, width, height, borderColor: INK, borderWidth: 0.6 });
+  w.text(label, x + 4, { y: top - 9, size: 6.5, color: MUTED });
+  value.forEach((line, i) => w.text(line, x + 5, { y: top - 21 - i * 11, size: bold ? 10 : 8.5, bold }));
+}
+
+/**
+ * Domestic payment slip ("Nalog za uplatu / Uplatnica") pre-filled for the parent (IDSS Pravilnik čl. 3:
+ * payer, child and purpose; period for instalments). The amount is what is still open on the invoice.
+ * No QR code: no payment-QR standard accepted by BiH banks is confirmed yet (forensics §5.2, DL-P008).
+ */
+function drawPaymentSlip(w: Writer, data: InvoicePdfData): void {
+  const { invoice } = data.detail;
+  if (invoice.status === 'CANCELLED') return;
+  if (w.y < SLIP_TOP + 18) w.ensure(PAGE.height);
+
+  const cut = SLIP_TOP + 10;
+  w.page.drawLine({ start: { x: MARGIN, y: cut }, end: { x: PAGE.width - MARGIN, y: cut }, thickness: 0.6, color: MUTED, dashArray: [4, 3] });
+  const top = SLIP_TOP - 4;
+  w.text('NALOG ZA UPLATU — UPLATNICA', MARGIN, { y: top - 8, size: 9, bold: true });
+  w.rightText(`Račun ${invoice.number}`, PAGE.width - MARGIN, { y: top - 8, size: 8 });
+
+  const gap = 10;
+  const leftWidth = CONTENT_WIDTH * 0.56;
+  const rightX = MARGIN + leftWidth + gap;
+  const rightWidth = CONTENT_WIDTH - leftWidth - gap;
+  const inner = leftWidth - 10;
+  const fit = (text: string, max: number) => wrapText(text, w.regular, 8.5, inner).slice(0, max);
+  let y = top - 18;
+
+  const payer = fit([invoice.buyerName, invoice.buyerAddress].filter(Boolean).join(', '), 3);
+  box(w, MARGIN, y, leftWidth, 52, 'Uplatio je (ime, adresa i telefon)', payer);
+  const purpose = fit(
+    `Račun ${invoice.number} · ${invoice.childName} · period ${formatDate(invoice.periodFrom)} – ${formatDate(invoice.periodTo)}`,
+    3,
+  );
+  box(w, MARGIN, y - 60, leftWidth, 52, 'Svrha uplate', purpose);
+  const payee = fit(`${data.institution.shortName}, ${data.institution.address}`, 3);
+  box(w, MARGIN, y - 120, leftWidth, 52, 'Primalac / Primatelj (naziv, sjedište)', payee);
+
+  const open = Math.max(0, invoice.total - invoice.paid);
+  const rows: Array<[string, string[], boolean]> = [
+    ['Mjesto i datum uplate', [], false],
+    ['Račun pošiljaoca', [], false],
+    ['Račun primaoca', [data.institution.bankAccount], true],
+    ['Iznos KM', [open > 0 ? amountText(open) : 'plaćeno'], true],
+    ['Poziv na broj', [], false],
+  ];
+  rows.forEach(([label, value, bold], i) => box(w, rightX, y - i * 34.4, rightWidth, 30, label, value, bold));
+
+  y -= 184;
+  w.page.drawLine({ start: { x: MARGIN, y: y - 22 }, end: { x: MARGIN + 180, y: y - 22 }, thickness: 0.5, color: INK });
+  w.text('Potpis i pečat nalogodavca', MARGIN, { y: y - 32, size: 6.5, color: MUTED });
+  w.page.drawLine({ start: { x: rightX, y: y - 22 }, end: { x: PAGE.width - MARGIN, y: y - 22 }, thickness: 0.5, color: INK });
+  w.text('Potpis i pečat primaoca naloga', rightX, { y: y - 32, size: 6.5, color: MUTED });
 }
 
 function drawFooters(doc: PDFDocument, w: Writer, data: InvoicePdfData): void {
@@ -281,6 +340,7 @@ export async function renderInvoicePdf(data: InvoicePdfData, assets: PdfAssets):
   drawLines(w, data);
   drawTotals(w, data);
   drawPayment(w, data);
+  drawPaymentSlip(w, data);
   drawFooters(doc, w, data);
   return doc.save();
 }

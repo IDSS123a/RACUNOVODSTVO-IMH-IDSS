@@ -131,4 +131,15 @@
 
 ---
 
+## DL-P008 — Payment slip on the invoice; no QR code until a BiH bank confirms a format
+
+**Date:** 2026-10-21 · **Trigger:** Director's walkthrough ("nema uplatnice", "nema QR koda")
+
+**Decision:**
+- Every invoice PDF has a pre-filled domestic **payment slip** ("Nalog za uplatu / Uplatnica") in the bottom half of the last page: payer, purpose (invoice number, child, period — IDSS Pravilnik čl. 3), payee, payee account, and the **amount still open** (forensics §2.10). Place/date, payer account and reference stay blank for the parent. Cancelled invoices have no slip.
+- **No QR code for now.** The old app printed an EPC/SEPA QR (`BCD/002/SCT`), a EUR standard: BAM amounts, a payee name over 70 characters and a non-RF reference make it likely to be rejected by BiH banks (forensics §5.2). No BiH payment-QR standard or bank specification could be confirmed (web search 2026-10-21). Printing an unverified QR could send money wrongly or fail at the bank (M-4).
+- **To re-enable:** the bank (Sparkasse Bank BiH) provides the QR format its mBanking accepts, or a test with a real payment confirms one; then the QR is added to the slip and verified with a test payment.
+
+---
+
 *Commander v1.6.2 — IDSS123a Organisation*
