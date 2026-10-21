@@ -12,3 +12,6 @@ Date: 2026-10-21
 
 ## Commander Improvement Candidates
 - None this sprint.
+
+### 2026-10-21 — Leftover dev server
+- When the Director closed the app window, `tauri dev` ended but its Vite child (port 5173) kept running, so the next `tauri dev` failed with "Port 5173 is already in use" → identified the PID as our own `vite.js` from this project before killing it. Gotcha: verify ownership (command line) before killing a process on a shared machine.
