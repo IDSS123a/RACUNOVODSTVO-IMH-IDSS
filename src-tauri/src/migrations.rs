@@ -6,7 +6,10 @@ use rusqlite::Connection;
 use crate::error::{AppError, AppResult};
 
 /// (version, SQL) — embedded at compile time from `src-tauri/migrations/`.
-const MIGRATIONS: &[(i64, &str)] = &[(1, include_str!("../migrations/001_initial_schema.sql"))];
+const MIGRATIONS: &[(i64, &str)] = &[
+    (1, include_str!("../migrations/001_initial_schema.sql")),
+    (2, include_str!("../migrations/002_families.sql")),
+];
 
 /// Latest schema version this build understands.
 pub fn latest_version() -> i64 {

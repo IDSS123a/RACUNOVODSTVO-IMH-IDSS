@@ -6,6 +6,7 @@
 mod commands;
 mod crypto;
 mod error;
+mod families;
 mod keystore;
 mod migrations;
 mod repository;
@@ -47,6 +48,14 @@ pub fn run() {
             commands::save_settings,
             commands::create_backup,
             commands::restore_backup,
+            commands::list_families,
+            commands::get_family,
+            commands::save_family,
+            commands::save_child,
+            commands::save_enrolment,
+            commands::delete_child,
+            commands::delete_enrolment,
+            commands::delete_family,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Tauri application");

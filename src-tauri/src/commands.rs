@@ -182,3 +182,75 @@ pub fn restore_backup(state: State<'_, AppStore>, file_path: String, recovery_ke
     store.restore(&bytes, recovery_key.as_deref())?;
     store.write(|tx| repo::audit(tx, "RESTORE", "database", "", ""))
 }
+
+// ---------- Families (Sprint 02) ----------
+
+use crate::families::{self, Child, Enrolment, Family, FamilyDetail, FamilySummary, Guardian};
+
+#[tauri::command]
+pub fn list_families(state: State<'_, AppStore>) -> AppResult<Vec<FamilySummary>> {
+    let store = state.get()?;
+    store.read(families::list_families)
+}
+
+#[tauri::command]
+pub fn get_family(state: State<'_, AppStore>, family_id: String) -> AppResult<FamilyDetail> {
+    let store = state.get()?;
+    store
+        .read(|c| families::get_family(c, &family_id))?
+        .ok_or_else(|| AppError::NotFound("porodica ne postoji".into()))
+}
+
+#[tauri::command]
+pub fn save_family(state: State<'_, AppStore>, family: Family, guardians: Vec<Guardian>) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        families::save_family(tx, &family, &guardians)?;
+        repo::audit(tx, "UPSERT", "family", &family.id, &format!("{} guardians", guardians.len()))
+    })
+}
+
+#[tauri::command]
+pub fn save_child(state: State<'_, AppStore>, child: Child) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        families::save_child(tx, &child)?;
+        repo::audit(tx, "UPSERT", "child", &child.id, "")
+    })
+}
+
+#[tauri::command]
+pub fn save_enrolment(state: State<'_, AppStore>, enrolment: Enrolment) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        families::save_enrolment(tx, &enrolment)?;
+        repo::audit(tx, "UPSERT", "enrolment", &enrolment.id, &format!("{} {}", enrolment.program, enrolment.status))
+    })
+}
+
+#[tauri::command]
+pub fn delete_child(state: State<'_, AppStore>, child_id: String) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        families::delete_child(tx, &child_id)?;
+        repo::audit(tx, "DELETE", "child", &child_id, "")
+    })
+}
+
+#[tauri::command]
+pub fn delete_enrolment(state: State<'_, AppStore>, enrolment_id: String) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        families::delete_enrolment(tx, &enrolment_id)?;
+        repo::audit(tx, "DELETE", "enrolment", &enrolment_id, "")
+    })
+}
+
+#[tauri::command]
+pub fn delete_family(state: State<'_, AppStore>, family_id: String) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        families::delete_family(tx, &family_id)?;
+        repo::audit(tx, "DELETE", "family", &family_id, "")
+    })
+}
