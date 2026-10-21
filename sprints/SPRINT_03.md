@@ -92,7 +92,8 @@ Payments from any family member are booked against invoices, and the open balanc
 - Numbering: IMH `NNN/26` and `NNN-B/26` share one sequence (max 896); IDSS `NNN/26` (max 568) plus 3 numbers `/23`; IDSS credit notes `KO-NN/26` with negative amounts.
 - Items are free text (tuition by month, materials, enrolment fee, breakfast, extended stay, summer school, scholarship decision) → mapped to item codes by keywords; unknown text kept as „Ostalo“.
 - Sheet `Setting`: register of families (father, mother, child, address, entity) — no dates of birth.
-- Open decisions (asked one at a time): scope (invoices only, or also the family register), numbering continuation, meaning of the `-B` series, payment date for "plaćeno".
+- ✅ Scope (Director, 2026-10-21): import the invoices **and** the family register from `Setting`; children come without a date of birth, which the operator adds later (a child without it cannot be billed by the new app until it is entered).
+- Open decisions (asked one at a time): numbering continuation, meaning of the `-B` series, payment date for "plaćeno".
 
 ## Still open before Sprint 03 closes
 - ✅ Enrolment-fee invoice („Račun za upis“ on each enrolment): one invoice per child and school year (migration 007), separate lines.
