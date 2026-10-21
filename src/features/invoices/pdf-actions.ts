@@ -64,7 +64,7 @@ async function render(detail: InvoiceDetail, context: PdfContext): Promise<Resul
   if (!institution) return fail(`podaci ustanove ${detail.invoice.entity} nisu uneseni`, 'NOT_FOUND');
   try {
     const bytes = await renderInvoicePdf({ detail, institution, operatorName: context.operatorName }, assetsFor(detail.invoice.entity));
-    return { success: true, data: { bytes, fileName: invoiceFileName(detail.invoice.number), number: detail.invoice.number, summary: detail.invoice } };
+    return { success: true, data: { bytes, fileName: invoiceFileName(detail.invoice.number, detail.invoice.childName), number: detail.invoice.number, summary: detail.invoice } };
   } catch (error: unknown) {
     return fail(`PDF računa ${detail.invoice.number} nije napravljen: ${error instanceof Error ? error.message : String(error)}`, 'PDF');
   }

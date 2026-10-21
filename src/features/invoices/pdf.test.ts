@@ -50,7 +50,10 @@ describe('invoice PDF', () => {
     await expect(renderInvoicePdf({ ...data(1), institution: idss }, ASSETS)).rejects.toThrow();
   });
 
-  it('safe file names', () => {
-    expect(invoiceFileName('IMH-001/26')).toBe('IMH-001-26.pdf');
+  it('file names carry the number and the child, ASCII only', () => {
+    expect(invoiceFileName('IMH-001/26', 'Emina Begić')).toBe('IMH-001-26_Emina_Begic.pdf');
+    expect(invoiceFileName('IDSS-012/26', 'Đurđa Čolić-Šećić')).toBe('IDSS-012-26_Djurdja_Colic_Secic.pdf');
+    expect(invoiceFileName('IMH-002/26', 'Zoë Müller')).toBe('IMH-002-26_Zoe_Muller.pdf');
+    expect(invoiceFileName('IMH-003/26', '')).toBe('IMH-003-26.pdf');
   });
 });

@@ -285,7 +285,23 @@ export async function renderInvoicePdf(data: InvoicePdfData, assets: PdfAssets):
   return doc.save();
 }
 
-/** File name for an invoice PDF, safe on Windows: "IMH-001-26.pdf". */
-export function invoiceFileName(number: string): string {
-  return `${number.replace(/[^A-Za-z0-9-]+/g, '-')}.pdf`;
+const TRANSLITERATION: Readonly<Record<string, string>> = { č: 'c', ć: 'c', đ: 'dj', š: 's', ž: 'z', Č: 'C', Ć: 'C', Đ: 'Dj', Š: 'S', Ž: 'Z' };
+
+/** ASCII-only text for file names (mail programs and phones mangle diacritics in attachment names). */
+function asciiName(text: string): string {
+  return text
+    .replace(/[čćđšžČĆĐŠŽ]/g, (c) => TRANSLITERATION[c] ?? c)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+/**
+ * File name for an invoice PDF: number and child (Director, 2026-10-21), safe on Windows and in e-mail,
+ * e.g. "IMH-001-26_Emina_Begic.pdf". The PDF itself keeps the exact spelling.
+ */
+export function invoiceFileName(number: string, childName: string): string {
+  const child = asciiName(childName);
+  return `${number.replace(/[^A-Za-z0-9-]+/g, '-')}${child ? `_${child}` : ''}.pdf`;
 }
