@@ -1,26 +1,28 @@
 import { useState } from 'react';
-import { MonitorIcon, MoonIcon, SettingsIcon, SunIcon, TableIcon } from 'lucide-react';
+import { MonitorIcon, MoonIcon, SettingsIcon, SunIcon, TableIcon, UsersIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { FamiliesPage } from '@/features/families/components/FamiliesPage';
 import { PriceListPage } from '@/features/price-lists/components/PriceListPage';
 import type { SchoolYear } from '@/features/price-lists/types';
 import { SettingsPage } from '@/features/settings/components/SettingsPage';
 import type { Settings } from '@/features/settings/repository';
 
-type Page = 'price-lists' | 'settings';
+type Page = 'families' | 'price-lists' | 'settings';
 
 const NAV: ReadonlyArray<{ id: Page; label: string; icon: typeof TableIcon }> = [
+  { id: 'families', label: 'Porodice', icon: UsersIcon },
   { id: 'price-lists', label: 'Cjenovnik', icon: TableIcon },
   { id: 'settings', label: 'Postavke', icon: SettingsIcon },
 ];
 
 /**
- * Application shell: sidebar navigation + content. Sprint 01 shows only working screens;
- * families, invoices and the ministry cycle are added in later sprints (no placeholder menus).
+ * Application shell: sidebar navigation + content. Only working screens are listed;
+ * invoices and the ministry cycle are added in later sprints (no placeholder menus).
  */
 export function AppShell({ settings, onSettingsChanged }: { settings: Settings; onSettingsChanged: () => void }): React.JSX.Element {
-  const [page, setPage] = useState<Page>('price-lists');
+  const [page, setPage] = useState<Page>('families');
 
   return (
     <div className="grid min-h-screen grid-cols-[15rem_1fr]">
@@ -58,6 +60,7 @@ export function AppShell({ settings, onSettingsChanged }: { settings: Settings; 
         </div>
       </aside>
       <main className="min-w-0 overflow-auto p-8">
+        {page === 'families' && <FamiliesPage defaultYear={settings.activeSchoolYear as SchoolYear} />}
         {page === 'price-lists' && <PriceListPage initialYear={settings.activeSchoolYear as SchoolYear} />}
         {page === 'settings' && <SettingsPage settings={settings} onSettingsChanged={onSettingsChanged} />}
       </main>
