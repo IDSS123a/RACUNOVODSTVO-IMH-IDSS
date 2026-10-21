@@ -14,6 +14,7 @@ import { summarisePayments } from '../domain';
 import { listInvoices } from '../repository';
 import { PAYMENT_STATUS_LABEL } from '../types';
 import { InvoiceDetailDialog } from './InvoiceDetailDialog';
+import { InvoicePdfDialog } from './InvoicePdfDialog';
 import { IssueMonthDialog } from './IssueMonthDialog';
 
 type EntityFilter = LegalEntityCode | 'ALL';
@@ -24,6 +25,7 @@ export function InvoicesPage(): React.JSX.Element {
   const [month, setMonth] = useState<string>('');
   const [issuing, setIssuing] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [pdfId, setPdfId] = useState<string | null>(null);
   const load = useCallback(() => listInvoices({ entity: entity === 'ALL' ? null : entity, month: month || null }), [entity, month]);
   const invoices = useAsyncResult(load);
 
@@ -123,7 +125,8 @@ export function InvoicesPage(): React.JSX.Element {
       )}
 
       <IssueMonthDialog open={issuing} onOpenChange={setIssuing} onIssued={invoices.reload} />
-      <InvoiceDetailDialog invoiceId={openId} onClose={() => setOpenId(null)} onChanged={invoices.reload} />
+      <InvoiceDetailDialog invoiceId={openId} onClose={() => setOpenId(null)} onChanged={invoices.reload} onShowPdf={(id) => { setOpenId(null); setPdfId(id); }} />
+      <InvoicePdfDialog invoiceId={pdfId} onClose={() => setPdfId(null)} />
     </div>
   );
 }

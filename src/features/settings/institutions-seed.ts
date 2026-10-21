@@ -25,6 +25,7 @@ export const INSTITUTIONS_SEED: ReadonlyArray<z.infer<typeof InstitutionSchema>>
     bankAccount: '1990 4900 5848 7943',
     iban: 'BA39 1990 4900 5848 7943',
     swift: 'ABSBBA22',
+    invoiceNote: '',
   },
   {
     code: 'IDSS',
@@ -42,5 +43,6 @@ export const INSTITUTIONS_SEED: ReadonlyArray<z.infer<typeof InstitutionSchema>>
     bankAccount: '1994 9900 2180 9884',
     iban: 'BA39 1994 9900 2180 9884',
     swift: 'ABSBBA22',
+    invoiceNote: '',
   },
 ];

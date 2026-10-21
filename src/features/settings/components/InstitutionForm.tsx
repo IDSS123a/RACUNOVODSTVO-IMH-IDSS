@@ -22,6 +22,7 @@ const FIELDS: ReadonlyArray<{ name: keyof Omit<Institution, 'code'>; label: stri
   { name: 'bankAccount', label: 'Broj računa' },
   { name: 'iban', label: 'IBAN' },
   { name: 'swift', label: 'SWIFT (BIC)' },
+  { name: 'invoiceNote', label: 'Napomena na računu (npr. PDV napomena) — tačan tekst unosi ustanova', wide: true },
 ];
 
 /** Edit institution master data (BR-2). Saved to the encrypted database and audited. */

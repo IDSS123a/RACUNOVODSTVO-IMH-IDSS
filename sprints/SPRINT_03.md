@@ -54,6 +54,7 @@ Payments from any family member are booked against invoices, and the open balanc
    - record payment.
 5. **PDF:** vector (not a screenshot).
    - Content: letterhead data from Settings, official logo, invoice number and dates, buyer, child, lines, total, amount in words, bank details, "Fakturisao/la".
+   - Done (DL-P007): pdf-lib + pre-subset Noto Sans; preview in the app (WebView2 PDF viewer) with „Štampaj“ and „Sačuvaj PDF“; saving is audited.
 
 ## OUT of scope (Sprint 04)
 - Email dispatch to info-mejtas@montessorihouse.ba as an Outlook draft (BR-28, DL-P006).
@@ -67,7 +68,7 @@ Payments from any family member are booked against invoices, and the open balanc
 ## Open questions (asked one at a time, C-6)
 1. Does the sequence restart at 001 every calendar year (by invoice date)?
    📌 ASSUMED until answered: yes, by the year of the invoice date. Easily reversible before the first real invoice.
-2. The PDV / tax-exemption note printed on invoices, per institution. The text is a legal statement and is not invented (M-4). It is entered in Settings by the operator; there is no default text.
+2. ✅ The PDV / tax-exemption note: field „Napomena na računu“ per institution in Settings (migration 006), printed on every invoice; no default text (M-4). The institution still has to enter the exact wording.
 3. Storno / credit-note numbering (needed in Sprint 04).
 4. ✅ Breakfast months and the last-instalment deadline: decided by the board each year → Settings (Director, 2026-10-21).
 

@@ -111,4 +111,21 @@
 
 ---
 
+## DL-P007 — Invoice PDF: pdf-lib in the frontend, embedded Noto Sans
+
+**Date:** 2026-10-21
+
+**Decision:** invoices are drawn as **vector PDFs** in TypeScript with `pdf-lib` 1.17.1 (MIT) and `@pdf-lib/fontkit` 1.1.1 (MIT).
+- Font: **Noto Sans** Regular/Bold (SIL OFL 1.1, license in `src/assets/fonts/OFL.txt`), pre-subset to Latin with fontTools (~24 KB each) and embedded whole, so č ć đ š ž print correctly on every PC. 🔄 pdf-lib's own subsetting dropped glyphs (verified by rendering), hence the pre-subset (see `src/assets/fonts/README.md`).
+- Logos come from `src/assets/logos`; letterhead data from the institutions in Settings; "Fakturisao/la" from the operator profile.
+- The same bytes are used for preview/print (WebView2 PDF viewer), saving, the Outlook draft (DL-P006) and the .zip export (BR-31).
+
+**Why:** works offline, no native toolchain, unit-testable (the generator runs in Vitest), one code path for every use of the PDF.
+
+**Rejected:** screenshot/HTML-to-image (not vector, M-4 forensic finding); browser print only (no file for email/zip); Rust `printpdf` (more code for text layout, no gain).
+
+**New dependencies (M-12):** `pdf-lib`, `@pdf-lib/fontkit` (pinned exact versions), font files (not a package).
+
+---
+
 *Commander v1.6.2 — IDSS123a Organisation*

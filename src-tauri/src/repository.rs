@@ -24,6 +24,9 @@ pub struct Institution {
     pub bank_account: String,
     pub iban: String,
     pub swift: String,
+    /// Printed on every invoice (PDV / tax note); entered by the operator, empty by default.
+    #[serde(default)]
+    pub invoice_note: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -66,7 +69,7 @@ pub fn audit(tx: &Transaction, action: &str, entity: &str, entity_id: &str, deta
 pub fn list_institutions(conn: &Connection) -> AppResult<Vec<Institution>> {
     let mut stmt = conn.prepare(
         "SELECT code, full_name, short_name, address, phone, fax, mobile, email, website, tax_id,
-                registration_number, bank_name, bank_account, iban, swift
+                registration_number, bank_name, bank_account, iban, swift, invoice_note
          FROM legal_entities ORDER BY code DESC",
     )?;
     let rows = stmt.query_map([], |r| {
@@ -86,6 +89,7 @@ pub fn list_institutions(conn: &Connection) -> AppResult<Vec<Institution>> {
             bank_account: r.get(12)?,
             iban: r.get(13)?,
             swift: r.get(14)?,
+            invoice_note: r.get(15)?,
         })
     })?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -95,17 +99,17 @@ pub fn list_institutions(conn: &Connection) -> AppResult<Vec<Institution>> {
 pub fn upsert_institution(tx: &Transaction, i: &Institution) -> AppResult<usize> {
     let affected = tx.execute(
         "INSERT INTO legal_entities(code, full_name, short_name, address, phone, fax, mobile, email, website,
-                                    tax_id, registration_number, bank_name, bank_account, iban, swift, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+                                    tax_id, registration_number, bank_name, bank_account, iban, swift, updated_at, invoice_note)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
          ON CONFLICT(code) DO UPDATE SET
            full_name=excluded.full_name, short_name=excluded.short_name, address=excluded.address,
            phone=excluded.phone, fax=excluded.fax, mobile=excluded.mobile, email=excluded.email,
            website=excluded.website, tax_id=excluded.tax_id, registration_number=excluded.registration_number,
            bank_name=excluded.bank_name, bank_account=excluded.bank_account, iban=excluded.iban,
-           swift=excluded.swift, updated_at=excluded.updated_at",
+           swift=excluded.swift, updated_at=excluded.updated_at, invoice_note=excluded.invoice_note",
         params![
             i.code, i.full_name, i.short_name, i.address, i.phone, i.fax, i.mobile, i.email, i.website,
-            i.tax_id, i.registration_number, i.bank_name, i.bank_account, i.iban, i.swift, now()
+            i.tax_id, i.registration_number, i.bank_name, i.bank_account, i.iban, i.swift, now(), i.invoice_note
         ],
     )?;
     if affected != 1 {
@@ -230,6 +234,7 @@ mod tests {
             bank_account: "1994990021809884".into(),
             iban: "BA391994990021809884".into(),
             swift: "ABSBBA22".into(),
+            invoice_note: "Napomena za test".into(),
         }
     }
 

@@ -11,3 +11,9 @@
 - **Fix:** removed the hard-coded deadline; `board_billing_rules` per school year and entity (migration 005), entered in Settings with the decision reference; breakfast opt-in per enrolment.
 - **Lesson (M-4):** when a parameter belongs to a governing body, model it as a dated, referenced setting instead of asking for a value or assuming one.
 - **Commander candidate:** add to M-4 — "policy parameters owned by a board are configuration with provenance, never constants".
+
+## L-S3-03 — pdf-lib font subsetting drops glyphs (environment gotcha)
+- **Trigger:** the first sample invoice rendered with most letters missing although the text layer was correct.
+- **Cause:** `embedFont(..., { subset: true })` with @pdf-lib/fontkit 1.1.1 produced broken subsets of Noto Sans.
+- **Fix:** pre-subset the font to Latin with fontTools (~24 KB) and embed it whole (DL-P007, `src/assets/fonts/README.md`).
+- **Lesson:** a PDF test that only checks structure/metadata is not enough — render the page to an image and look at it before calling the PDF done.

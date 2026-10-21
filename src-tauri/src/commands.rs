@@ -355,3 +355,27 @@ pub fn list_breakfast(state: State<'_, AppStore>, school_year: String) -> AppRes
     store.read(|c| rules::list_breakfast(c, &school_year))
 }
 
+
+// ---------- Documents (PDF, later .zip) ----------
+
+const DOCUMENT_EXTENSIONS: [&str; 2] = ["pdf", "zip"];
+
+/// Save a document produced by the frontend (invoice PDF, .zip export) to a path the operator chose
+/// in the save dialog. Only .pdf and .zip are allowed; the folder must exist. Audited (BR-30).
+#[tauri::command]
+pub fn save_document(state: State<'_, AppStore>, path: String, bytes: Vec<u8>, reference: String) -> AppResult<()> {
+    let store = state.get()?;
+    let target = PathBuf::from(&path);
+    let extension = target.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
+    if !DOCUMENT_EXTENSIONS.contains(&extension.as_str()) {
+        return Err(AppError::Validation("dokument se sprema samo kao .pdf ili .zip".into()));
+    }
+    if !target.parent().is_some_and(|dir| dir.is_dir()) {
+        return Err(AppError::NotFound("odabrani folder ne postoji".into()));
+    }
+    if bytes.is_empty() {
+        return Err(AppError::Validation("dokument je prazan".into()));
+    }
+    fs::write(&target, &bytes)?;
+    store.write(|tx| repo::audit(tx, "EXPORT", "document", &reference, &path))
+}

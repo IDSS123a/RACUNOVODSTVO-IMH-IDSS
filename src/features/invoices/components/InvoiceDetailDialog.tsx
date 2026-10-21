@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { FileTextIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { ErrorBlock, LoadingBlock } from '@/components/feedback';
 import { FormDialog } from '@/components/form-dialog';
@@ -37,19 +38,21 @@ export function InvoiceDetailDialog({
   invoiceId,
   onClose,
   onChanged,
+  onShowPdf,
 }: {
   invoiceId: string | null;
   onClose: () => void;
   onChanged: () => void;
+  onShowPdf: (invoiceId: string) => void;
 }): React.JSX.Element {
   return (
     <FormDialog open={invoiceId !== null} onOpenChange={(open) => !open && onClose()} title="Račun" wide>
-      {invoiceId && <InvoiceBody invoiceId={invoiceId} onChanged={onChanged} />}
+      {invoiceId && <InvoiceBody invoiceId={invoiceId} onChanged={onChanged} onShowPdf={onShowPdf} />}
     </FormDialog>
   );
 }
 
-function InvoiceBody({ invoiceId, onChanged }: { invoiceId: string; onChanged: () => void }): React.JSX.Element {
+function InvoiceBody({ invoiceId, onChanged, onShowPdf }: { invoiceId: string; onChanged: () => void; onShowPdf: (invoiceId: string) => void }): React.JSX.Element {
   const load = useCallback(() => getInvoice(invoiceId), [invoiceId]);
   const detail = useAsyncResult(load);
   if (detail.state.status === 'loading') return <LoadingBlock />;
@@ -59,6 +62,7 @@ function InvoiceBody({ invoiceId, onChanged }: { invoiceId: string; onChanged: (
     <InvoiceContent
       key={detail.state.data.payments.length}
       detail={detail.state.data}
+      onShowPdf={() => onShowPdf(invoiceId)}
       onPaid={() => {
         detail.reload();
         onChanged();
@@ -67,7 +71,7 @@ function InvoiceBody({ invoiceId, onChanged }: { invoiceId: string; onChanged: (
   );
 }
 
-function InvoiceContent({ detail, onPaid }: { detail: InvoiceDetail; onPaid: () => void }): React.JSX.Element {
+function InvoiceContent({ detail, onPaid, onShowPdf }: { detail: InvoiceDetail; onPaid: () => void; onShowPdf: () => void }): React.JSX.Element {
   const { invoice, lines, payments } = detail;
   const summary = summarisePayments(invoice.total, payments.map((p) => p.amount));
   const form = useForm<PaymentForm>({
@@ -103,13 +107,18 @@ function InvoiceContent({ detail, onPaid }: { detail: InvoiceDetail; onPaid: () 
         <div>
           <p className="text-xl font-semibold">{invoice.number}</p>
           <p className="text-sm text-muted-foreground">
-            {invoice.buyerName} · {invoice.buyerAddress || 'bez adrese'}
+            {invoice.childName ? `${invoice.childName} · ` : ''}kupac {invoice.buyerName} · {invoice.buyerAddress || 'bez adrese'}
           </p>
           <p className="text-sm text-muted-foreground">
             Izdat {formatDate(invoice.issueDate)} · rok {formatDate(invoice.dueDate)} · period {formatDate(invoice.periodFrom)} – {formatDate(invoice.periodTo)}
           </p>
         </div>
-        <Badge variant={summary.status === 'PAID' ? 'default' : 'outline'}>{PAYMENT_STATUS_LABEL[summary.status]}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant={summary.status === 'PAID' ? 'default' : 'outline'}>{PAYMENT_STATUS_LABEL[summary.status]}</Badge>
+          <Button variant="outline" onClick={onShowPdf}>
+            <FileTextIcon aria-hidden /> PDF / štampa
+          </Button>
+        </div>
       </div>
 
       <Table>

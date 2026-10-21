@@ -68,6 +68,7 @@ pub fn run() {
             commands::save_board_rules,
             commands::set_breakfast,
             commands::list_breakfast,
+            commands::save_document,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Tauri application");

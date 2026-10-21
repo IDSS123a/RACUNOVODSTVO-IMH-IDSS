@@ -57,6 +57,8 @@ export const InstitutionSchema = z.object({
   bankAccount: z.string().regex(/^[\d ]{16,24}$/, 'broj računa sadrži samo cifre i razmake'),
   iban: z.string().regex(/^BA\d{2}[\d ]{16,20}$/, 'IBAN mora počinjati s BA'),
   swift: z.string().regex(/^[A-Z0-9]{8,11}$/),
+  /** Printed on every invoice (PDV / tax note); a legal statement entered by the operator, no default (M-4). */
+  invoiceNote: z.string().max(500),
 });
 
 /** Operator profile — the only user (DL-P002). Stored only in the database (BR-22). */
