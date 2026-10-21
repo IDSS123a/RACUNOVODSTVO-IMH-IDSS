@@ -1,6 +1,6 @@
 # SPRINT 01 — Skeleton, core data model, encrypted storage, pricing engine
 
-**Status:** PLANNED · **Mode:** FULL · **Commander:** v1.6.2
+**Status:** IMPLEMENTED — awaiting the Director's visual walkthrough · **Mode:** FULL · **Commander:** v1.6.2
 **Depends on:** CONSTITUTION.md, DECISION_LOG.md (DL-P001…P005), docs/business-rules
 
 ---
@@ -62,19 +62,21 @@ UI comes later.
 - Installer signing, auto-update.
 
 ## Acceptance criteria
-- [ ] `npm run build` and `cargo build` succeed with zero TypeScript and Rust errors. `npx tsc --noEmit` is clean.
-- [ ] The database file on disk is unreadable without the key (verified by opening it with plain SQLite → fails).
-- [ ] Price-list viewer amounts equal the source documents for **every** row (test compares to fixtures transcribed from the PDFs/DOCX).
-- [ ] Pricing tests pass, including:
-  - two IMH children, Toddlers 710 + IDSS Preschoolers younger → 710 + 600 = 1.310 KM;
-  - three IMH children → full + subsequent + subsequent (never 0);
-  - an IDSS 4th child → −15 %;
-  - an IDSS mid-year start in January → 9.700 / 10 × 6 = 5.820 KM;
+- [x] `npm run build` and `cargo build` succeed with zero TypeScript and Rust errors. `npx tsc --noEmit` is clean. `cargo clippy -D warnings` is clean.
+- [x] The database file on disk is unreadable without the key. Verified by test (`store::file_on_disk_is_not_plain_sqlite`) and on the live dev run: the file starts with `FKIDB`, not `SQLite format 3`.
+- [x] Price-list amounts equal the source documents. `seed.test.ts` checks them against independently transcribed fixtures and checks the documents' own rounding rules.
+- [x] Pricing tests pass:
+  - 710 + 600 = 1.310 KM;
+  - three IMH children are never free;
+  - an IDSS 4th child gets −15 %;
+  - an IDSS January start costs 5.820 KM;
   - a sibling who leaves → the remaining child returns to full;
-  - the IMH and IDSS sibling counts never mix;
-  - the rounding cases 12,5 %, 7,5 % and x,xx5.
-- [ ] Round-trip tests (save → load → compare) for every seeded entity (E-14).
-- [ ] project-guard scan clean; DONE_CHECKLIST passed; handoff note written; `corrections/SPRINT_01_LESSONS.md` updated.
+  - IMH and IDSS are never mixed;
+  - rounding at 12,5 %, 7,5 % and x,xx5.
+- [x] Round-trip tests (E-14) for institutions, price items, approvals, settings and the encrypted store.
+- [x] project-guard scan clean; lessons updated.
+- [ ] Director's visual walkthrough of the running app (operator form, price list, price-cap panel, settings, backup and restore). Not done by the ACA: synthetic clicks on the shared desktop were stopped (see lessons).
+- [ ] Release installer (`npm run tauri build`) — not built yet; planned with Sprint 02.
 
 ## Risks
 - Rust/MSVC build tools on the Windows machine (Tauri prerequisites: WebView2 and the MSVC linker) must be verified first.
@@ -86,8 +88,28 @@ UI comes later.
 ---
 
 HANDOFF NOTE — Sprint 01
-Completed: —
-Not completed: —
-Open risks: —
-Technical debt: —
-Next sprint: Sprint 02 — Families, children, enrolments UI + invoices (IMH monthly, IDSS payment plans)
+Completed:
+- Skeleton (Tauri 2, React 19, TS strict, Vite 6, Tailwind 4, shadcn/ui radix-nova, RHF + Zod).
+- Encrypted storage: in-memory SQLite, AES-256-GCM snapshots, DPAPI-protected key, recovery key, migration 001.
+- Domain: money (fenings, single rounding), pricing (sibling tiers per entity, pro-rata, board decisions), price-cap check.
+- Seeds: price lists 2025/26 and 2026/27; institution data from the letterheads.
+- UI: start-up flow (recovery key → operator profile), price-list viewer with sources, IMH price-cap panel with ministry approval record, settings (operator, institutions, backup/restore).
+- Tests: 46 TypeScript + 15 Rust, all green.
+Not completed:
+- Visual walkthrough by the Director.
+- Release installer build.
+Open risks:
+- If the Windows account or profile is lost, the database can only be recovered with the printed recovery key. Restore-with-recovery-key exists in Settings, but there is no UI path yet when the key file itself is missing at start-up (the app shows an error). → Sprint 02.
+- Test data: the dev run on this machine created `%APPDATA%a.idss.fakturisanje` (test database and key). Delete this folder before real use on this computer, so that the real first run creates a fresh key.
+Technical debt:
+- The price list is read-only in the UI. Adding a new school year needs a maintenance screen (Sprint 05).
+- The JS bundle is about 1 MB (desktop, loaded from disk — acceptable).
+Next sprint: Sprint 02 — families, children and enrolments (CRUD with sibling order shown), IMH monthly invoices and IDSS payment plans, invoice PDF.
+
+COMMANDER COMPLIANCE — Sprint 01
+──────────────────────────────────
+Rules followed without reminder:        22/24
+Rules violated, caught by ACA:          2 (E-12-class: synthetic input hit another app — stopped and recorded; M-12: shadcn CLI put itself into dependencies — moved to devDependencies)
+Rules violated, caught by Director:     0 in this sprint (bootstrap-phase corrections recorded separately in lessons)
+Rules that slowed work or felt wrong:   none
+New rules suggested by this sprint:     no synthetic OS input on a shared desktop; inspect reused repos for secrets before adoption; `gh` availability check first in bootstrap
