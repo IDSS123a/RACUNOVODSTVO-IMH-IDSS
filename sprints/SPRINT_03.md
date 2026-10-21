@@ -70,7 +70,7 @@ Payments from any family member are booked against invoices, and the open balanc
 
 ## Open questions (asked one at a time, C-6)
 1. Does the sequence restart at 001 every calendar year (by invoice date)?
-   📌 ASSUMED until answered: yes, by the year of the invoice date. Easily reversible before the first real invoice.
+   ✅ Confirmed (Director, 2026-10-21): yes — 001 every calendar year, by the year of the invoice date (IMH-001/27, IDSS-001/27).
 2. ✅ The PDV / tax-exemption note: field „Napomena na računu“ per institution in Settings (migration 006), printed on every invoice; no default text (M-4). The institution still has to enter the exact wording.
 3. Storno / credit-note numbering (needed in Sprint 04).
 4. ✅ Breakfast months and the last-instalment deadline: decided by the board each year → Settings (Director, 2026-10-21).
