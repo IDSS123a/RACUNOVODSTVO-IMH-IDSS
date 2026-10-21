@@ -76,10 +76,15 @@ Payments from any family member are booked against invoices, and the open balanc
 4. ✅ Breakfast months and the last-instalment deadline: decided by the board each year → Settings (Director, 2026-10-21).
 
 ## Acceptance criteria
-- [ ] Numbers are gap-free and unique per entity and year, also under rapid repeated issuing (Rust test).
+- [x] Numbers are gap-free and unique per entity and year, also under rapid repeated issuing (Rust test).
 - [x] An IMH family with two children → **two invoices**, one per child: 750 and 570 (by program and tier), due on the 5th.
-- [ ] IDSS 9.700 KM in 12 instalments → 11 × 808,33 + 1 × 808,37 = 9.700,00 (sum exact).
-- [ ] An IDSS January start in 6 instalments → 5.820,00 in total.
-- [ ] Payment 500 on a 710 invoice → PARTIALLY_PAID, open 210. A further payment of 300 → OVERPAID, credit 90.
-- [ ] The PDF opens, shows the correct entity data and amounts identical to the screen.
-- [ ] Director's walkthrough approved.
+- [x] IDSS 9.700 KM in 12 instalments → 11 × 808,33 + 1 × 808,37 = 9.700,00 (sum exact).
+- [x] An IDSS January start in 6 instalments → 5.820,00 in total.
+- [x] Payment 500 on a 710 invoice → PARTIALLY_PAID, open 210. A further payment of 300 → OVERPAID, credit 90.
+- [x] The PDF opens, shows the correct entity data and amounts identical to the screen (rendered and checked; Director walkthrough).
+- [x] Director's walkthrough approved (2026-10-21): bulk invoices IMH + IDSS, PDF, print, save, .zip export, Outlook draft, file names.
+
+## Still open before Sprint 03 closes
+- Enrolment-fee invoice (IMH: enrolment fee, materials, deposit; IDSS: enrolment fee, optional deposit) as one invoice per child with separate lines.
+- Rebuild the installer and verify it on the operator's PC (classic vs. new Outlook, DL-P006).
+- Test database on the developer PC deleted after the walkthrough (2026-10-21).
