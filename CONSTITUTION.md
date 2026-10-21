@@ -85,6 +85,7 @@ All of this happens without a single amount being computed in two different ways
   - Deposit: refunded within 3 months if all obligations up to 31.08. are settled; kept on early termination.
 - **BR-10** IDSS: enrolment fee 1.000/1.500, paid within 7 days of meeting the enrolment conditions.
   - Reduced to **500/1.000** if the child attended IMH IDSS Preschoolers in the year before school (cross-entity lookup).
+  - A pupil continuing at IDSS from the previous school year pays no new enrolment fee (Director, 2026-10-21).
   - Deposit 1.500 is optional: only with instalment plans, on the school's decision.
 
 ### 4.4 Payment plans

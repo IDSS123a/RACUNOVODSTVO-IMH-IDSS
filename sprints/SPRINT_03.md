@@ -88,6 +88,7 @@ Payments from any family member are booked against invoices, and the open balanc
 - ✅ Enrolment-fee invoice („Račun za upis“ on each enrolment): one invoice per child and school year (migration 007), separate lines.
   - IMH: enrolment fee (not for a child continuing in IMH — valid until withdrawal — nor on the transfer Preschoolers → IDSS Preschoolers), materials every year, deposit by sibling tier (carried over on that transfer). Due before the start.
   - IDSS: enrolment fee, reduced after IDSS Preschoolers; deposit only when ticked and with an instalment plan. Due in 7 days.
-  - 📌 ASSUMED, to confirm with the Director: (a) an IDSS pupil continuing from the previous year pays no new enrolment fee; (b) an IMH child continuing in IMH pays a new deposit each year (the documented carry-over applies only to the transfer).
+  - ✅ Confirmed (Director, 2026-10-21): (a) an IDSS pupil continuing from the previous year pays no new enrolment fee.
+  - 📌 ASSUMED, to confirm: (b) an IMH child continuing in IMH pays a new deposit each year (the documented carry-over applies only to the transfer).
 - Rebuild the installer and verify it on the operator's PC (classic vs. new Outlook, DL-P006).
 - Test database on the developer PC deleted after the walkthrough (2026-10-21).

@@ -19,7 +19,7 @@ import type { InvoiceDraft, InvoiceLine } from './types';
  * - deposit: always, by sibling tier within IMH; carried over on the transfer Preschoolers → IDSS Preschoolers.
  * IDSS (Pravilnik čl. 1, 7; §3.5):
  * - enrolment fee, reduced when the child attended IDSS Preschoolers (IMH) in the previous school year;
- *   📌 ASSUMED like IMH: not charged again for a pupil continuing at IDSS from the previous school year;
+ *   not charged again for a pupil continuing at IDSS from the previous school year (Director, 2026-10-21);
  * - deposit: only on the school's decision and only with an instalment plan (operator ticks it).
  */
 
@@ -103,7 +103,7 @@ export function buildEnrolmentFeeInvoice(
     }
   } else {
     const continuing = attendedLastYear((e) => PROGRAM_ENTITY[e.program] === 'IDSS');
-    if (continuing) notes.push('Upisnina se ne naplaćuje: učenik nastavlja školovanje u IDSS (pretpostavka — potvrditi).');
+    if (continuing) notes.push('Upisnina se ne naplaćuje: učenik nastavlja školovanje u IDSS.');
     else if (attendedLastYear((e) => e.program === 'IDSS_PRESCHOOLERS')) {
       notes.push('Umanjena upisnina: dijete je prošle godine pohađalo IDSS Preschoolers.');
       add('ENROLMENT_FEE_AFTER_IDSS_PRESCHOOL', price('ENROLMENT_FEE_AFTER_IDSS_PRESCHOOL'));
