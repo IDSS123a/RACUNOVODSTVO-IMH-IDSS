@@ -106,6 +106,6 @@ Payments from any family member are booked against invoices, and the open balanc
   - IDSS: enrolment fee, reduced after IDSS Preschoolers; deposit only when ticked and with an instalment plan. Due in 7 days.
   - ✅ Confirmed (Director, 2026-10-21): (a) an IDSS pupil continuing from the previous year pays no new enrolment fee.
   - ✅ Confirmed (Director, 2026-10-21): (b) the deposit of a child continuing in IMH is carried over to the next year.
-- ✅ Installer 0.2.0 built (2026-10-21): `INSTALACIJA/Fakturisanje IMH IDSS_0.2.0_x64-setup.exe`, SHA-256 `36ebdb6d…85350e57`; demo-data button absent from the release build.
+- ✅ Installer 0.3.0 built (2026-10-21, includes the legacy import): `INSTALACIJA/Fakturisanje IMH IDSS_0.3.0_x64-setup.exe`, SHA-256 `9ab8cb97…25a69c99`; demo-data button absent from the release build.
 - ⏳ Install on the operator's PC and run the checklist in the guide §3 (institution data, board rules, Outlook draft, QR scan).
 - Test database on the developer PC deleted after the walkthrough (2026-10-21).
