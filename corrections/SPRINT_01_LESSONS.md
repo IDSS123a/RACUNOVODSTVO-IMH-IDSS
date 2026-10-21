@@ -21,3 +21,8 @@ Date: 2026-10-20 (bootstrap + business-rule analysis, before Sprint 01 implement
 ## Commander Improvement Candidates
 - INITIAL_INSTRUCTIONS Step 3 assumes `gh` is available. Add an explicit fallback check (`gh --version`) as the very first scaffold step, so the Director's one manual step is asked up front, not discovered mid-run.
 - M-4: add a "Learned from" note — a document deleted from a repository on purpose by its owner must never be restored from git history and used as a source without asking.
+
+### 2026-10-21 — Pre-existing repository contained secrets
+- The Director chose to reuse repo `IDSS123a/RACUNOVODSTVO-IMH-IDSS`. Inspection before touching it found a full browser profile (`Login Data`, `Cookies`), Psiphon VPN data, AI-agent conversation logs and an Excel file with real family data, all committed by an earlier AI tool.
+- Resolved: the Director explicitly approved (M-23a) replacing all 4 commits and the branches `fix/m1-invoice-number-integrity` and `fix/m3-backup-handle` with the clean project via `--force-with-lease`. Remote state was verified live right before the push (M-23b).
+- Commander Improvement Candidate: E-4 "pre-push secret audit" should also cover **pre-existing target repositories** that are reused. Inspect `git ls-files` for browser profiles (`.browser_data/`, `Login Data`, `Cookies`) and AI-agent working folders before adopting a repo.

@@ -9,7 +9,7 @@
 | Item | Value |
 |---|---|
 | Project name | fakturisanje-imh-idss |
-| Repository | github.com/IDSS123a/web-app-fakturisanje-imh-idss (private) |
+| Repository | github.com/IDSS123a/RACUNOVODSTVO-IMH-IDSS (private; history replaced 2026-10-21 by Director decision) |
 | Director | Davor Mulalić (direktor@idss.ba) — non-coder, decides business rules |
 | Operator (only user) | Financijsko-administrativni menadžer (name and contact stored in app settings) |
 | Mode | FULL (sprints, DONE_CHECKLIST, handoff notes) |
