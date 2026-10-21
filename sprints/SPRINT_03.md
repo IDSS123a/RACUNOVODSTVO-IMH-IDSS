@@ -5,6 +5,13 @@
 
 ---
 
+## Scope change (Director, 2026-10-21)
+- Invoices are issued **one per child** (BR-27), not one per family.
+- Bulk monthly billing covers **IMH and IDSS** (IDSS from the payment plans), with review and approval (BR-26).
+- Official logos are bundled (BR-2).
+
+Email dispatch, dashboard, reports and audit-log viewer → **Sprint 04** (BR-28–BR-30).
+
 ## Goal
 
 The operator issues correct invoices from the enrolment data, with one click per month (IMH) or per payment plan (IDSS). Every invoice:
@@ -19,7 +26,7 @@ Payments from any family member are booked against invoices, and the open balanc
 1. **Domain (pure TS, tested):**
    - **Numbering:** `IMH-001/26`, `IDSS-001/26`. The next number is computed per entity and year, inside the same database transaction that saves the invoice. Numbers are never reused.
    - **IMH monthly invoices:**
-     - one invoice per family and month, with one line per child;
+     - one invoice per child and month (BR-27); sibling tier still computed across the family;
      - tuition by sibling tier;
      - one-time fees (enrolment fee, materials, deposit) as separate lines on the enrolment invoice;
      - due date: the 5th of the month.
@@ -33,7 +40,7 @@ Payments from any family member are booked against invoices, and the open balanc
    - **Payment allocation:**
      - a payment (date, amount, payer name, reference) is booked to one invoice;
      - status `OPEN / PARTIALLY_PAID / PAID / OVERPAID`; overpayment is kept as credit and never lost.
-2. **Migration 003:** `invoices`, `invoice_lines`, `invoice_sequences`, `payment_plans`, `payment_plan_items`, `payments` (amounts in fenings, CHECK constraints, audit).
+2. **Migrations 003–004:** `invoices`, `invoice_lines`, `invoice_sequences`, `payment_plans`, `payment_plan_items`, `payments` (amounts in fenings, CHECK constraints, audit); 004 adds `invoices.child_id` and a per-child double-billing guard.
 3. **Tauri commands + repository**, with round-trip tests (E-14). The invoice number is assigned in Rust inside the transaction, so two windows can never get the same number.
 4. **UI:**
    - invoices list (filters: entity, month, status; totals);
@@ -45,6 +52,8 @@ Payments from any family member are booked against invoices, and the open balanc
    - Content: letterhead data from Settings, official logo, invoice number and dates, buyer, child, lines, total, amount in words, bank details, "Fakturisao/la".
 
 ## OUT of scope (Sprint 04)
+- Email dispatch to info-mejtas@montessorihouse.ba (BR-28).
+- Dashboard with statistics, printed reports, audit-log viewer (BR-29, BR-30).
 - Reminders (3, no interest), suspension.
 - Ministry invoice and refunds to parents.
 - Withdrawal refund rules (IDSS 3 instalments, IMH deposit).
@@ -58,7 +67,7 @@ Payments from any family member are booked against invoices, and the open balanc
 
 ## Acceptance criteria
 - [ ] Numbers are gap-free and unique per entity and year, also under rapid repeated issuing (Rust test).
-- [ ] An IMH family with two children → one invoice: 710 + 570 (or the program's amounts), due on the 5th.
+- [x] An IMH family with two children → **two invoices**, one per child: 750 and 570 (by program and tier), due on the 5th.
 - [ ] IDSS 9.700 KM in 12 instalments → 11 × 808,33 + 1 × 808,37 = 9.700,00 (sum exact).
 - [ ] An IDSS January start in 6 instalments → 5.820,00 in total.
 - [ ] Payment 500 on a 710 invoice → PARTIALLY_PAID, open 210. A further payment of 300 → OVERPAID, credit 90.

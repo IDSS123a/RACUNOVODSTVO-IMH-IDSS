@@ -8,6 +8,7 @@ import { InvoicesPage } from '@/features/invoices/components/InvoicesPage';
 import { PriceListPage } from '@/features/price-lists/components/PriceListPage';
 import type { SchoolYear } from '@/features/price-lists/types';
 import { SettingsPage } from '@/features/settings/components/SettingsPage';
+import { ENTITY_LOGO } from '@/features/settings/logos';
 import type { Settings } from '@/features/settings/repository';
 
 type Page = 'invoices' | 'families' | 'price-lists' | 'settings';
@@ -29,11 +30,13 @@ export function AppShell({ settings, onSettingsChanged }: { settings: Settings; 
   return (
     <div className="grid min-h-screen grid-cols-[15rem_1fr]">
       <aside className="flex flex-col border-r bg-sidebar text-sidebar-foreground">
-        <div className="px-5 py-5">
+        <div className="grid gap-3 px-5 py-5">
           <p className="text-lg font-semibold tracking-tight">Fakturisanje</p>
-          <p className="text-xs text-muted-foreground">
-            <span className="font-medium text-entity-imh">IMH</span> · <span className="font-medium text-entity-idss">IDSS</span>
-          </p>
+          {/* Logos sit on a white plate so they stay legible in the dark theme. */}
+          <div className="grid gap-2 rounded-md bg-white p-2">
+            <img src={ENTITY_LOGO.IMH} alt="The Montessori House (IMH)" className="h-7 w-auto object-contain object-left" />
+            <img src={ENTITY_LOGO.IDSS} alt="Internationale Deutsche Schule Sarajevo (IDSS)" className="h-7 w-auto object-contain object-left" />
+          </div>
         </div>
         <Separator />
         <nav aria-label="Glavni meni" className="grid gap-1 p-3">

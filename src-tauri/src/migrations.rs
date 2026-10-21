@@ -10,6 +10,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (1, include_str!("../migrations/001_initial_schema.sql")),
     (2, include_str!("../migrations/002_families.sql")),
     (3, include_str!("../migrations/003_invoices.sql")),
+    (4, include_str!("../migrations/004_invoice_per_child.sql")),
 ];
 
 /// Latest schema version this build understands.

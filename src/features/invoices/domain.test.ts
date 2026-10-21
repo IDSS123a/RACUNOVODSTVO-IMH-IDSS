@@ -3,7 +3,7 @@ import { sum } from '@/features/billing/money';
 import type { FamilyDetail } from '@/features/families/types';
 import { PRICE_LIST_SEED } from '@/features/price-lists/seed';
 import {
-  buildImhMonthlyInvoice,
+  buildImhMonthlyInvoices,
   decisionFor,
   dueDateForMonth,
   InvoiceError,
@@ -47,15 +47,14 @@ describe('calendar helpers', () => {
 });
 
 describe('IMH monthly invoice (acceptance)', () => {
-  it('two IMH children → one invoice 750 + 570, IDSS child excluded, due on the 5th', () => {
-    const draft = buildImhMonthlyInvoice(family(), PRICE_LIST_SEED, [], '2026-10', '2026-10-01');
-    expect(draft).not.toBeNull();
-    expect(draft?.entity).toBe('IMH');
-    expect(draft?.lines.map((l) => l.amount)).toEqual([75000, 57000]);
-    expect(draft?.total).toBe(132000);
-    expect(draft?.dueDate).toBe('2026-10-05');
-    expect(draft?.buyerName).toBe('Majka Test');
-    expect(draft?.lines[0]?.description).toContain('oktobar 2026');
+  it('two IMH children → two invoices, one per child (BR-27): 750 and 570; IDSS child excluded; due on the 5th', () => {
+    const drafts = buildImhMonthlyInvoices(family(), PRICE_LIST_SEED, [], '2026-10', '2026-10-01');
+    expect(drafts.map((d) => d.childId)).toEqual([id(10), id(11)]);
+    expect(drafts.map((d) => d.total)).toEqual([75000, 57000]);
+    expect(drafts.every((d) => d.entity === 'IMH' && d.lines.length === 1 && d.dueDate === '2026-10-05')).toBe(true);
+    expect(drafts[0]?.buyerName).toBe('Majka Test');
+    expect(drafts[0]?.childName).toBe('Starija Test');
+    expect(drafts[0]?.lines[0]?.description).toContain('oktobar 2026');
   });
 
   it('a child starting mid-month is billed for that month; a withdrawn child is not', () => {
@@ -65,27 +64,27 @@ describe('IMH monthly invoice (acceptance)', () => {
         e.id === id(21) ? { ...e, startsOn: '2026-10-15' } : e.id === id(20) ? { ...e, status: 'WITHDRAWN' as const, endsOn: '2026-09-30' } : e,
       ),
     });
-    const draft = buildImhMonthlyInvoice(late, PRICE_LIST_SEED, [], '2026-10', '2026-10-01');
-    expect(draft?.lines).toHaveLength(1);
-    expect(draft?.lines[0]?.amount).toBe(71000); // remaining child returns to full price
+    const drafts = buildImhMonthlyInvoices(late, PRICE_LIST_SEED, [], '2026-10', '2026-10-01');
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]?.total).toBe(71000); // remaining child returns to full price
   });
 
   it('applies a valid board decision and records it on the line', () => {
     const decision: BoardDecision = {
       id: id(30), childId: id(11), item: 'TUITION', validFrom: '2026-09-01', validTo: '2027-08-31', effect: { kind: 'DISCOUNT', discountBp: 1250 },
     };
-    const draft = buildImhMonthlyInvoice(family(), PRICE_LIST_SEED, [decision], '2026-10', '2026-10-01');
-    const line = draft?.lines.find((l) => l.childId === id(11));
+    const drafts = buildImhMonthlyInvoices(family(), PRICE_LIST_SEED, [decision], '2026-10', '2026-10-01');
+    const line = drafts.find((d) => d.childId === id(11))?.lines[0];
     expect(line?.listAmount).toBe(57000);
     expect(line?.amount).toBe(49875);
     expect(line?.boardDecisionId).toBe(id(30));
   });
 
-  it('returns null when no child attends IMH; refuses a family without a buyer', () => {
+  it('returns nothing when no child attends IMH; refuses a family without a buyer', () => {
     const schoolOnly = family({ enrolments: family().enrolments.filter((e) => e.program === 'PRIMARY_1_4') });
-    expect(buildImhMonthlyInvoice(schoolOnly, PRICE_LIST_SEED, [], '2026-10', '2026-10-01')).toBeNull();
+    expect(buildImhMonthlyInvoices(schoolOnly, PRICE_LIST_SEED, [], '2026-10', '2026-10-01')).toEqual([]);
     const noBuyer = family({ guardians: [] });
-    expect(() => buildImhMonthlyInvoice(noBuyer, PRICE_LIST_SEED, [], '2026-10', '2026-10-01')).toThrow(InvoiceError);
+    expect(() => buildImhMonthlyInvoices(noBuyer, PRICE_LIST_SEED, [], '2026-10', '2026-10-01')).toThrow(InvoiceError);
   });
 
   it('refuses overlapping board decisions', () => {

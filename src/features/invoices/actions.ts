@@ -1,7 +1,7 @@
 import type { Result } from '@/lib/tauri/invoke';
 import { getFamily, listFamilies } from '@/features/families/repository';
 import { listPriceItems } from '@/features/price-lists/repository';
-import { buildImhMonthlyInvoice, InvoiceError, schoolYearOfMonth, type BoardDecision } from './domain';
+import { buildImhMonthlyInvoices, InvoiceError, schoolYearOfMonth, type BoardDecision } from './domain';
 import { issueInvoices, type InvoiceDraftPayload } from './repository';
 import type { BillingMonth } from './types';
 import { PricingError } from '@/features/billing/pricing';
@@ -36,8 +36,9 @@ export async function prepareImhMonth(month: BillingMonth, issueDate: string): P
       continue;
     }
     try {
-      const draft = buildImhMonthlyInvoice(detail.data, prices.data, decisions, month, issueDate);
-      if (draft) drafts.push({ ...draft, id: crypto.randomUUID(), kind: 'MONTHLY', lines: [...draft.lines] });
+      for (const draft of buildImhMonthlyInvoices(detail.data, prices.data, decisions, month, issueDate)) {
+        drafts.push({ ...draft, id: crypto.randomUUID(), kind: 'MONTHLY', lines: [...draft.lines] });
+      }
     } catch (error: unknown) {
       if (error instanceof InvoiceError || error instanceof PricingError) {
         problems.push({ familyName: summary.displayName, reason: error.message });

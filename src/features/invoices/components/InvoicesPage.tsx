@@ -87,8 +87,8 @@ export function InvoicesPage(): React.JSX.Element {
           <TableHeader>
             <TableRow>
               <TableHead>Broj</TableHead>
+              <TableHead>Dijete</TableHead>
               <TableHead>Kupac</TableHead>
-              <TableHead>Porodica</TableHead>
               <TableHead>Izdat</TableHead>
               <TableHead>Rok</TableHead>
               <TableHead className="text-right">Iznos</TableHead>
@@ -106,8 +106,8 @@ export function InvoicesPage(): React.JSX.Element {
                       {invoice.number}
                     </button>
                   </TableCell>
+                  <TableCell>{invoice.childName}</TableCell>
                   <TableCell>{invoice.buyerName}</TableCell>
-                  <TableCell>{invoice.familyName}</TableCell>
                   <TableCell>{formatDate(invoice.issueDate)}</TableCell>
                   <TableCell>{formatDate(invoice.dueDate)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatKM(invoice.total)}</TableCell>

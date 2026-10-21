@@ -86,27 +86,28 @@ function childName(child: Child): string {
 }
 
 /**
- * IMH monthly invoice for one family: one tuition line per child enrolled in IMH during the month.
+ * IMH monthly invoices for one family — **one invoice per child** (BR-27).
  * Tier by date of birth within IMH (BR-6), price from the price list, board decision applied if valid.
- * @returns null when no child of the family attends IMH that month
+ * @returns an empty list when no child of the family attends IMH that month
  */
-export function buildImhMonthlyInvoice(
+export function buildImhMonthlyInvoices(
   detail: FamilyDetail,
   priceItems: ReadonlyArray<PriceListItem>,
   decisions: ReadonlyArray<BoardDecision>,
   month: BillingMonth,
   issueDate: string,
-): InvoiceDraft | null {
+): InvoiceDraft[] {
   const { from, to } = monthBounds(month);
   const schoolYear = schoolYearOfMonth(month);
   const children = new Map(detail.children.map((c) => [c.id, c]));
   const enrolled = detail.enrolments.filter(
     (e) => e.schoolYear === schoolYear && PROGRAM_ENTITY[e.program] === 'IMH' && activeInMonth(e, from, to) && children.has(e.childId),
   );
-  if (enrolled.length === 0) return null;
+  if (enrolled.length === 0) return [];
 
+  const buyer = payer(detail);
   const tiers = assignSiblingTiers(enrolled.map((e) => ({ childId: e.childId, dateOfBirth: children.get(e.childId)?.dateOfBirth ?? '', program: e.program })));
-  const lines: InvoiceLine[] = enrolled
+  return enrolled
     .map((enrolment) => {
       const child = children.get(enrolment.childId);
       if (!child) throw new InvoiceError('unreachable: child missing');
@@ -114,8 +115,8 @@ export function buildImhMonthlyInvoice(
       const price = findPrice(priceItems, { schoolYear, program: enrolment.program, item: 'TUITION', residency: child.residency, tier });
       if (price.basis !== 'MONTHLY') throw new InvoiceError('IMH školarina mora biti mjesečna');
       const decision = decisionFor(decisions, child.id, 'TUITION', from);
-      return {
-        itemCode: 'TUITION' as const,
+      const line: InvoiceLine = {
+        itemCode: 'TUITION',
         description: `Školarina za ${monthLabel(month)} — ${childName(child)} (${PROGRAM_LABEL[enrolment.program]})`,
         childId: child.id,
         enrolmentId: enrolment.id,
@@ -123,33 +124,25 @@ export function buildImhMonthlyInvoice(
         listAmount: price.amount,
         boardDecisionId: decision?.id ?? null,
         amount: decision ? applyBoardDecision(price.amount, decision.effect) : price.amount,
-        dateOfBirth: child.dateOfBirth,
       };
+      const draft: InvoiceDraft = {
+        entity: 'IMH',
+        familyId: detail.family.id,
+        childId: child.id,
+        childName: childName(child),
+        buyerName: buyer.name,
+        buyerAddress: detail.family.address,
+        issueDate,
+        dueDate: dueDateForMonth(month, issueDate),
+        periodFrom: from,
+        periodTo: to,
+        lines: [line],
+        total: sum([line.amount]),
+      };
+      return { draft, dateOfBirth: child.dateOfBirth };
     })
     .sort((a, b) => a.dateOfBirth.localeCompare(b.dateOfBirth))
-    .map((entry): InvoiceLine => ({
-      itemCode: entry.itemCode,
-      description: entry.description,
-      childId: entry.childId,
-      enrolmentId: entry.enrolmentId,
-      program: entry.program,
-      listAmount: entry.listAmount,
-      boardDecisionId: entry.boardDecisionId,
-      amount: entry.amount,
-    }));
-
-  return {
-    entity: 'IMH',
-    familyId: detail.family.id,
-    buyerName: payer(detail).name,
-    buyerAddress: detail.family.address,
-    issueDate,
-    dueDate: dueDateForMonth(month, issueDate),
-    periodFrom: from,
-    periodTo: to,
-    lines,
-    total: sum(lines.map((line) => line.amount)),
-  };
+    .map((entry) => entry.draft);
 }
 
 /**

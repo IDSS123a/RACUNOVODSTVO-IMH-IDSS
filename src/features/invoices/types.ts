@@ -20,10 +20,12 @@ export interface InvoiceLine {
   readonly amount: Fenings;
 }
 
-/** An invoice before it gets a number. */
+/** An invoice before it gets a number — one per child, entity and month (BR-27). */
 export interface InvoiceDraft {
   readonly entity: LegalEntityCode;
   readonly familyId: string;
+  readonly childId: string;
+  readonly childName: string;
   readonly buyerName: string;
   readonly buyerAddress: string;
   readonly issueDate: string;

@@ -62,7 +62,7 @@ export function IssueMonthDialog({ open, onOpenChange, onIssued }: { open: boole
         onOpenChange(isOpen);
       }}
       title="Mjesečni računi — IMH"
-      description="Jedan račun po porodici za sve djecu u vrtiću IMH. Iznosi su po cjenovniku i redoslijedu djece."
+      description="Zaseban račun za svako dijete u vrtiću IMH. Iznosi su po cjenovniku i redoslijedu djece. Računi se kreiraju tek kad odobrite pregled."
       wide
     >
       <div className="grid gap-4">
@@ -100,6 +100,7 @@ export function IssueMonthDialog({ open, onOpenChange, onIssued }: { open: boole
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Dijete</TableHead>
                     <TableHead>Kupac</TableHead>
                     <TableHead>Stavke</TableHead>
                     <TableHead>Rok</TableHead>
@@ -109,14 +110,15 @@ export function IssueMonthDialog({ open, onOpenChange, onIssued }: { open: boole
                 <TableBody>
                   {preview.drafts.map((draft) => (
                     <TableRow key={draft.id}>
-                      <TableCell className="font-medium">{draft.buyerName}</TableCell>
+                      <TableCell className="font-medium">{draft.childName}</TableCell>
+                      <TableCell>{draft.buyerName}</TableCell>
                       <TableCell className="text-sm">{draft.lines.map((l) => l.description).join(' · ')}</TableCell>
                       <TableCell>{draft.dueDate}</TableCell>
                       <TableCell className="text-right tabular-nums">{formatKM(draft.total)}</TableCell>
                     </TableRow>
                   ))}
                   <TableRow>
-                    <TableCell colSpan={3} className="font-medium">Ukupno ({preview.drafts.length} računa)</TableCell>
+                    <TableCell colSpan={4} className="font-medium">Ukupno ({preview.drafts.length} računa)</TableCell>
                     <TableCell className="text-right font-semibold tabular-nums">{formatKM(sum(preview.drafts.map((d) => d.total)))}</TableCell>
                   </TableRow>
                 </TableBody>
@@ -124,7 +126,7 @@ export function IssueMonthDialog({ open, onOpenChange, onIssued }: { open: boole
             )}
             <div>
               <Button disabled={busy || preview.drafts.length === 0} onClick={() => void issue()}>
-                {busy ? 'Izdajem…' : `Izdaj ${preview.drafts.length} računa`}
+                {busy ? 'Kreiram…' : `Odobri i kreiraj ${preview.drafts.length} računa`}
               </Button>
             </div>
           </>

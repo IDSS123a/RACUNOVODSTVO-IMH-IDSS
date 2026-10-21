@@ -28,6 +28,7 @@ pub struct InvoiceDraft {
     pub entity: String,
     pub kind: String,
     pub family_id: String,
+    pub child_id: String,
     pub buyer_name: String,
     pub buyer_address: String,
     pub issue_date: String,
@@ -47,6 +48,8 @@ pub struct InvoiceSummary {
     pub kind: String,
     pub family_id: String,
     pub family_name: String,
+    pub child_id: String,
+    pub child_name: String,
     pub buyer_name: String,
     pub buyer_address: String,
     pub issue_date: String,
@@ -112,19 +115,22 @@ pub fn issue_invoice(tx: &Transaction, draft: &InvoiceDraft) -> AppResult<String
     if draft.lines.iter().any(|l| entity_of_program(&l.program) != draft.entity) {
         return Err(AppError::Validation("račun ne smije miješati stavke IMH i IDSS".into()));
     }
+    if draft.lines.iter().any(|l| l.child_id != draft.child_id) {
+        return Err(AppError::Validation("račun se izdaje za jedno dijete — sve stavke moraju biti za to dijete".into()));
+    }
     let number = next_number(tx, &draft.entity, &draft.issue_date)?;
     tx.execute(
-        "INSERT INTO invoices(id, number, entity, kind, family_id, buyer_name, buyer_address, issue_date, due_date,
+        "INSERT INTO invoices(id, number, entity, kind, family_id, child_id, buyer_name, buyer_address, issue_date, due_date,
                               period_from, period_to, total_fenings, status, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'ISSUED', ?13)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 'ISSUED', ?14)",
         params![
-            draft.id, number, draft.entity, draft.kind, draft.family_id, draft.buyer_name, draft.buyer_address,
+            draft.id, number, draft.entity, draft.kind, draft.family_id, draft.child_id, draft.buyer_name, draft.buyer_address,
             draft.issue_date, draft.due_date, draft.period_from, draft.period_to, draft.total, now()
         ],
     )
     .map_err(|e| match &e {
         rusqlite::Error::SqliteFailure(code, _) if code.code == rusqlite::ErrorCode::ConstraintViolation => {
-            AppError::Conflict("za ovu porodicu i mjesec račun je već izdat".into())
+            AppError::Conflict("za ovo dijete i mjesec račun je već izdat".into())
         }
         _ => AppError::Database(e),
     })?;
@@ -144,8 +150,9 @@ pub fn issue_invoice(tx: &Transaction, draft: &InvoiceDraft) -> AppResult<String
 
 const SUMMARY_SELECT: &str = "SELECT i.id, i.number, i.entity, i.kind, i.family_id, f.display_name, i.buyer_name, i.buyer_address,
         i.issue_date, i.due_date, i.period_from, i.period_to, i.total_fenings,
-        COALESCE((SELECT sum(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0), i.status
- FROM invoices i JOIN families f ON f.id = i.family_id";
+        COALESCE((SELECT sum(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0), i.status,
+        COALESCE(i.child_id, ''), COALESCE(c.first_name || ' ' || c.last_name, '')
+ FROM invoices i JOIN families f ON f.id = i.family_id LEFT JOIN children c ON c.id = i.child_id";
 
 fn map_summary(r: &rusqlite::Row<'_>) -> rusqlite::Result<InvoiceSummary> {
     Ok(InvoiceSummary {
@@ -155,6 +162,8 @@ fn map_summary(r: &rusqlite::Row<'_>) -> rusqlite::Result<InvoiceSummary> {
         kind: r.get(3)?,
         family_id: r.get(4)?,
         family_name: r.get(5)?,
+        child_id: r.get(15)?,
+        child_name: r.get(16)?,
         buyer_name: r.get(6)?,
         buyer_address: r.get(7)?,
         issue_date: r.get(8)?,
@@ -286,6 +295,7 @@ mod tests {
             entity: "IMH".into(),
             kind: kind.into(),
             family_id: F.into(),
+            child_id: "c1".into(),
             buyer_name: "Majka".into(),
             buyer_address: "Buka".into(),
             issue_date: issue.into(),
@@ -335,6 +345,31 @@ mod tests {
         let mut mixed = draft("i4", "2026-12", "2026-12-01", "MONTHLY");
         mixed.lines[0].program = "PRIMARY_1_4".into();
         assert!(matches!(issue_invoice(&tx, &mixed), Err(AppError::Validation(_))));
+        let mut other_child = draft("i5", "2026-12", "2026-12-01", "MONTHLY");
+        other_child.lines[0].child_id = "c2".into();
+        assert!(matches!(issue_invoice(&tx, &other_child), Err(AppError::Validation(_))));
+    }
+
+    #[test]
+    fn siblings_get_separate_monthly_invoices_br27() {
+        let mut conn = db_with_family();
+        let tx = conn.transaction().unwrap();
+        save_child(&tx, &Child {
+            id: "c2".into(), family_id: F.into(), first_name: "B".into(), last_name: "T".into(),
+            date_of_birth: "2023-01-01".into(), residency: "DOMESTIC".into(), citizen_bih: true, residence_ks: true,
+        })
+        .unwrap();
+        save_enrolment(&tx, &Enrolment {
+            id: "e2".into(), child_id: "c2".into(), program: "TODDLERS".into(), school_year: "2026/2027".into(),
+            starts_on: "2026-09-01".into(), ends_on: None, status: "ACTIVE".into(),
+        })
+        .unwrap();
+        issue_invoice(&tx, &draft("i1", "2026-10", "2026-10-01", "MONTHLY")).unwrap();
+        let mut sibling = draft("i2", "2026-10", "2026-10-01", "MONTHLY");
+        sibling.child_id = "c2".into();
+        sibling.lines[0].child_id = "c2".into();
+        sibling.lines[0].enrolment_id = "e2".into();
+        assert_eq!(issue_invoice(&tx, &sibling).unwrap(), "IMH-002/26");
     }
 
     #[test]
@@ -354,6 +389,8 @@ mod tests {
         assert_eq!(detail.payments, vec![payment]);
         assert_eq!(detail.invoice.paid, 50000);
         assert_eq!(detail.invoice.family_name, "Test");
+        assert_eq!(detail.invoice.child_id, "c1");
+        assert_eq!(detail.invoice.child_name, "A T");
         assert!(get_invoice(&conn, "missing").unwrap().is_none());
     }
 }
