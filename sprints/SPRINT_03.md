@@ -61,7 +61,7 @@ Payments from any family member are booked against invoices, and the open balanc
 2. ✅ Monthly invoices: no sending to info-mejtas@montessorihouse.ba → Outlook draft with **each PDF and one .zip** attached (DL-P006); large periods split into several drafts.
 3. ✅ The invoice file name carries the child: `IMH-001-26_Emina_Begic.pdf` (ASCII in file names; the PDF keeps the exact spelling).
 4. ✅ No payment slip on the invoice → pre-filled slip in the bottom half of the last page, amount = open balance (DL-P008).
-5. ✅ (provisional) No QR code → provisional EPC-format QR with BAM on the slip, labelled „probni format“, until a BiH bank confirms its format (DL-P008 addendum).
+5. ✅ (provisional) No QR code → provisional EPC-format QR with BAM on the slip, labelled „QR kod za plaćanje“, until a BiH bank confirms its format (DL-P008 addendum).
 
 ## OUT of scope (Sprint 04)
 - Dashboard with statistics, printed reports, audit-log viewer (BR-29, BR-30).
@@ -92,5 +92,6 @@ Payments from any family member are booked against invoices, and the open balanc
   - IDSS: enrolment fee, reduced after IDSS Preschoolers; deposit only when ticked and with an instalment plan. Due in 7 days.
   - ✅ Confirmed (Director, 2026-10-21): (a) an IDSS pupil continuing from the previous year pays no new enrolment fee.
   - ✅ Confirmed (Director, 2026-10-21): (b) the deposit of a child continuing in IMH is carried over to the next year.
-- Rebuild the installer and verify it on the operator's PC (classic vs. new Outlook, DL-P006).
+- ✅ Installer 0.2.0 built (2026-10-21): `INSTALACIJA/Fakturisanje IMH IDSS_0.2.0_x64-setup.exe`, SHA-256 `36ebdb6d…85350e57`; demo-data button absent from the release build.
+- ⏳ Install on the operator's PC and run the checklist in the guide §3 (institution data, board rules, Outlook draft, QR scan).
 - Test database on the developer PC deleted after the walkthrough (2026-10-21).

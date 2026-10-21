@@ -261,7 +261,7 @@ function box(w: Writer, x: number, top: number, width: number, height: number, l
 /**
  * Domestic payment slip ("Nalog za uplatu / Uplatnica") pre-filled for the parent (IDSS Pravilnik čl. 3:
  * payer, child and purpose; period for instalments). The amount is what is still open on the invoice.
- * The QR is PROVISIONAL (assumed EPC format with BAM, DL-P008 addendum) and is labelled as such on the slip.
+ * The QR uses an assumed format (EPC with BAM, DL-P008 addendum) until a bank confirms one.
  */
 function drawPaymentSlip(w: Writer, data: InvoicePdfData): void {
   const { invoice } = data.detail;
@@ -332,8 +332,7 @@ function drawPaymentQr(w: Writer, data: InvoicePdfData, open: number, x: number,
       }
     }),
   );
-  const caption = ['QR za plaćanje', 'PROBNI FORMAT — banka ga još', 'nije potvrdila. Prije potvrde', 'uplate provjerite primaoca,', 'račun i iznos.'];
-  caption.forEach((line, i) => w.text(line, x, { y: top - 12 - i * 9, size: i === 0 ? 7.5 : 6.5, bold: i === 0, color: i === 0 ? INK : MUTED }));
+  w.text('QR kod za plaćanje', x, { y: top - 12, size: 7.5, bold: true });
 }
 
 function drawFooters(doc: PDFDocument, w: Writer, data: InvoicePdfData): void {

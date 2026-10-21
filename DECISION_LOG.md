@@ -142,9 +142,9 @@
 
 **Addendum (Director, 2026-10-21): provisional QR now.** The slip carries a QR in an **assumed** format until a bank confirms one:
 - EPC QR (`BCD` / `002` / UTF-8 / `SCT`), BIC and IBAN of the institution, payee = short name (≤ 70), amount = open balance as `BAM…` (not defined by EPC, which is a EUR standard), free text "Račun <number> <child>" (≤ 140), no structured reference;
-- printed next to the words "PROBNI FORMAT — banka ga još nije potvrdila. Prije potvrde uplate provjerite primaoca, račun i iznos.";
+- labelled only "QR kod za plaćanje" (Director, 2026-10-21: no "provisional" wording on the parents' invoices);
 - generated with `qrcode` 1.5.4 (MIT, pinned) and drawn as vector squares; verified by decoding the rendered PDF (OpenCV);
-- replace by the bank's format as soon as it is known, then remove the "probni" label.
+- replace by the bank's format as soon as it is known.
 
 ---
 

@@ -15,16 +15,22 @@ Aplikacija se instalira **samo na računar finansijsko-administrativnog menadže
 2. Označite „Ključ je odštampan…“ i kliknite **Nastavi**.
 3. Unesite svoje ime, funkciju, email i telefon. Ime se štampa kao „Fakturisao/la“ na računima.
 
-## 3. Rezervne kopije (obavezno)
+## 3. Prije prvog računa (jednom)
+1. **Postavke → Ustanove (IMH i IDSS):** provjerite podatke iz memoranduma i bankovni račun. U polje **„Napomena na računu“** unesite tačan tekst koji ustanova želi na računu (npr. PDV napomena), ako ga treba.
+2. **Postavke → Pravila naplate — odluke Školskog odbora IDSS:** za školsku godinu unesite broj i datum odluke, rok posljednje rate (ako je odlučen) i mjesece naplate doručka.
+3. **Outlook:** u **Računi → Izvoz i slanje** kliknite „Outlook nacrt“ za jedan račun i provjerite da se otvara **nacrt koji se može uređivati**, s prilozima. Ako se otvara drugi program ili poruka bez dugmeta „Pošalji“, javite direktoru (vjerovatno je instaliran „novi Outlook“).
+4. **QR kod na uplatnici:** jednom ga skenirajte u aplikaciji banke (bez potvrde uplate) i provjerite primaoca, IBAN i iznos.
+
+## 4. Rezervne kopije (obavezno)
 1. **Postavke → Rezervne kopije → Odaberi folder.** Odaberite mrežni disk ili OneDrive, nikako isti disk na kojem je Windows.
 2. Na kraju svakog radnog dana kliknite **Napravi rezervnu kopiju**.
 3. Kopije su šifrovane (`.fkbak`). Bez aplikacije i ključa ih niko ne može pročitati.
 
-## 4. Ako računar otkaže
+## 5. Ako računar otkaže
 1. Instalirajte aplikaciju na novi računar.
 2. U **Postavke → Rezervne kopije → Vrati iz rezervne kopije** odaberite posljednju kopiju.
 3. Upišite **ključ za oporavak** iz sefa.
 
-## 5. Šta aplikacija ne radi
+## 6. Šta aplikacija ne radi
 - Ne šalje podatke na internet i nema „oblaka“.
 - Ne može se otvoriti na drugom Windows nalogu bez ključa za oporavak.
