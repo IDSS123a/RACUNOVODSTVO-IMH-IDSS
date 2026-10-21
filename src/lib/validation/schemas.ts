@@ -189,6 +189,8 @@ export const InvoiceLineSchema = z.object({
   amount: fenings.nonnegative(),
 });
 
+export const PlanItemRefSchema = z.object({ planId: z.string().min(1), sequence: z.number().int().min(1).max(12) });
+
 export const InvoiceDraftSchema = z.object({
   id: uuid,
   entity: LegalEntityCodeSchema,
@@ -204,6 +206,7 @@ export const InvoiceDraftSchema = z.object({
   periodTo: isoDate,
   lines: z.array(InvoiceLineSchema).min(1),
   total: fenings.nonnegative(),
+  planItems: z.array(PlanItemRefSchema),
 });
 
 export const InvoiceSummarySchema = z.object({
@@ -243,3 +246,22 @@ export const InvoiceDetailSchema = z.object({
 });
 
 export const InvoiceSummariesSchema = z.array(InvoiceSummarySchema);
+
+/** IDSS payment plan (BR-11). Amounts are produced by the domain; the backend re-checks the sums. */
+export const PaymentPlanSchema = z.object({
+  id: z.string().min(1),
+  enrolmentId: z.string().min(1),
+  childId: z.string().min(1),
+  itemCode: z.enum(['TUITION', 'EXTENDED_STAY']),
+  instalments: z.number().int().min(1).max(12),
+  total: fenings.nonnegative(),
+  items: z.array(
+    z.object({
+      sequence: z.number().int().min(1).max(12),
+      dueDate: isoDate,
+      amount: fenings.nonnegative(),
+      invoiceId: z.string().nullable(),
+    }),
+  ),
+});
+export const PaymentPlansSchema = z.array(PaymentPlanSchema);

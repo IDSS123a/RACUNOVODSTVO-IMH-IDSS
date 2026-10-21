@@ -10,7 +10,7 @@
 - Bulk monthly billing covers **IMH and IDSS** (IDSS from the payment plans), with review and approval (BR-26).
 - Official logos are bundled (BR-2).
 
-Email dispatch, dashboard, reports and audit-log viewer → **Sprint 04** (BR-28–BR-30).
+Email dispatch (Outlook draft, DL-P006), .zip export of a period (BR-31), dashboard, reports and audit-log viewer → **Sprint 04** (BR-28–BR-31). All of them build on the Sprint 03 PDF.
 
 ## Goal
 
@@ -34,7 +34,11 @@ Payments from any family member are booked against invoices, and the open balanc
      - per child and school year: pay in full, or N instalments (1–12);
      - instalment amounts are rounded once, and the last instalment absorbs the rounding difference (so the sum equals the annual amount);
      - mid-year start: pro-rata (BR-12);
-     - extended stay and breakfast as optional plan items.
+     - extended stay as an optional plan item (up to 10 instalments, pro-rata on a mid-year start);
+     - 📌 ASSUMED: the last instalment falls within the school year (by 31.08.);
+     - monthly IDSS invoices bill every plan instalment due in the month, once (the plan instalment is marked with the invoice inside the issuing transaction);
+     - an IDSS child without a tuition plan is listed in the preview as a problem.
+     - Breakfast: not yet — see Open questions.
    - **Board decisions** (BR-7) applied to a line when a valid decision exists for the child, item and date.
    - **Invoice totals:** sum of rounded lines; no tax lines (the PDV note text is configurable, see Open questions).
    - **Payment allocation:**
@@ -52,7 +56,8 @@ Payments from any family member are booked against invoices, and the open balanc
    - Content: letterhead data from Settings, official logo, invoice number and dates, buyer, child, lines, total, amount in words, bank details, "Fakturisao/la".
 
 ## OUT of scope (Sprint 04)
-- Email dispatch to info-mejtas@montessorihouse.ba (BR-28).
+- Email dispatch to info-mejtas@montessorihouse.ba as an Outlook draft (BR-28, DL-P006).
+- Export of all invoices in a chosen period as one .zip of PDFs (BR-31).
 - Dashboard with statistics, printed reports, audit-log viewer (BR-29, BR-30).
 - Reminders (3, no interest), suspension.
 - Ministry invoice and refunds to parents.
@@ -64,6 +69,8 @@ Payments from any family member are booked against invoices, and the open balanc
    📌 ASSUMED until answered: yes, by the year of the invoice date. Easily reversible before the first real invoice.
 2. The PDV / tax-exemption note printed on invoices, per institution. The text is a legal statement and is not invented (M-4). It is entered in Settings by the operator; there is no default text.
 3. Storno / credit-note numbering (needed in Sprint 04).
+4. Breakfast (60 KM/month, opt-in): which months are billed (September–June = 10?), and is it a line on the monthly IDSS invoice of the child?
+5. The last instalment of an IDSS plan must fall by 31.08. of the school year (ASSUMED above).
 
 ## Acceptance criteria
 - [ ] Numbers are gap-free and unique per entity and year, also under rapid repeated issuing (Rust test).

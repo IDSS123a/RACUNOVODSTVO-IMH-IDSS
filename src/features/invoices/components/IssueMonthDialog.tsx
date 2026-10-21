@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatKM, sum } from '@/features/billing/money';
 import { Field } from '@/features/settings/components/OperatorForm';
-import { prepareImhMonth, issueMonthlyInvoices, type MonthlyPreview } from '../actions';
+import { Badge } from '@/components/ui/badge';
+import { prepareMonth, issueMonthlyInvoices, type MonthlyPreview } from '../actions';
 import { monthLabel } from '../domain';
 import type { BillingMonth } from '../types';
 
@@ -16,8 +17,8 @@ function today(): string {
 }
 
 /**
- * Two-step monthly billing for IMH: preview every invoice (amounts from the pricing engine),
- * then issue all of them in one transaction. Problems are listed, never skipped silently.
+ * Two-step monthly billing for IMH and IDSS (BR-26): preview every invoice (IMH from the price list,
+ * IDSS from the payment plans), then create all of them in one transaction after approval. Problems are listed, never skipped silently.
  */
 export function IssueMonthDialog({ open, onOpenChange, onIssued }: { open: boolean; onOpenChange: (open: boolean) => void; onIssued: () => void }): React.JSX.Element {
   const [month, setMonth] = useState<string>(today().slice(0, 7));
@@ -28,7 +29,7 @@ export function IssueMonthDialog({ open, onOpenChange, onIssued }: { open: boole
   async function prepare(): Promise<void> {
     setBusy(true);
     try {
-      const result = await prepareImhMonth(month as BillingMonth, issueDate);
+      const result = await prepareMonth(month as BillingMonth, issueDate);
       if (result.success) setPreview(result.data);
       else toast.error(result.error);
     } finally {
@@ -61,8 +62,8 @@ export function IssueMonthDialog({ open, onOpenChange, onIssued }: { open: boole
         if (!isOpen) setPreview(null);
         onOpenChange(isOpen);
       }}
-      title="Mjesečni računi — IMH"
-      description="Zaseban račun za svako dijete u vrtiću IMH. Iznosi su po cjenovniku i redoslijedu djece. Računi se kreiraju tek kad odobrite pregled."
+      title="Mjesečni računi — IMH i IDSS"
+      description="Zaseban račun za svako dijete: IMH po cjenovniku, IDSS po planu plaćanja (rate s rokom u tom mjesecu). Računi se kreiraju tek kad odobrite pregled."
       wide
     >
       <div className="grid gap-4">
@@ -82,11 +83,11 @@ export function IssueMonthDialog({ open, onOpenChange, onIssued }: { open: boole
           <>
             {preview.problems.length > 0 && (
               <Alert variant="destructive">
-                <AlertTitle>Ove porodice nisu uključene</AlertTitle>
+                <AlertTitle>Nije uključeno — provjerite</AlertTitle>
                 <AlertDescription>
                   <ul className="list-disc pl-5">
-                    {preview.problems.map((p) => (
-                      <li key={p.familyName}>
+                    {preview.problems.map((p, index) => (
+                      <li key={`${p.familyName}-${index}`}>
                         {p.familyName}: {p.reason}
                       </li>
                     ))}
@@ -95,11 +96,12 @@ export function IssueMonthDialog({ open, onOpenChange, onIssued }: { open: boole
               </Alert>
             )}
             {preview.drafts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Za {monthLabel(month as BillingMonth)} nema djece u vrtiću IMH.</p>
+              <p className="text-sm text-muted-foreground">Za {monthLabel(month as BillingMonth)} nema računa za izdavanje.</p>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Ustanova</TableHead>
                     <TableHead>Dijete</TableHead>
                     <TableHead>Kupac</TableHead>
                     <TableHead>Stavke</TableHead>
@@ -110,6 +112,9 @@ export function IssueMonthDialog({ open, onOpenChange, onIssued }: { open: boole
                 <TableBody>
                   {preview.drafts.map((draft) => (
                     <TableRow key={draft.id}>
+                      <TableCell>
+                        <Badge className={draft.entity === 'IMH' ? 'bg-entity-imh-soft text-entity-imh' : 'bg-entity-idss-soft text-entity-idss'}>{draft.entity}</Badge>
+                      </TableCell>
                       <TableCell className="font-medium">{draft.childName}</TableCell>
                       <TableCell>{draft.buyerName}</TableCell>
                       <TableCell className="text-sm">{draft.lines.map((l) => l.description).join(' · ')}</TableCell>
@@ -118,7 +123,7 @@ export function IssueMonthDialog({ open, onOpenChange, onIssued }: { open: boole
                     </TableRow>
                   ))}
                   <TableRow>
-                    <TableCell colSpan={4} className="font-medium">Ukupno ({preview.drafts.length} računa)</TableCell>
+                    <TableCell colSpan={5} className="font-medium">Ukupno ({preview.drafts.length} računa)</TableCell>
                     <TableCell className="text-right font-semibold tabular-nums">{formatKM(sum(preview.drafts.map((d) => d.total)))}</TableCell>
                   </TableRow>
                 </TableBody>

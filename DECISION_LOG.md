@@ -92,4 +92,23 @@
 
 ---
 
+## DL-P006 — Sending approved invoices: Outlook draft with PDF attachments
+
+**Date:** 2026-10-21 · **Decided by:** Director
+
+**Decision:** the app does not send email itself.
+- For approved invoices, the app creates an **Outlook message draft** addressed to `info-mejtas@montessorihouse.ba` with one PDF per invoice attached.
+- Azra reviews the draft and presses *Send* herself.
+- From that mailbox the invoices are forwarded individually to the parents (outside the app).
+
+**Why:**
+- the app stays offline;
+- no mail server, password or token is ever stored;
+- the operator keeps the last look before anything leaves the institution.
+
+**Technique (Sprint 04):** an `.eml` file with header `X-Unsent: 1` is generated and opened with the default mail program; classic Outlook opens it as an editable draft.
+📌 To verify at installation: which Outlook is on the operator's PC (classic or "new Outlook"). New Outlook may open `.eml` read-only; the fallback is to open the folder with the PDFs next to a prepared draft.
+
+---
+
 *Commander v1.6.2 — IDSS123a Organisation*

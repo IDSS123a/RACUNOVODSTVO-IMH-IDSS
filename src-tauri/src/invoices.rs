@@ -37,6 +37,38 @@ pub struct InvoiceDraft {
     pub period_to: String,
     pub lines: Vec<InvoiceLine>,
     pub total: i64,
+    /// IDSS plan instalments billed by this invoice; each is marked invoiced exactly once.
+    #[serde(default)]
+    pub plan_items: Vec<PlanItemRef>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanItemRef {
+    pub plan_id: String,
+    pub sequence: i64,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanItem {
+    pub sequence: i64,
+    pub due_date: String,
+    pub amount: i64,
+    pub invoice_id: Option<String>,
+}
+
+/// IDSS payment plan for one enrolment and item (BR-11). Amounts come from the TypeScript domain.
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PaymentPlan {
+    pub id: String,
+    pub enrolment_id: String,
+    pub child_id: String,
+    pub item_code: String,
+    pub instalments: i64,
+    pub total: i64,
+    pub items: Vec<PlanItem>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -145,7 +177,111 @@ pub fn issue_invoice(tx: &Transaction, draft: &InvoiceDraft) -> AppResult<String
             ],
         )?;
     }
+    for item in &draft.plan_items {
+        let changed = tx.execute(
+            "UPDATE payment_plan_items SET invoice_id = ?1
+             WHERE plan_id = ?2 AND sequence = ?3 AND invoice_id IS NULL
+               AND plan_id IN (SELECT p.id FROM payment_plans p JOIN enrolments e ON e.id = p.enrolment_id WHERE e.child_id = ?4)",
+            params![draft.id, item.plan_id, item.sequence, draft.child_id],
+        )?;
+        if changed != 1 {
+            return Err(AppError::Conflict("rata plana je već fakturisana ili ne pripada ovom djetetu".into()));
+        }
+    }
     Ok(number)
+}
+
+/// Save (create or replace) a payment plan. A plan with an invoiced instalment can no longer be replaced.
+pub fn save_payment_plan(tx: &Transaction, plan: &PaymentPlan) -> AppResult<()> {
+    let max = match plan.item_code.as_str() {
+        "TUITION" => 12,
+        "EXTENDED_STAY" => 10,
+        _ => return Err(AppError::Validation("nepoznata stavka plana".into())),
+    };
+    if plan.instalments < 1 || plan.instalments > max || plan.items.len() as i64 != plan.instalments {
+        return Err(AppError::Validation(format!("broj rata mora biti od 1 do {max}")));
+    }
+    if plan.items.iter().map(|i| i.amount).sum::<i64>() != plan.total {
+        return Err(AppError::Validation("zbir rata se ne slaže s ukupnim iznosom plana".into()));
+    }
+    if plan.items.iter().enumerate().any(|(index, i)| i.sequence != index as i64 + 1 || i.amount < 0) {
+        return Err(AppError::Validation("rate moraju biti redom 1..N i nenegativne".into()));
+    }
+    let enrolment: Option<(String, String)> = tx
+        .query_row("SELECT child_id, program FROM enrolments WHERE id = ?1", params![plan.enrolment_id], |r| Ok((r.get(0)?, r.get(1)?)))
+        .optional()?;
+    let Some((child_id, program)) = enrolment else {
+        return Err(AppError::NotFound("upis ne postoji".into()));
+    };
+    if entity_of_program(&program) != "IDSS" || child_id != plan.child_id {
+        return Err(AppError::Validation("plan plaćanja postoji samo za upis u školu IDSS".into()));
+    }
+    let existing: Option<String> = tx
+        .query_row(
+            "SELECT id FROM payment_plans WHERE enrolment_id = ?1 AND item_code = ?2",
+            params![plan.enrolment_id, plan.item_code],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(old) = existing {
+        let invoiced: i64 = tx.query_row(
+            "SELECT count(*) FROM payment_plan_items WHERE plan_id = ?1 AND invoice_id IS NOT NULL",
+            params![old],
+            |r| r.get(0),
+        )?;
+        if invoiced > 0 {
+            return Err(AppError::Conflict("plan ima fakturisane rate i ne može se mijenjati".into()));
+        }
+        tx.execute("DELETE FROM payment_plan_items WHERE plan_id = ?1", params![old])?;
+        tx.execute("DELETE FROM payment_plans WHERE id = ?1", params![old])?;
+    }
+    tx.execute(
+        "INSERT INTO payment_plans(id, enrolment_id, item_code, instalments, total, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![plan.id, plan.enrolment_id, plan.item_code, plan.instalments, plan.total, now()],
+    )?;
+    for item in &plan.items {
+        tx.execute(
+            "INSERT INTO payment_plan_items(plan_id, sequence, due_date, amount, invoice_id) VALUES (?1, ?2, ?3, ?4, NULL)",
+            params![plan.id, item.sequence, item.due_date, item.amount],
+        )?;
+    }
+    Ok(())
+}
+
+/// All payment plans of enrolments in a school year, with their instalments.
+pub fn list_payment_plans(conn: &Connection, school_year: &str) -> AppResult<Vec<PaymentPlan>> {
+    let mut stmt = conn.prepare(
+        "SELECT p.id, p.enrolment_id, e.child_id, p.item_code, p.instalments, p.total
+         FROM payment_plans p JOIN enrolments e ON e.id = p.enrolment_id
+         WHERE e.school_year = ?1 ORDER BY e.child_id, p.item_code",
+    )?;
+    let headers = stmt
+        .query_map(params![school_year], |r| {
+            Ok(PaymentPlan {
+                id: r.get(0)?,
+                enrolment_id: r.get(1)?,
+                child_id: r.get(2)?,
+                item_code: r.get(3)?,
+                instalments: r.get(4)?,
+                total: r.get(5)?,
+                items: Vec::new(),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut items = conn.prepare(
+        "SELECT sequence, due_date, amount, invoice_id FROM payment_plan_items WHERE plan_id = ?1 ORDER BY sequence",
+    )?;
+    headers
+        .into_iter()
+        .map(|mut plan| {
+            plan.items = items
+                .query_map(params![plan.id], |r| {
+                    Ok(PlanItem { sequence: r.get(0)?, due_date: r.get(1)?, amount: r.get(2)?, invoice_id: r.get(3)? })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(plan)
+        })
+        .collect()
 }
 
 const SUMMARY_SELECT: &str = "SELECT i.id, i.number, i.entity, i.kind, i.family_id, f.display_name, i.buyer_name, i.buyer_address,
@@ -307,6 +443,7 @@ mod tests {
                 enrolment_id: "e1".into(), program: "TODDLERS".into(), list_amount: 71000, board_decision_id: None, amount: 71000,
             }],
             total: 71000,
+            plan_items: Vec::new(),
         }
     }
 
@@ -370,6 +507,83 @@ mod tests {
         sibling.lines[0].child_id = "c2".into();
         sibling.lines[0].enrolment_id = "e2".into();
         assert_eq!(issue_invoice(&tx, &sibling).unwrap(), "IMH-002/26");
+    }
+
+    fn idss_enrolment(conn: &mut Connection) {
+        let tx = conn.transaction().unwrap();
+        save_enrolment(&tx, &Enrolment {
+            id: "e9".into(), child_id: "c1".into(), program: "PRIMARY_1_4".into(), school_year: "2027/2028".into(),
+            starts_on: "2027-09-01".into(), ends_on: None, status: "ACTIVE".into(),
+        })
+        .unwrap();
+        tx.commit().unwrap();
+    }
+
+    fn idss_plan(id: &str, instalments: i64) -> PaymentPlan {
+        let total = 970000;
+        let regular = total / instalments;
+        PaymentPlan {
+            id: id.into(),
+            enrolment_id: "e9".into(),
+            child_id: "c1".into(),
+            item_code: "TUITION".into(),
+            instalments,
+            total,
+            items: (1..=instalments)
+                .map(|s| PlanItem {
+                    sequence: s,
+                    due_date: format!("2027-{:02}-05", 8 + s),
+                    amount: if s == instalments { total - regular * (instalments - 1) } else { regular },
+                    invoice_id: None,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn payment_plan_round_trip_and_instalment_billed_once() {
+        let mut conn = db_with_family();
+        idss_enrolment(&mut conn);
+        let tx = conn.transaction().unwrap();
+        save_payment_plan(&tx, &idss_plan("p1", 4)).unwrap();
+        save_payment_plan(&tx, &idss_plan("p2", 2)).unwrap(); // replaces p1 (nothing invoiced yet)
+        tx.commit().unwrap();
+        let plans = list_payment_plans(&conn, "2027/2028").unwrap();
+        assert_eq!(plans, vec![idss_plan("p2", 2)]);
+
+        let tx = conn.transaction().unwrap();
+        let mut invoice = draft("i9", "2027-09", "2027-09-01", "INSTALMENT");
+        invoice.entity = "IDSS".into();
+        invoice.lines[0].program = "PRIMARY_1_4".into();
+        invoice.lines[0].enrolment_id = "e9".into();
+        invoice.lines[0].amount = 485000;
+        invoice.lines[0].list_amount = 485000;
+        invoice.total = 485000;
+        invoice.plan_items = vec![PlanItemRef { plan_id: "p2".into(), sequence: 1 }];
+        assert_eq!(issue_invoice(&tx, &invoice).unwrap(), "IDSS-001/27");
+        let mut twice = invoice.clone();
+        twice.id = "i10".into();
+        assert!(matches!(issue_invoice(&tx, &twice), Err(AppError::Conflict(_))));
+        assert!(matches!(save_payment_plan(&tx, &idss_plan("p3", 3)), Err(AppError::Conflict(_))));
+        tx.commit().unwrap();
+        let plans = list_payment_plans(&conn, "2027/2028").unwrap();
+        assert_eq!(plans[0].items[0].invoice_id.as_deref(), Some("i9"));
+    }
+
+    #[test]
+    fn payment_plan_rejects_bad_sums_counts_and_kindergarten() {
+        let mut conn = db_with_family();
+        idss_enrolment(&mut conn);
+        let tx = conn.transaction().unwrap();
+        let mut wrong = idss_plan("p1", 3);
+        wrong.total += 1;
+        assert!(matches!(save_payment_plan(&tx, &wrong), Err(AppError::Validation(_))));
+        let mut stay = idss_plan("p2", 11);
+        stay.item_code = "EXTENDED_STAY".into();
+        assert!(matches!(save_payment_plan(&tx, &stay), Err(AppError::Validation(_))));
+        let mut kindergarten = idss_plan("p3", 2);
+        kindergarten.enrolment_id = "e1".into();
+        assert!(matches!(save_payment_plan(&tx, &kindergarten), Err(AppError::Validation(_))));
     }
 
     #[test]

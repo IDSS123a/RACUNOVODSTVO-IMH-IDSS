@@ -73,9 +73,10 @@ All of this happens without a single amount being computed in two different ways
 - **BR-24** The invoice is addressed to the family's **"kupac na računu"** (one guardian). A payment may come from **any family member**; it is always booked against the invoice.
 - **BR-26** Monthly billing is a **bulk** action for the next month, for **both IMH and IDSS**. The operator reviews every proposed invoice and **approves**; only then are the invoices created (Director, 2026-10-21).
 - **BR-27** **One invoice per child** (not per family), per legal entity and month.
-- **BR-28** Approved invoices are sent as PDFs to the mailbox **info-mejtas@montessorihouse.ba**, from which they are forwarded to each parent individually. The delivery mechanism is an open question (see Sprint 04).
+- **BR-28** Approved invoices are sent as PDFs to the mailbox **info-mejtas@montessorihouse.ba**, from which they are forwarded to each parent individually. Delivery: an Outlook draft with the PDFs attached, sent by the operator (DL-P006).
 - **BR-29** The operator has a **dashboard** with statistics for IMH and IDSS, and can **print** invoices and reports.
 - **BR-30** **Every change** is written to the audit log, and the log is viewable in the app.
+- **BR-31** The operator can **export all invoices issued in a chosen period** (filterable by entity) as one **.zip** file of PDFs, saved wherever the operator chooses (Director, 2026-10-21).
 - **BR-25** A family has at most one mother and one father; further persons are recorded as "Staratelj". The guardian IBAN is optional and is used only for ministry-subsidy refunds.
 
 ### 4.3 One-time fees

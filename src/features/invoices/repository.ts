@@ -4,9 +4,12 @@ import {
   InvoiceDetailSchema,
   InvoiceDraftSchema,
   InvoiceSummariesSchema,
+  PaymentPlanSchema,
+  PaymentPlansSchema,
   PaymentSchema,
 } from '@/lib/validation/schemas';
-import type { LegalEntityCode } from '@/features/price-lists/types';
+import type { LegalEntityCode, SchoolYear } from '@/features/price-lists/types';
+import type { PaymentPlan } from './plans';
 
 /** Invoices repository — Infrastructure layer (A-3). */
 
@@ -30,4 +33,13 @@ export function getInvoice(invoiceId: string): Promise<Result<InvoiceDetail>> {
 
 export function recordPayment(payment: Payment): Promise<Result<null>> {
   return call('record_payment', z.null(), { payment: PaymentSchema.parse(payment) });
+}
+
+/** Create or replace an IDSS payment plan (refused once an instalment is invoiced). */
+export function savePaymentPlan(plan: PaymentPlan): Promise<Result<null>> {
+  return call('save_payment_plan', z.null(), { plan: PaymentPlanSchema.parse(plan) });
+}
+
+export function listPaymentPlans(schoolYear: SchoolYear): Promise<Result<PaymentPlan[]>> {
+  return call('list_payment_plans', PaymentPlansSchema, { schoolYear });
 }

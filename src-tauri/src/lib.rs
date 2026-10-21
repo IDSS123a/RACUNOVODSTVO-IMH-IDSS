@@ -61,6 +61,8 @@ pub fn run() {
             commands::list_invoices,
             commands::get_invoice,
             commands::record_payment,
+            commands::save_payment_plan,
+            commands::list_payment_plans,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Tauri application");

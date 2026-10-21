@@ -18,7 +18,7 @@ import { IssueMonthDialog } from './IssueMonthDialog';
 
 type EntityFilter = LegalEntityCode | 'ALL';
 
-/** Invoice register with filters, totals and the monthly IMH billing action. */
+/** Invoice register with filters, totals and the monthly billing action (IMH and IDSS). */
 export function InvoicesPage(): React.JSX.Element {
   const [entity, setEntity] = useState<EntityFilter>('ALL');
   const [month, setMonth] = useState<string>('');
@@ -44,7 +44,7 @@ export function InvoicesPage(): React.JSX.Element {
           <p className="text-sm text-muted-foreground">Izdati računi IMH i IDSS, uplate i otvoreni iznosi.</p>
         </div>
         <Button onClick={() => setIssuing(true)}>
-          <FilePlusIcon aria-hidden /> Mjesečni računi IMH
+          <FilePlusIcon aria-hidden /> Mjesečni računi
         </Button>
       </header>
 

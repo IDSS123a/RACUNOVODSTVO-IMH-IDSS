@@ -257,7 +257,7 @@ pub fn delete_family(state: State<'_, AppStore>, family_id: String) -> AppResult
 
 // ---------- Invoices (Sprint 03) ----------
 
-use crate::invoices::{self, InvoiceDetail, InvoiceDraft, InvoiceSummary, Payment};
+use crate::invoices::{self, InvoiceDetail, InvoiceDraft, InvoiceSummary, Payment, PaymentPlan};
 
 /// Issue several invoices in ONE transaction: either all get numbers or none (no gaps on failure).
 #[tauri::command]
@@ -298,4 +298,19 @@ pub fn record_payment(state: State<'_, AppStore>, payment: Payment) -> AppResult
         invoices::record_payment(tx, &payment)?;
         repo::audit(tx, "PAYMENT", "invoice", &payment.invoice_id, &payment.amount.to_string())
     })
+}
+
+#[tauri::command]
+pub fn save_payment_plan(state: State<'_, AppStore>, plan: PaymentPlan) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        invoices::save_payment_plan(tx, &plan)?;
+        repo::audit(tx, "SAVE", "payment_plan", &plan.id, &format!("{} {}x {}", plan.item_code, plan.instalments, plan.total))
+    })
+}
+
+#[tauri::command]
+pub fn list_payment_plans(state: State<'_, AppStore>, school_year: String) -> AppResult<Vec<PaymentPlan>> {
+    let store = state.get()?;
+    store.read(|c| invoices::list_payment_plans(c, &school_year))
 }

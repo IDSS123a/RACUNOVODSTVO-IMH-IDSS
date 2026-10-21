@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ArrowLeftIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
+import { ArrowLeftIcon, CalendarRangeIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import { ErrorBlock, LoadingBlock } from '@/components/feedback';
 import { FormDialog } from '@/components/form-dialog';
@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { PaymentPlanDialog } from '@/features/invoices/components/PaymentPlanDialog';
 import { listPriceItems, listSchoolYears } from '@/features/price-lists/repository';
 import { PROGRAM_ENTITY, PROGRAM_LABEL, type SchoolYear } from '@/features/price-lists/types';
 import { formatDate } from '@/lib/format';
@@ -25,7 +26,8 @@ type DialogState =
   | { kind: 'none' }
   | { kind: 'family' }
   | { kind: 'child'; child: Child }
-  | { kind: 'enrolment'; enrolment: Enrolment };
+  | { kind: 'enrolment'; enrolment: Enrolment }
+  | { kind: 'plan'; enrolment: Enrolment };
 
 /** One family: guardians, children, enrolments, and who pays the full / discounted price. */
 export function FamilyDetailView({
@@ -167,6 +169,11 @@ export function FamilyDetailView({
                     <span className="text-muted-foreground">od {formatDate(enrolment.startsOn)}{enrolment.endsOn ? ` do ${formatDate(enrolment.endsOn)}` : ''}</span>
                     <Badge variant="outline">{STATUS_LABEL[enrolment.status]}</Badge>
                     <div className="ml-auto flex flex-wrap gap-1">
+                      {PROGRAM_ENTITY[enrolment.program] === 'IDSS' && (
+                        <Button size="sm" variant="outline" onClick={() => setDialog({ kind: 'plan', enrolment })}>
+                          <CalendarRangeIcon aria-hidden /> Plan plaćanja
+                        </Button>
+                      )}
                       {allowedTransitions(enrolment.status).map((to) => (
                         <Button key={to} size="sm" variant="ghost" onClick={() => void setStatus(enrolment, to)}>
                           → {STATUS_LABEL[to]}
@@ -189,7 +196,7 @@ export function FamilyDetailView({
       <Card>
         <CardHeader>
           <CardTitle>Ko plaća puni, a ko umanjeni iznos</CardTitle>
-          <CardDescription>Prema cjenovniku i redoslijedu djece u istoj ustanovi. Iznosi su informativni; računi dolaze u Sprintu 3.</CardDescription>
+          <CardDescription>Prema cjenovniku i redoslijedu djece u istoj ustanovi. Iznosi su informativni; računi se izdaju u modulu Računi.</CardDescription>
           <CardAction>
             <Select value={year} onValueChange={(value) => setYear(value as SchoolYear)}>
               <SelectTrigger className="w-40" aria-label="Školska godina">
@@ -242,6 +249,7 @@ export function FamilyDetailView({
           />
         )}
       </FormDialog>
+      <PaymentPlanDialog detail={detail.state.data} enrolment={dialog.kind === 'plan' ? dialog.enrolment : null} onClose={close} />
     </div>
   );
 }
