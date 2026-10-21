@@ -1,6 +1,6 @@
 # SPRINT 02 — Families, children, enrolments + Windows installer
 
-**Status:** IN PROGRESS · **Mode:** FULL · **Commander:** v1.6.2
+**Status:** DONE — 2026-10-21 (Director walkthrough; feedback fixed in 2923693) · **Mode:** FULL · **Commander:** v1.6.2
 **Depends on:** Sprint 01 (encrypted storage, pricing engine, price lists)
 
 ---
@@ -52,14 +52,15 @@ Invoices (Sprint 03) need correct families, children and enrolments first. Witho
 - Import of legacy data (Sprint 05).
 
 ## Acceptance criteria
-- [ ] A family with 3 children (2 in IMH, 1 in IDSS) shows:
+- [x] A family with 3 children (2 in IMH, 1 in IDSS) shows:
   - IMH older = 710, IMH younger = 570/600 (by program);
   - IDSS = full annual tuition (no cross-entity discount).
-- [ ] Two active enrolments of one child in the same entity and year are rejected by the domain and by a database constraint.
-- [ ] Exactly one payer per family is enforced. IBANs are validated (mod-97).
-- [ ] Round-trip tests for guardians, children and enrolments.
-- [ ] The installer builds. Installing it on a clean Windows account opens the first-run flow.
-- [ ] Director's walkthrough approved.
+- [x] Two active enrolments of one child in the same entity and year are rejected by the domain and by a database constraint.
+- [x] Exactly one payer ("kupac na računu") per family is enforced. IBANs are validated (mod-97, separators tolerated). At most one mother and one father.
+- [x] Round-trip tests for guardians, children and enrolments.
+- [x] The installer builds (`C:\PRIVATE\AI\FAKTURISANJE\INSTALACIJA`).
+- [ ] Installing it on the operator's computer opens the first-run flow — to be verified on the operator's PC.
+- [x] Director's walkthrough: three findings (two mothers allowed, IBAN with underscore rejected, "Platilac" wording), all fixed.
 
 ## Director decisions needed this sprint
 - None for families. The invoice-related questions (numbering, invoice recipient) are asked at the start of Sprint 03.
@@ -67,8 +68,16 @@ Invoices (Sprint 03) need correct families, children and enrolments first. Witho
 ---
 
 HANDOFF NOTE — Sprint 02
-Completed: —
-Not completed: —
-Open risks: —
-Technical debt: —
-Next sprint: Sprint 03 — invoices (IMH monthly, IDSS payment plans), numbering, PDF, payments, reminders
+Completed: migration 002; family/guardian/child/enrolment domain, commands and UI; family pricing summary; Windows installers (NSIS 3,0 MB, MSI 4,2 MB); installation guide; Director feedback fixes.
+Not completed: installation on the operator's computer (the Director's step).
+Open risks: the installer is unsigned → SmartScreen warning (documented). The test database exists again on the Director's computer and must be deleted before any real use there.
+Technical debt: none new.
+Next sprint: Sprint 03 — invoices (numbering BR-23, IMH monthly, IDSS payment plans, one-time fees), PDF, payments.
+
+COMMANDER COMPLIANCE — Sprint 02
+──────────────────────────────────
+Rules followed without reminder:        23/25
+Rules violated, caught by ACA:          1 (relative-path shell edit failed silently; redone with absolute paths)
+Rules violated, caught by Director:     1 (M-4: family composition rule not asked — two mothers allowed)
+Rules that slowed work or felt wrong:   none
+New rules suggested by this sprint:     none
