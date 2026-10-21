@@ -102,3 +102,74 @@ export const InstitutionsSchema = z.array(InstitutionSchema);
 export const MinistryApprovalsSchema = z.array(MinistryApprovalSchema);
 
 export { basisPoints as BasisPointsSchema, fenings as FeningsSchema };
+
+// ---------- Families (Sprint 02) ----------
+
+const uuid = z.string().uuid();
+const nonEmpty = (message: string) => z.string().trim().min(1, message);
+
+export const GuardianRoleSchema = z.enum(['MOTHER', 'FATHER', 'GUARDIAN']);
+export const EnrolmentStatusSchema = z.enum([
+  'AWAITING_ENROLMENT_PAYMENT',
+  'ACTIVE',
+  'WITHDRAWAL_NOTIFIED',
+  'WITHDRAWN',
+  'SUSPENDED',
+  'COMPLETED',
+]);
+
+/** Parent / guardian. The payer receives invoices; the IBAN is used for subsidy refunds (D5). */
+export const GuardianSchema = z.object({
+  id: uuid,
+  familyId: uuid,
+  fullName: nonEmpty('unesite ime i prezime'),
+  role: GuardianRoleSchema,
+  email: z.string().trim().email('neispravan email').or(z.literal('')),
+  phone: z.string().trim(),
+  iban: z.string().trim(),
+  isPayer: z.boolean(),
+});
+
+export const FamilySchema = z.object({
+  id: uuid,
+  displayName: nonEmpty('unesite naziv porodice (npr. prezime)'),
+  address: z.string().trim(),
+});
+
+export const ChildSchema = z.object({
+  id: uuid,
+  familyId: uuid,
+  firstName: nonEmpty('unesite ime'),
+  lastName: nonEmpty('unesite prezime'),
+  dateOfBirth: isoDate,
+  residency: ResidencySchema,
+  /** Program 16/26 eligibility facts (subsidy, IMH only). */
+  citizenBih: z.boolean(),
+  residenceKs: z.boolean(),
+});
+
+export const EnrolmentSchema = z.object({
+  id: uuid,
+  childId: uuid,
+  program: ProgramCodeSchema,
+  schoolYear,
+  startsOn: isoDate,
+  endsOn: isoDate.nullable(),
+  status: EnrolmentStatusSchema,
+});
+
+export const FamilySummarySchema = z.object({
+  id: uuid,
+  displayName: z.string(),
+  childCount: z.number().int().nonnegative(),
+  payerName: z.string().nullable(),
+});
+
+export const FamilyDetailSchema = z.object({
+  family: FamilySchema,
+  guardians: z.array(GuardianSchema),
+  children: z.array(ChildSchema),
+  enrolments: z.array(EnrolmentSchema),
+});
+
+export const FamilySummariesSchema = z.array(FamilySummarySchema);
