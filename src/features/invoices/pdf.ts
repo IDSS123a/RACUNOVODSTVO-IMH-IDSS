@@ -141,7 +141,8 @@ function drawLetterhead(w: Writer, institution: Institution, logo: PDFImage): vo
 
 function drawHeading(w: Writer, data: InvoicePdfData): void {
   const { invoice } = data.detail;
-  w.text(`RAČUN br. ${invoice.number}`, MARGIN, { size: 17, bold: true });
+  const title = invoice.kind === 'CREDIT_NOTE' ? 'KNJIŽNO ODOBRENJE br.' : 'RAČUN br.';
+  w.text(`${title} ${invoice.number}`, MARGIN, { size: 17, bold: true });
   if (invoice.status === 'CANCELLED') w.rightText('STORNIRAN', PAGE.width - MARGIN, { size: 14, bold: true, color: ALERT });
   w.y -= 26;
 
@@ -215,7 +216,9 @@ function drawTotals(w: Writer, data: InvoicePdfData): void {
     w.rightText(`Uplaćeno ${formatKM(invoice.paid)} · preostalo za uplatu ${formatKM(open)}`, PAGE.width - MARGIN - 4, { size: 9 });
     w.y -= 14;
   }
-  for (const line of wrapText(`Slovima: ${amountInWords(invoice.total)}`, w.regular, 8.5, CONTENT_WIDTH)) {
+  // Credit notes (imported, BR-32) are negative: "minus …" in words.
+  const words = `${invoice.total < 0 ? 'minus ' : ''}${amountInWords(Math.abs(invoice.total))}`;
+  for (const line of wrapText(`Slovima: ${words}`, w.regular, 8.5, CONTENT_WIDTH)) {
     w.text(line, MARGIN, { size: 8.5, color: MUTED });
     w.y -= 11;
   }
@@ -265,7 +268,7 @@ function box(w: Writer, x: number, top: number, width: number, height: number, l
  */
 function drawPaymentSlip(w: Writer, data: InvoicePdfData): void {
   const { invoice } = data.detail;
-  if (invoice.status === 'CANCELLED') return;
+  if (invoice.status === 'CANCELLED' || invoice.kind === 'CREDIT_NOTE' || invoice.total <= 0) return;
   if (w.y < SLIP_TOP + 18) w.ensure(PAGE.height);
 
   const cut = SLIP_TOP + 10;

@@ -20,7 +20,7 @@ function data(lineCount: number): InvoicePdfData {
     operatorName: 'Operater Test',
     detail: {
       invoice: {
-        id: 'i', number: 'IMH-001/26', entity: 'IMH', kind: 'MONTHLY', familyId: 'f', familyName: 'Test', childId: 'c', childName: 'Đurđa Čolić-Šećić',
+        id: 'i', number: 'IMH-001/26', entity: 'IMH', kind: 'MONTHLY', familyId: 'f', familyName: 'Test', childId: 'c', childName: 'Đurđa Čolić-Šećić', source: 'APP',
         buyerName: 'Žana Test', buyerAddress: 'Buka 1, Sarajevo', issueDate: '2026-10-01', dueDate: '2026-10-05', periodFrom: '2026-10-01',
         periodTo: '2026-10-31', total: 71000 * lineCount, paid: 0, status: 'ISSUED',
       },
@@ -42,6 +42,19 @@ describe('invoice PDF', () => {
   it('continues on a new page when the lines do not fit', async () => {
     const doc = await PDFDocument.load(await renderInvoicePdf(data(40), ASSETS));
     expect(doc.getPageCount()).toBeGreaterThan(1);
+  });
+
+  it('renders an imported credit note (negative amount, no payment slip)', async () => {
+    const d = data(1);
+    const credit = {
+      ...d,
+      detail: {
+        invoice: { ...d.detail.invoice, kind: 'CREDIT_NOTE' as const, source: 'LEGACY' as const, number: 'IDSS KO-35/26', total: -91916 },
+        lines: [{ itemCode: 'OTHER', description: 'Knjižno odobrenje', childId: '', enrolmentId: '', program: '' as const, listAmount: -91916, boardDecisionId: null, amount: -91916 }],
+      },
+    };
+    const doc = await PDFDocument.load(await renderInvoicePdf(credit, ASSETS));
+    expect(doc.getPageCount()).toBe(1);
   });
 
   it('refuses a letterhead of the other institution', async () => {

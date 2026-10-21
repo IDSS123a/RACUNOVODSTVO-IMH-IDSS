@@ -22,9 +22,9 @@ function family(overrides: Partial<FamilyDetail> = {}): FamilyDetail {
     family: { id: FAMILY, displayName: 'Test', address: 'Buka 1, Sarajevo' },
     guardians: [{ id: id(2), familyId: FAMILY, fullName: 'Majka Test', role: 'MOTHER', email: '', phone: '', iban: '', isPayer: true }],
     children: [
-      { id: id(10), familyId: FAMILY, firstName: 'Starija', lastName: 'Test', dateOfBirth: '2021-01-01', residency: 'DOMESTIC', citizenBih: true, residenceKs: true },
-      { id: id(11), familyId: FAMILY, firstName: 'Mlađa', lastName: 'Test', dateOfBirth: '2023-01-01', residency: 'DOMESTIC', citizenBih: true, residenceKs: true },
-      { id: id(12), familyId: FAMILY, firstName: 'Školarac', lastName: 'Test', dateOfBirth: '2015-01-01', residency: 'DOMESTIC', citizenBih: true, residenceKs: true },
+      { id: id(10), familyId: FAMILY, firstName: 'Starija', lastName: 'Test', dateOfBirth: '2021-01-01', residency: 'DOMESTIC', citizenBih: true, residenceKs: true, importReview: false },
+      { id: id(11), familyId: FAMILY, firstName: 'Mlađa', lastName: 'Test', dateOfBirth: '2023-01-01', residency: 'DOMESTIC', citizenBih: true, residenceKs: true, importReview: false },
+      { id: id(12), familyId: FAMILY, firstName: 'Školarac', lastName: 'Test', dateOfBirth: '2015-01-01', residency: 'DOMESTIC', citizenBih: true, residenceKs: true, importReview: false },
     ],
     enrolments: [
       { id: id(20), childId: id(10), program: 'IDSS_PRESCHOOLERS', schoolYear: '2026/2027', startsOn: '2026-09-01', endsOn: null, status: 'ACTIVE' },

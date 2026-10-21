@@ -18,6 +18,7 @@ export function newChild(familyId: string, lastName: string): Child {
     residency: 'DOMESTIC',
     citizenBih: true,
     residenceKs: true,
+    importReview: false,
   };
 }
 

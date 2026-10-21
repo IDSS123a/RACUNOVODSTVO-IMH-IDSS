@@ -2,7 +2,7 @@ import { IDSS_TUITION_MONTHS } from '@/constants';
 import { prorate, sum } from '@/features/billing/money';
 import { assignSiblingTiers, findPrice, remainingTuitionMonths, tuitionForYear } from '@/features/billing/pricing';
 import type { BoardBillingRules } from '@/features/board-rules/types';
-import { ACTIVE_STATUSES } from '@/features/families/domain';
+import { ACTIVE_STATUSES, knownBirthDate } from '@/features/families/domain';
 import type { Child, FamilyDetail } from '@/features/families/types';
 import { ITEM_LABEL, PROGRAM_ENTITY, PROGRAM_LABEL, type PriceListItem, type SchoolYear } from '@/features/price-lists/types';
 import { dueDateForMonth, InvoiceError, monthBounds, monthLabel, schoolYearOfMonth, splitIntoInstalments } from './domain';
@@ -77,8 +77,13 @@ export function proposeIdssPlan(
     const siblings = detail.enrolments.filter(
       (e) => e.schoolYear === enrolment.schoolYear && PROGRAM_ENTITY[e.program] === 'IDSS' && ACTIVE_STATUSES.has(e.status),
     );
-    const births = new Map(detail.children.map((c) => [c.id, c.dateOfBirth]));
-    const tiers = assignSiblingTiers(siblings.map((e) => ({ childId: e.childId, dateOfBirth: births.get(e.childId) ?? '', program: e.program })));
+    const byId = new Map(detail.children.map((c) => [c.id, c]));
+    const tiers = assignSiblingTiers(
+      siblings.flatMap((e) => {
+        const sibling = byId.get(e.childId);
+        return sibling ? [{ childId: e.childId, dateOfBirth: knownBirthDate(sibling), program: e.program }] : [];
+      }),
+    );
     const row = findPrice(priceItems, {
       schoolYear,
       program: enrolment.program,

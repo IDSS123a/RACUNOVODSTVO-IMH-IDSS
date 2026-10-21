@@ -16,6 +16,7 @@ Aplikacija se instalira **samo na računar finansijsko-administrativnog menadže
 3. Unesite svoje ime, funkciju, email i telefon. Ime se štampa kao „Fakturisao/la“ na računima.
 
 ## 3. Prije prvog računa (jednom)
+0. **Postavke → Uvoz iz starog rješenja (Excel):** odaberite najnoviji dokument `Faktura_IDSS_&_IMH_<godina>.xlsm`. Aplikacija prvo pokaže koliko računa, porodica i djece će uvesti, upozorenja i od kojeg broja nastavlja nova numeracija. Tek tada kliknite **Uvezi**. Nakon uvoza djeci treba dopuniti datum rođenja (oznaka „Dopuniti podatke“).
 1. **Postavke → Ustanove (IMH i IDSS):** provjerite podatke iz memoranduma i bankovni račun. U polje **„Napomena na računu“** unesite tačan tekst koji ustanova želi na računu (npr. PDV napomena), ako ga treba.
 2. **Postavke → Pravila naplate — odluke Školskog odbora IDSS:** za školsku godinu unesite broj i datum odluke, rok posljednje rate (ako je odlučen) i mjesece naplate doručka.
 3. **Outlook:** u **Računi → Izvoz i slanje** kliknite „Outlook nacrt“ za jedan račun i provjerite da se otvara **nacrt koji se može uređivati**, s prilozima. Ako se otvara drugi program ili poruka bez dugmeta „Pošalji“, javite direktoru (vjerovatno je instaliran „novi Outlook“).

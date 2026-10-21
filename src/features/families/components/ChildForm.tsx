@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Field } from '@/features/settings/components/OperatorForm';
 import type { Residency } from '@/features/price-lists/types';
-import { ChildSchema } from '@/lib/validation/schemas';
+import { ChildFormSchema } from '@/lib/validation/schemas';
 import type { Child } from '../types';
 
 /**
@@ -13,7 +13,7 @@ import type { Child } from '../types';
  * Residency selects the price column; citizenship and KS residence decide ministry-subsidy eligibility.
  */
 export function ChildForm({ child, onSubmit }: { child: Child; onSubmit: (child: Child) => Promise<void> }): React.JSX.Element {
-  const form = useForm<Child>({ resolver: zodResolver(ChildSchema), defaultValues: child });
+  const form = useForm<Child>({ resolver: zodResolver(ChildFormSchema), defaultValues: child });
   const { errors, isSubmitting } = form.formState;
   const residency = form.watch('residency');
 

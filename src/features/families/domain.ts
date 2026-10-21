@@ -128,7 +128,7 @@ export function enrolmentProblems(enrolment: Enrolment, others: ReadonlyArray<En
 export interface FamilyPricingLine {
   readonly childId: string;
   readonly childName: string;
-  readonly dateOfBirth: string;
+  readonly dateOfBirth: string | null;
   readonly entity: LegalEntityCode;
   readonly program: ProgramCode;
   readonly tier: SiblingTier;
@@ -150,9 +150,10 @@ export function buildFamilyPricing(
 ): FamilyPricingLine[] {
   const childById = new Map(children.map((child) => [child.id, child]));
   const active = enrolments.filter((e) => e.schoolYear === schoolYear && ACTIVE_STATUSES.has(e.status) && childById.has(e.childId));
-  const tiers = assignSiblingTiers(
-    active.map((e) => ({ childId: e.childId, dateOfBirth: childById.get(e.childId)?.dateOfBirth ?? '', program: e.program })),
-  );
+  const undated = active.map((e) => childById.get(e.childId)).find((c) => c && !c.dateOfBirth);
+  const tiers = undated
+    ? new Map<string, SiblingTier>()
+    : assignSiblingTiers(active.map((e) => ({ childId: e.childId, dateOfBirth: childById.get(e.childId)?.dateOfBirth ?? '', program: e.program })));
   return active
     .map((enrolment): FamilyPricingLine => {
       const child = childById.get(enrolment.childId);
@@ -166,6 +167,9 @@ export function buildFamilyPricing(
         program: enrolment.program,
         tier,
       };
+      if (undated) {
+        return { ...base, basis: null, tuition: null, problem: `Redoslijed djece nije poznat: ${undated.firstName} ${undated.lastName} nema datum rođenja.` };
+      }
       try {
         const row = findPrice(priceItems, { schoolYear, program: enrolment.program, item: 'TUITION', residency: child.residency, tier });
         return { ...base, basis: row.basis, tuition: row.amount, problem: null };
@@ -174,5 +178,14 @@ export function buildFamilyPricing(
         return { ...base, basis: null, tuition: null, problem: `Nema cijene u cjenovniku ${schoolYear}.` };
       }
     })
-    .sort((a, b) => a.entity.localeCompare(b.entity) || a.dateOfBirth.localeCompare(b.dateOfBirth));
+    .sort((a, b) => a.entity.localeCompare(b.entity) || (a.dateOfBirth ?? '').localeCompare(b.dateOfBirth ?? ''));
+}
+
+/**
+ * Date of birth needed for sibling order and pricing (BR-6). Imported children (BR-32) may not have it yet:
+ * billing such a child is refused with a clear message instead of guessing the order.
+ */
+export function knownBirthDate(child: Child): string {
+  if (!child.dateOfBirth) throw new PricingError(`${child.firstName} ${child.lastName}: nema datum rođenja — dopunite podatke djeteta`);
+  return child.dateOfBirth;
 }

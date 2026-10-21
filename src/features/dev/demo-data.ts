@@ -100,7 +100,7 @@ export async function loadDemoData(schoolYear: SchoolYear): Promise<Result<strin
 
     const enrolments: Array<{ enrolment: Enrolment; demo: DemoChild }> = [];
     for (const c of demo.children) {
-      const child: Child = { id: crypto.randomUUID(), familyId, firstName: c.firstName, lastName: demo.lastName, dateOfBirth: c.dateOfBirth, residency: 'DOMESTIC', citizenBih: true, residenceKs: true };
+      const child: Child = { id: crypto.randomUUID(), familyId, firstName: c.firstName, lastName: demo.lastName, dateOfBirth: c.dateOfBirth, residency: 'DOMESTIC', citizenBih: true, residenceKs: true, importReview: false };
       const savedChild = await saveChild(child);
       if (!savedChild.success) return savedChild;
       const enrolment: Enrolment = { id: crypto.randomUUID(), childId: child.id, program: c.program, schoolYear, startsOn: start, endsOn: null, status: 'ACTIVE' };

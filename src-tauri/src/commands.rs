@@ -408,3 +408,38 @@ pub fn open_mail_draft(state: State<'_, AppStore>, file_name: String, content: S
         .map_err(|e| AppError::NotFound(format!("program za e-mail nije pokrenut: {e}")))?;
     store.write(|tx| repo::audit(tx, "MAIL_DRAFT", "document", &reference, &file_name))
 }
+
+// ---------- Import from the previous Excel solution (BR-32) ----------
+
+use crate::legacy::{self, ImportPlan, ImportResult, LegacyKeys, LegacyWorkbook};
+
+/// Read the old workbook (cell values only; macros are never run).
+#[tauri::command]
+pub fn read_legacy_workbook(state: State<'_, AppStore>, path: String) -> AppResult<LegacyWorkbook> {
+    state.get()?;
+    legacy::read_workbook(&path)
+}
+
+/// What a previous import already wrote (families, children, invoices) — for idempotent re-imports.
+#[tauri::command]
+pub fn legacy_import_keys(state: State<'_, AppStore>) -> AppResult<LegacyKeys> {
+    let store = state.get()?;
+    store.read(legacy::existing_keys)
+}
+
+/// Write the prepared import plan in ONE transaction; audited with the counts and the source file.
+#[tauri::command]
+pub fn import_legacy(state: State<'_, AppStore>, plan: ImportPlan, file_name: String) -> AppResult<ImportResult> {
+    let store = state.get()?;
+    store.write(|tx| {
+        let result = legacy::import(tx, &plan)?;
+        repo::audit(
+            tx,
+            "IMPORT",
+            "legacy",
+            &file_name,
+            &format!("porodice {}, djeca {}, računi {}, uplate {}", result.families, result.children, result.invoices, result.payments),
+        )?;
+        Ok(result)
+    })
+}

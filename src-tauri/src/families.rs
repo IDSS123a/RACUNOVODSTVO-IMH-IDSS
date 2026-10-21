@@ -36,10 +36,14 @@ pub struct Child {
     pub family_id: String,
     pub first_name: String,
     pub last_name: String,
-    pub date_of_birth: String,
+    /// None for children imported from the previous solution until the operator enters it (BR-32).
+    pub date_of_birth: Option<String>,
     pub residency: String,
     pub citizen_bih: bool,
     pub residence_ks: bool,
+    /// Imported data the operator still has to check (date of birth, residency); cleared on save.
+    #[serde(default)]
+    pub import_review: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -123,8 +127,8 @@ pub fn get_family(conn: &Connection, family_id: &str) -> AppResult<Option<Family
         .collect::<Result<Vec<_>, _>>()?;
 
     let mut stmt = conn.prepare(
-        "SELECT id, family_id, first_name, last_name, date_of_birth, residency, citizen_bih, residence_ks
-         FROM children WHERE family_id = ?1 ORDER BY date_of_birth",
+        "SELECT id, family_id, first_name, last_name, date_of_birth, residency, citizen_bih, residence_ks, import_review
+         FROM children WHERE family_id = ?1 ORDER BY date_of_birth IS NULL, date_of_birth, first_name",
     )?;
     let children = stmt
         .query_map(params![family_id], |r| {
@@ -137,6 +141,7 @@ pub fn get_family(conn: &Connection, family_id: &str) -> AppResult<Option<Family
                 residency: r.get(5)?,
                 citizen_bih: r.get::<_, i64>(6)? == 1,
                 residence_ks: r.get::<_, i64>(7)? == 1,
+                import_review: r.get::<_, i64>(8)? == 1,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -205,7 +210,8 @@ pub fn save_child(tx: &Transaction, c: &Child) -> AppResult<()> {
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT(id) DO UPDATE SET first_name = excluded.first_name, last_name = excluded.last_name,
            date_of_birth = excluded.date_of_birth, residency = excluded.residency,
-           citizen_bih = excluded.citizen_bih, residence_ks = excluded.residence_ks",
+           citizen_bih = excluded.citizen_bih, residence_ks = excluded.residence_ks,
+           import_review = 0",
         params![
             c.id, c.family_id, c.first_name, c.last_name, c.date_of_birth, c.residency,
             c.citizen_bih as i64, c.residence_ks as i64, now()
@@ -310,7 +316,8 @@ mod tests {
             family_id: F.into(),
             first_name: "Ana".into(),
             last_name: "Test".into(),
-            date_of_birth: "2021-03-01".into(),
+            date_of_birth: Some("2021-03-01".into()),
+            import_review: false,
             residency: "DOMESTIC".into(),
             citizen_bih: true,
             residence_ks: false,

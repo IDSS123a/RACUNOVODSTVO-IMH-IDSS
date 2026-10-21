@@ -1,7 +1,7 @@
 import { INSTALMENT_DUE_DAY } from '@/constants';
 import { divideRounded, sum, type Fenings } from '@/features/billing/money';
 import { applyBoardDecision, assignSiblingTiers, findPrice, type BoardDecisionEffect } from '@/features/billing/pricing';
-import { ACTIVE_STATUSES } from '@/features/families/domain';
+import { ACTIVE_STATUSES, knownBirthDate } from '@/features/families/domain';
 import type { Child, Enrolment, FamilyDetail } from '@/features/families/types';
 import {
   PROGRAM_ENTITY,
@@ -106,7 +106,13 @@ export function buildImhMonthlyInvoices(
   if (enrolled.length === 0) return [];
 
   const buyer = payer(detail);
-  const tiers = assignSiblingTiers(enrolled.map((e) => ({ childId: e.childId, dateOfBirth: children.get(e.childId)?.dateOfBirth ?? '', program: e.program })));
+  const tiers = assignSiblingTiers(
+    enrolled.map((e) => {
+      const child = children.get(e.childId);
+      if (!child) throw new InvoiceError('unreachable: child missing');
+      return { childId: e.childId, dateOfBirth: knownBirthDate(child), program: e.program };
+    }),
+  );
   return enrolled
     .map((enrolment) => {
       const child = children.get(enrolment.childId);
@@ -139,7 +145,7 @@ export function buildImhMonthlyInvoices(
         lines: [line],
         total: sum([line.amount]),
       };
-      return { draft, dateOfBirth: child.dateOfBirth };
+      return { draft, dateOfBirth: knownBirthDate(child) };
     })
     .sort((a, b) => a.dateOfBirth.localeCompare(b.dateOfBirth))
     .map((entry) => entry.draft);

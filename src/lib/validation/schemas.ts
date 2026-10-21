@@ -143,11 +143,20 @@ export const ChildSchema = z.object({
   familyId: uuid,
   firstName: nonEmpty('unesite ime'),
   lastName: nonEmpty('unesite prezime'),
-  dateOfBirth: isoDate,
+  /** Null only for children imported from the previous solution until the operator enters it (BR-32). */
+  dateOfBirth: isoDate.nullable(),
   residency: ResidencySchema,
   /** Program 16/26 eligibility facts (subsidy, IMH only). */
   citizenBih: z.boolean(),
   residenceKs: z.boolean(),
+  /** Imported data still to be checked by the operator; cleared when the child is saved. */
+  importReview: z.boolean(),
+});
+
+/** The child form: the operator always enters the date of birth (also when completing an imported child). */
+export const ChildFormSchema = ChildSchema.refine((child) => child.dateOfBirth !== null, {
+  path: ['dateOfBirth'],
+  message: 'unesite datum rođenja',
 });
 
 export const EnrolmentSchema = z.object({
@@ -178,7 +187,7 @@ export const FamilySummariesSchema = z.array(FamilySummarySchema);
 
 // ---------- Invoices (Sprint 03) ----------
 
-export const InvoiceKindSchema = z.enum(['MONTHLY', 'ENROLMENT_FEES', 'INSTALMENT', 'OTHER']);
+export const InvoiceKindSchema = z.enum(['MONTHLY', 'ENROLMENT_FEES', 'INSTALMENT', 'OTHER', 'CREDIT_NOTE']);
 
 export const InvoiceLineSchema = z.object({
   itemCode: PriceItemCodeSchema,
@@ -220,6 +229,7 @@ export const InvoiceSummarySchema = z.object({
   familyName: z.string(),
   childId: z.string(),
   childName: z.string(),
+  source: z.enum(['APP', 'LEGACY']),
   buyerName: z.string(),
   buyerAddress: z.string(),
   issueDate: isoDate,
@@ -241,9 +251,21 @@ export const PaymentSchema = z.object({
   note: z.string().trim(),
 });
 
+/** A stored line: imported lines (BR-32) have empty child/enrolment/program and free item codes. */
+export const InvoiceDetailLineSchema = z.object({
+  itemCode: z.string().min(1),
+  description: z.string(),
+  childId: z.string(),
+  enrolmentId: z.string(),
+  program: z.union([ProgramCodeSchema, z.literal('')]),
+  listAmount: fenings,
+  boardDecisionId: z.string().nullable(),
+  amount: fenings,
+});
+
 export const InvoiceDetailSchema = z.object({
   invoice: InvoiceSummarySchema,
-  lines: z.array(InvoiceLineSchema),
+  lines: z.array(InvoiceDetailLineSchema),
   payments: z.array(PaymentSchema),
 });
 
@@ -276,3 +298,33 @@ export const BoardBillingRulesSchema = z.object({
   breakfastMonths: z.array(z.number().int().min(1).max(12)),
   decisionRef: z.string().trim().min(1, 'unesite broj i datum odluke odbora'),
 });
+
+// ---------- Import from the previous Excel solution (BR-32) ----------
+
+export const LegacyCellSchema = z.discriminatedUnion('t', [
+  z.object({ t: z.literal('Empty') }),
+  z.object({ t: z.literal('Text'), v: z.string() }),
+  z.object({ t: z.literal('Number'), v: z.number() }),
+  z.object({ t: z.literal('Date'), v: z.string() }),
+]);
+
+export const LegacyWorkbookSchema = z.object({
+  fileName: z.string(),
+  db: z.array(z.array(LegacyCellSchema)),
+  setting: z.array(z.array(LegacyCellSchema)),
+});
+
+export const LegacyKeysSchema = z.object({
+  families: z.array(z.tuple([z.string(), z.string()])),
+  children: z.array(z.tuple([z.string(), z.string()])),
+  invoices: z.array(z.tuple([z.string(), z.string(), fenings])),
+});
+
+export const LegacyImportResultSchema = z.object({
+  families: z.number().int(),
+  children: z.number().int(),
+  invoices: z.number().int(),
+  payments: z.number().int(),
+  nextNumbers: z.array(z.tuple([LegalEntityCodeSchema, z.number().int(), z.number().int()])),
+});
+

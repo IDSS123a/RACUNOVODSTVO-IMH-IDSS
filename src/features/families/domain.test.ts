@@ -15,7 +15,7 @@ const FAMILY = '00000000-0000-4000-8000-000000000001';
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 
 function child(n: number, dateOfBirth: string, residency: Child['residency'] = 'DOMESTIC'): Child {
-  return { id: id(n), familyId: FAMILY, firstName: `Dijete${n}`, lastName: 'Test', dateOfBirth, residency, citizenBih: true, residenceKs: true };
+  return { id: id(n), familyId: FAMILY, firstName: `Dijete${n}`, lastName: 'Test', dateOfBirth, residency, citizenBih: true, residenceKs: true, importReview: false };
 }
 
 function enrolment(n: number, childNo: number, program: Enrolment['program'], status: Enrolment['status'] = 'ACTIVE'): Enrolment {

@@ -1,6 +1,6 @@
 import { sum } from '@/features/billing/money';
 import { assignSiblingTiers, findPrice } from '@/features/billing/pricing';
-import { ACTIVE_STATUSES, schoolYearBounds } from '@/features/families/domain';
+import { ACTIVE_STATUSES, knownBirthDate, schoolYearBounds } from '@/features/families/domain';
 import type { Enrolment, EnrolmentStatus, FamilyDetail } from '@/features/families/types';
 import { previousSchoolYear } from '@/features/price-lists/domain';
 import { ITEM_LABEL, PROGRAM_ENTITY, PROGRAM_LABEL, type PriceItemCode, type PriceListItem, type SchoolYear } from '@/features/price-lists/types';
@@ -99,8 +99,13 @@ export function buildEnrolmentFeeInvoice(
     add('MATERIALS', price('MATERIALS'));
     if (!continuing) {
       const imhSiblings = detail.enrolments.filter((e) => e.schoolYear === schoolYear && PROGRAM_ENTITY[e.program] === 'IMH' && ACTIVE_STATUSES.has(e.status));
-      const births = new Map(detail.children.map((c) => [c.id, c.dateOfBirth]));
-      const tiers = assignSiblingTiers(imhSiblings.map((e) => ({ childId: e.childId, dateOfBirth: births.get(e.childId) ?? '', program: e.program })));
+      const byId = new Map(detail.children.map((c) => [c.id, c]));
+      const tiers = assignSiblingTiers(
+        imhSiblings.flatMap((e) => {
+          const sibling = byId.get(e.childId);
+          return sibling ? [{ childId: e.childId, dateOfBirth: knownBirthDate(sibling), program: e.program }] : [];
+        }),
+      );
       add('DEPOSIT', price('DEPOSIT', tiers.get(child.id) ?? 'FIRST'));
     }
   } else {

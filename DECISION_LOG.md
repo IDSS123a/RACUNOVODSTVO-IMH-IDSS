@@ -148,4 +148,19 @@
 
 ---
 
+## DL-P009 — Legacy import: calamine reader, TypeScript plan, one-transaction write
+
+**Date:** 2026-10-21 · **Requirement:** BR-32
+
+**Decision:**
+- The old workbook is read in Rust with `calamine` 0.37 (MIT, pure Rust, no default features). It returns typed cell values only; **macros in the .xlsm are never executed**.
+- The mapping (grouping lines into invoices, families from `Setting` + invoices, item codes, paid flag, next numbers) is a pure TypeScript function with tests; the Rust side writes the prepared plan in **one transaction** and re-checks every invoice total against its lines.
+- Imported invoices are stored with `source = 'LEGACY'` and the number **as written, prefixed with the entity** (`IMH 895/26`, `IMH 754-B/26`, `IDSS KO-35/26`), because the number column is unique across both institutions and the old IMH and IDSS sequences overlap. New numbers keep their own form (`IMH-897/26`).
+- Migration 008 rebuilds `children`, `invoices` and `invoice_lines` (date of birth optional, negative totals and lines without enrolment only for imported invoices). Migrations now run with foreign keys OFF and must leave `PRAGMA foreign_key_check` empty — SQLite's documented procedure for table rebuilds.
+- Re-imports are idempotent: families, children and invoices carry their legacy key / number; only newly paid invoices get a payment.
+
+**Verified (2026-10-21):** the example workbook (1.569 invoices) imports into an in-memory database with 0 foreign-key violations; the sum of imported payments matches the workbook's „plaćeno“ total once lines with negative amounts (scholarships) are netted per invoice; next numbers IMH-897/26 and IDSS-569/26. No personal data from the workbook was written to the repository or logs.
+
+---
+
 *Commander v1.6.2 — IDSS123a Organisation*

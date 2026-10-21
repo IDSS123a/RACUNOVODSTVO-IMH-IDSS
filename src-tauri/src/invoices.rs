@@ -82,6 +82,8 @@ pub struct InvoiceSummary {
     pub family_name: String,
     pub child_id: String,
     pub child_name: String,
+    /// APP (issued here) or LEGACY (imported from the previous solution, BR-32).
+    pub source: String,
     pub buyer_name: String,
     pub buyer_address: String,
     pub issue_date: String,
@@ -294,7 +296,7 @@ pub fn list_payment_plans(conn: &Connection, school_year: &str) -> AppResult<Vec
 const SUMMARY_SELECT: &str = "SELECT i.id, i.number, i.entity, i.kind, i.family_id, f.display_name, i.buyer_name, i.buyer_address,
         i.issue_date, i.due_date, i.period_from, i.period_to, i.total_fenings,
         COALESCE((SELECT sum(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0), i.status,
-        COALESCE(i.child_id, ''), COALESCE(c.first_name || ' ' || c.last_name, '')
+        COALESCE(i.child_id, ''), COALESCE(c.first_name || ' ' || c.last_name, ''), i.source
  FROM invoices i JOIN families f ON f.id = i.family_id LEFT JOIN children c ON c.id = i.child_id";
 
 fn map_summary(r: &rusqlite::Row<'_>) -> rusqlite::Result<InvoiceSummary> {
@@ -307,6 +309,7 @@ fn map_summary(r: &rusqlite::Row<'_>) -> rusqlite::Result<InvoiceSummary> {
         family_name: r.get(5)?,
         child_id: r.get(15)?,
         child_name: r.get(16)?,
+        source: r.get(17)?,
         buyer_name: r.get(6)?,
         buyer_address: r.get(7)?,
         issue_date: r.get(8)?,
@@ -336,7 +339,9 @@ pub fn get_invoice(conn: &Connection, invoice_id: &str) -> AppResult<Option<Invo
         return Ok(None);
     };
     let mut stmt = conn.prepare(
-        "SELECT item_code, description, child_id, enrolment_id, program, list_amount, board_decision_id, amount
+        // Imported lines (BR-32) have no child/enrolment/program; they are returned as empty strings.
+        "SELECT item_code, description, COALESCE(child_id, ''), COALESCE(enrolment_id, ''), COALESCE(program, ''),
+                list_amount, board_decision_id, amount
          FROM invoice_lines WHERE invoice_id = ?1 ORDER BY position",
     )?;
     let lines = stmt
@@ -420,7 +425,7 @@ mod tests {
         .unwrap();
         save_child(&tx, &Child {
             id: "c1".into(), family_id: F.into(), first_name: "A".into(), last_name: "T".into(),
-            date_of_birth: "2022-01-01".into(), residency: "DOMESTIC".into(), citizen_bih: true, residence_ks: true,
+            date_of_birth: Some("2022-01-01".into()), residency: "DOMESTIC".into(), citizen_bih: true, residence_ks: true, import_review: false,
         })
         .unwrap();
         save_enrolment(&tx, &Enrolment {
@@ -510,7 +515,7 @@ mod tests {
         let tx = conn.transaction().unwrap();
         save_child(&tx, &Child {
             id: "c2".into(), family_id: F.into(), first_name: "B".into(), last_name: "T".into(),
-            date_of_birth: "2023-01-01".into(), residency: "DOMESTIC".into(), citizen_bih: true, residence_ks: true,
+            date_of_birth: Some("2023-01-01".into()), residency: "DOMESTIC".into(), citizen_bih: true, residence_ks: true, import_review: false,
         })
         .unwrap();
         save_enrolment(&tx, &Enrolment {

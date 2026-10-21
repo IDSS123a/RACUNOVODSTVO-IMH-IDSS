@@ -9,6 +9,7 @@ mod error;
 mod families;
 mod invoices;
 mod keystore;
+mod legacy;
 mod migrations;
 mod repository;
 mod rules;
@@ -70,6 +71,9 @@ pub fn run() {
             commands::list_breakfast,
             commands::save_document,
             commands::open_mail_draft,
+            commands::read_legacy_workbook,
+            commands::legacy_import_keys,
+            commands::import_legacy,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Tauri application");

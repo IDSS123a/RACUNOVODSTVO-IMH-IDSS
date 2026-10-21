@@ -143,9 +143,14 @@ export function FamilyDetailView({
                   <div>
                     <p className="font-medium">
                       {child.firstName} {child.lastName}
+                      {child.importReview && (
+                        <Badge variant="destructive" className="ml-2">
+                          Dopuniti podatke (uvoz)
+                        </Badge>
+                      )}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      rođen/a {formatDate(child.dateOfBirth)} · {child.residency === 'DOMESTIC' ? 'domaće lice' : 'strano lice'}
+                      {child.dateOfBirth ? `rođen/a ${formatDate(child.dateOfBirth)}` : 'datum rođenja nije unesen'} · {child.residency === 'DOMESTIC' ? 'domaće lice' : 'strano lice'}
                       {!child.citizenBih || !child.residenceKs ? ' · nema uslove za subvenciju' : ''}
                     </p>
                   </div>

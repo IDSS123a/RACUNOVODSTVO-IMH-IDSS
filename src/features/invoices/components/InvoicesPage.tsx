@@ -121,6 +121,11 @@ export function InvoicesPage(): React.JSX.Element {
                     <button type="button" className="hover:underline" onClick={() => setOpenId(invoice.id)}>
                       {invoice.number}
                     </button>
+                    {invoice.source === 'LEGACY' && (
+                      <Badge variant="outline" className="ml-2" title="Uvezeno iz starog rješenja (Excel)">
+                        uvezen
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell>{invoice.childName}</TableCell>
                   <TableCell>{invoice.buyerName}</TableCell>

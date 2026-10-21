@@ -97,6 +97,9 @@ Payments from any family member are booked against invoices, and the open balanc
 - ✅ `-B` series (Director, 2026-10-21): not relevant — imported as ordinary IMH invoices with the number as written (e.g. `754-B/26`); its numeric part counts for the continuation.
 - ✅ Paid flag (Director, 2026-10-21): an invoice marked „plaćeno“ gets one payment of its full amount dated on its **due date** (invoice date if there is none), noted „Uplata preuzeta iz Excela — stvarni datum uplate nepoznat“.
 
+- ✅ Built (DL-P009): Postavke → „Uvoz iz starog rješenja (Excel)“ — choose file, preview (counts, totals, warnings, next numbers), import in one transaction; repeatable without duplicates. Monthly billing skips a child already invoiced for that month (e.g. imported). Imported credit notes print as „KNJIŽNO ODOBRENJE“ without a payment slip.
+- Verified on the example workbook: 1.569 invoices, 366 families, 481 children, 1.284 payments, 15 warnings (invalid due dates → invoice date); next numbers IMH-897/26, IDSS-569/26.
+
 ## Still open before Sprint 03 closes
 - ✅ Enrolment-fee invoice („Račun za upis“ on each enrolment): one invoice per child and school year (migration 007), separate lines.
   - IMH: enrolment fee and deposit only for a new child (a child continuing in IMH, including the transfer Preschoolers → IDSS Preschoolers, keeps both); materials every year; deposit by sibling tier. Due before the start.

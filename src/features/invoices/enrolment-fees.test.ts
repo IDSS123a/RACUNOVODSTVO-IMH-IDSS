@@ -17,9 +17,9 @@ function family(enrolments: Enrolment[]): FamilyDetail {
     family: { id: FAMILY, displayName: 'Test', address: 'Buka 1' },
     guardians: [{ id: id(2), familyId: FAMILY, fullName: 'Majka Test', role: 'MOTHER', email: '', phone: '', iban: '', isPayer: true }],
     children: [
-      { id: id(10), familyId: FAMILY, firstName: 'Starija', lastName: 'Test', dateOfBirth: '2021-01-01', residency: 'DOMESTIC', citizenBih: true, residenceKs: true },
-      { id: id(11), familyId: FAMILY, firstName: 'Mlađa', lastName: 'Test', dateOfBirth: '2023-01-01', residency: 'DOMESTIC', citizenBih: true, residenceKs: true },
-      { id: id(12), familyId: FAMILY, firstName: 'Školarac', lastName: 'Test', dateOfBirth: '2019-01-01', residency: 'FOREIGN', citizenBih: false, residenceKs: true },
+      { id: id(10), familyId: FAMILY, firstName: 'Starija', lastName: 'Test', dateOfBirth: '2021-01-01', residency: 'DOMESTIC', citizenBih: true, residenceKs: true, importReview: false },
+      { id: id(11), familyId: FAMILY, firstName: 'Mlađa', lastName: 'Test', dateOfBirth: '2023-01-01', residency: 'DOMESTIC', citizenBih: true, residenceKs: true, importReview: false },
+      { id: id(12), familyId: FAMILY, firstName: 'Školarac', lastName: 'Test', dateOfBirth: '2019-01-01', residency: 'FOREIGN', citizenBih: false, residenceKs: true, importReview: false },
     ],
     enrolments,
   };

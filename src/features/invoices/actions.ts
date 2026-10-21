@@ -5,7 +5,7 @@ import { getFamily, listFamilies } from '@/features/families/repository';
 import { listPriceItems } from '@/features/price-lists/repository';
 import { buildImhMonthlyInvoices, InvoiceError, schoolYearOfMonth, type BoardDecision } from './domain';
 import { buildIdssMonthlyInvoices } from './plans';
-import { issueInvoices, listPaymentPlans, type InvoiceDraftPayload } from './repository';
+import { issueInvoices, listInvoices, listPaymentPlans, type InvoiceDraftPayload } from './repository';
 import type { BillingMonth } from './types';
 
 /**
@@ -26,18 +26,24 @@ export interface MonthlyPreview {
  */
 export async function prepareMonth(month: BillingMonth, issueDate: string): Promise<Result<MonthlyPreview>> {
   const schoolYear = schoolYearOfMonth(month);
-  const [families, prices, plans, rules, breakfast] = await Promise.all([
+  const [families, prices, plans, rules, breakfast, existing] = await Promise.all([
     listFamilies(),
     listPriceItems(schoolYear),
     listPaymentPlans(schoolYear),
     listBoardRules(schoolYear),
     listBreakfast(schoolYear),
+    listInvoices({ entity: null, month }),
   ]);
   if (!families.success) return families;
   if (!prices.success) return prices;
   if (!plans.success) return plans;
   if (!rules.success) return rules;
   if (!breakfast.success) return breakfast;
+  if (!existing.success) return existing;
+  // A child already invoiced for this month (e.g. by the old solution, imported — BR-32) is not billed twice.
+  const billed = new Set(
+    existing.data.filter((i) => i.status === 'ISSUED' && i.kind !== 'CREDIT_NOTE' && i.childId).map((i) => `${i.entity}|${i.childId}`),
+  );
   const idssContext = {
     priceItems: prices.data,
     rules: rules.data.find((r) => r.entity === 'IDSS') ?? null,
@@ -68,8 +74,13 @@ export async function prepareMonth(month: BillingMonth, issueDate: string): Prom
       } else throw error;
     }
   }
-  drafts.sort((a, b) => a.entity.localeCompare(b.entity));
-  return { success: true, data: { drafts, problems } };
+  const fresh = drafts.filter((draft) => {
+    if (!billed.has(`${draft.entity}|${draft.childId}`)) return true;
+    problems.push({ familyName: draft.buyerName, reason: `${draft.childName}: već ima ${draft.entity} račun za ovaj mjesec (npr. uvezen iz Excela) — nije uključeno` });
+    return false;
+  });
+  fresh.sort((a, b) => a.entity.localeCompare(b.entity));
+  return { success: true, data: { drafts: fresh, problems } };
 }
 
 /** Issue the approved drafts; returns the invoice numbers. */
