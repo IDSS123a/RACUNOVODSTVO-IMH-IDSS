@@ -1,6 +1,6 @@
 # SPRINT 01 — Skeleton, core data model, encrypted storage, pricing engine
 
-**Status:** IMPLEMENTED — awaiting the Director's visual walkthrough · **Mode:** FULL · **Commander:** v1.6.2
+**Status:** DONE — 2026-10-21 (Director walkthrough approved) · **Mode:** FULL · **Commander:** v1.6.2
 **Depends on:** CONSTITUTION.md, DECISION_LOG.md (DL-P001…P005), docs/business-rules
 
 ---
@@ -75,8 +75,8 @@ UI comes later.
   - rounding at 12,5 %, 7,5 % and x,xx5.
 - [x] Round-trip tests (E-14) for institutions, price items, approvals, settings and the encrypted store.
 - [x] project-guard scan clean; lessons updated.
-- [ ] Director's visual walkthrough of the running app (operator form, price list, price-cap panel, settings, backup and restore). Not done by the ACA: synthetic clicks on the shared desktop were stopped (see lessons).
-- [ ] Release installer (`npm run tauri build`) — not built yet; planned with Sprint 02.
+- [x] Director's visual walkthrough: operator profile, price list, price-cap check and settings approved (2026-10-21).
+- [ ] Release installer (`npm run tauri build`) — moved to Sprint 02.
 
 ## Risks
 - Rust/MSVC build tools on the Windows machine (Tauri prerequisites: WebView2 and the MSVC linker) must be verified first.
@@ -96,11 +96,10 @@ Completed:
 - UI: start-up flow (recovery key → operator profile), price-list viewer with sources, IMH price-cap panel with ministry approval record, settings (operator, institutions, backup/restore).
 - Tests: 46 TypeScript + 15 Rust, all green.
 Not completed:
-- Visual walkthrough by the Director.
 - Release installer build.
 Open risks:
 - If the Windows account or profile is lost, the database can only be recovered with the printed recovery key. Restore-with-recovery-key exists in Settings, but there is no UI path yet when the key file itself is missing at start-up (the app shows an error). → Sprint 02.
-- Test data: the dev run on this machine created `%APPDATA%a.idss.fakturisanje` (test database and key). Delete this folder before real use on this computer, so that the real first run creates a fresh key.
+- Test data: the dev test database, key and WebView cache on the Director's computer were deleted on 2026-10-21 after the walkthrough (DONE_CHECKLIST: no test data left behind).
 Technical debt:
 - The price list is read-only in the UI. Adding a new school year needs a maintenance screen (Sprint 05).
 - The JS bundle is about 1 MB (desktop, loaded from disk — acceptable).

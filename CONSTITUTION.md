@@ -12,6 +12,7 @@
 | Repository | github.com/IDSS123a/RACUNOVODSTVO-IMH-IDSS (private; history replaced 2026-10-21 by Director decision) |
 | Director | Davor Mulalić (direktor@idss.ba) — non-coder, decides business rules |
 | Operator (only user) | Financijsko-administrativni menadžer (name and contact stored in app settings) |
+| Deployment | Windows installer (MSI/NSIS) installed **only on the operator's computer**. The Director's computer is used for development and testing only. Data never leaves the operator's computer except as encrypted backups; GitHub holds source code only. |
 | Mode | FULL (sprints, DONE_CHECKLIST, handoff notes) |
 | UI language | Bosnian (bs-BA). Number format `1.234,56 KM`, dates `DD.MM.YYYY.` |
 | Code / commits / technical docs | English |
