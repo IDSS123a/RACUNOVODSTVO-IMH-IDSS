@@ -254,3 +254,48 @@ pub fn delete_family(state: State<'_, AppStore>, family_id: String) -> AppResult
         repo::audit(tx, "DELETE", "family", &family_id, "")
     })
 }
+
+// ---------- Invoices (Sprint 03) ----------
+
+use crate::invoices::{self, InvoiceDetail, InvoiceDraft, InvoiceSummary, Payment};
+
+/// Issue several invoices in ONE transaction: either all get numbers or none (no gaps on failure).
+#[tauri::command]
+pub fn issue_invoices(state: State<'_, AppStore>, drafts: Vec<InvoiceDraft>) -> AppResult<Vec<String>> {
+    let store = state.get()?;
+    if drafts.is_empty() {
+        return Err(AppError::Validation("nema računa za izdavanje".into()));
+    }
+    store.write(|tx| {
+        let mut numbers = Vec::with_capacity(drafts.len());
+        for draft in &drafts {
+            let number = invoices::issue_invoice(tx, draft)?;
+            repo::audit(tx, "ISSUE", "invoice", &draft.id, &format!("{number} {}", draft.total))?;
+            numbers.push(number);
+        }
+        Ok(numbers)
+    })
+}
+
+#[tauri::command]
+pub fn list_invoices(state: State<'_, AppStore>, entity: Option<String>, month: Option<String>) -> AppResult<Vec<InvoiceSummary>> {
+    let store = state.get()?;
+    store.read(|c| invoices::list_invoices(c, entity.as_deref(), month.as_deref()))
+}
+
+#[tauri::command]
+pub fn get_invoice(state: State<'_, AppStore>, invoice_id: String) -> AppResult<InvoiceDetail> {
+    let store = state.get()?;
+    store
+        .read(|c| invoices::get_invoice(c, &invoice_id))?
+        .ok_or_else(|| AppError::NotFound("račun ne postoji".into()))
+}
+
+#[tauri::command]
+pub fn record_payment(state: State<'_, AppStore>, payment: Payment) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        invoices::record_payment(tx, &payment)?;
+        repo::audit(tx, "PAYMENT", "invoice", &payment.invoice_id, &payment.amount.to_string())
+    })
+}

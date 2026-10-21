@@ -7,6 +7,7 @@ mod commands;
 mod crypto;
 mod error;
 mod families;
+mod invoices;
 mod keystore;
 mod migrations;
 mod repository;
@@ -56,6 +57,10 @@ pub fn run() {
             commands::delete_child,
             commands::delete_enrolment,
             commands::delete_family,
+            commands::issue_invoices,
+            commands::list_invoices,
+            commands::get_invoice,
+            commands::record_payment,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Tauri application");
