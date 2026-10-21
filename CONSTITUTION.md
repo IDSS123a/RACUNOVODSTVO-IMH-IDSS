@@ -82,6 +82,7 @@ All of this happens without a single amount being computed in two different ways
 ### 4.3 One-time fees
 - **BR-9** IMH: enrolment fee, deposit and materials participation are due before the child starts. Status `AWAITING_ENROLMENT_PAYMENT` until accounting confirms receipt.
   - Direct transfer IMH Preschoolers → IDSS Preschoolers: no enrolment fee, and the deposit carries over.
+  - A child continuing in IMH from the previous school year pays no new enrolment fee (valid until withdrawal) and no new deposit: the deposit carries over (Director, 2026-10-21). Materials are paid every year.
   - Deposit: refunded within 3 months if all obligations up to 31.08. are settled; kept on early termination.
 - **BR-10** IDSS: enrolment fee 1.000/1.500, paid within 7 days of meeting the enrolment conditions.
   - Reduced to **500/1.000** if the child attended IMH IDSS Preschoolers in the year before school (cross-entity lookup).

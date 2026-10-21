@@ -40,13 +40,13 @@ describe('IMH enrolment-fee invoice', () => {
     expect(amounts(younger)).toContainEqual(['DEPOSIT', 57000]);
   });
 
-  it('continuing child: no enrolment fee (valid until withdrawal); a withdrawn child pays again', () => {
+  it('continuing child: only materials (fee valid until withdrawal, deposit carried over); a withdrawn child pays everything again', () => {
     const continuing = family([enrolment(19, id(11), 'TODDLERS', '2025/2026', 'COMPLETED'), enrolment(21, id(11), 'PRESCHOOLERS')]);
     const proposal = buildEnrolmentFeeInvoice(continuing, PRICE_LIST_SEED, [], id(21), NO_DEPOSIT, '2026-08-01');
-    expect(amounts(proposal).map(([item]) => item)).toEqual(['MATERIALS', 'DEPOSIT']);
-    expect(proposal.notes[0]).toContain('važi do ispisa');
+    expect(amounts(proposal)).toEqual([['MATERIALS', 30000]]);
+    expect(proposal.notes[0]).toContain('depozit se prenosi');
     const withdrawn = family([enrolment(19, id(11), 'TODDLERS', '2025/2026', 'WITHDRAWN'), enrolment(21, id(11), 'PRESCHOOLERS')]);
-    expect(amounts(buildEnrolmentFeeInvoice(withdrawn, PRICE_LIST_SEED, [], id(21), NO_DEPOSIT, '2026-08-01'))[0]?.[0]).toBe('ENROLMENT_FEE');
+    expect(amounts(buildEnrolmentFeeInvoice(withdrawn, PRICE_LIST_SEED, [], id(21), NO_DEPOSIT, '2026-08-01')).map(([item]) => item)).toEqual(['ENROLMENT_FEE', 'MATERIALS', 'DEPOSIT']);
   });
 
   it('transfer Preschoolers → IDSS Preschoolers: only materials (no fee, deposit carried over)', () => {

@@ -16,7 +16,8 @@ import type { InvoiceDraft, InvoiceLine } from './types';
  * - enrolment fee: valid until withdrawal → not charged when the child attended IMH in the previous
  *   school year without withdrawing, nor on the direct transfer Preschoolers → IDSS Preschoolers;
  * - materials participation: once per school year;
- * - deposit: always, by sibling tier within IMH; carried over on the transfer Preschoolers → IDSS Preschoolers.
+ * - deposit: by sibling tier within IMH for a new child; carried over for a child continuing in IMH,
+ *   including the transfer Preschoolers → IDSS Preschoolers (Director, 2026-10-21);
  * IDSS (Pravilnik čl. 1, 7; §3.5):
  * - enrolment fee, reduced when the child attended IDSS Preschoolers (IMH) in the previous school year;
  *   not charged again for a pupil continuing at IDSS from the previous school year (Director, 2026-10-21);
@@ -92,10 +93,11 @@ export function buildEnrolmentFeeInvoice(
     const transfer = enrolment.program === 'IDSS_PRESCHOOLERS' && attendedLastYear((e) => e.program === 'PRESCHOOLERS');
     const continuing = attendedLastYear((e) => PROGRAM_ENTITY[e.program] === 'IMH');
     if (transfer) notes.push('Upisnina se ne naplaćuje i depozit se prenosi: direktan prelazak iz Preschoolers u IDSS Preschoolers.');
-    else if (continuing) notes.push('Upisnina se ne naplaćuje: dijete je pohađalo IMH prošle godine, a upisnina važi do ispisa.');
-    if (!transfer && !continuing) add('ENROLMENT_FEE', price('ENROLMENT_FEE'));
+    else if (continuing) notes.push('Upisnina se ne naplaćuje (važi do ispisa) i depozit se prenosi: dijete je pohađalo IMH prošle godine.');
+    // `continuing` includes the transfer: Preschoolers is an IMH program.
+    if (!continuing) add('ENROLMENT_FEE', price('ENROLMENT_FEE'));
     add('MATERIALS', price('MATERIALS'));
-    if (!transfer) {
+    if (!continuing) {
       const imhSiblings = detail.enrolments.filter((e) => e.schoolYear === schoolYear && PROGRAM_ENTITY[e.program] === 'IMH' && ACTIVE_STATUSES.has(e.status));
       const births = new Map(detail.children.map((c) => [c.id, c.dateOfBirth]));
       const tiers = assignSiblingTiers(imhSiblings.map((e) => ({ childId: e.childId, dateOfBirth: births.get(e.childId) ?? '', program: e.program })));
