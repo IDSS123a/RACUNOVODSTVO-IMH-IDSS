@@ -46,7 +46,7 @@ describe('guardians', () => {
     expect(guardianProblems([guardian(1, false)])[0]).toContain('Označite roditelja koji plaća');
     expect(guardianProblems([guardian(1, true), guardian(2, true)])[0]).toContain('Samo jedan');
     expect(guardianProblems([guardian(1, true, 'BA00 0000 0000 0000 0000')])[0]).toContain('IBAN');
-    expect(guardianProblems([guardian(1, true, 'BA39 1990 4900 5848 7943'), guardian(2, false)])).toEqual([]);
+    expect(guardianProblems([guardian(1, true, 'BA39 1990 4900 5848 7943'), { ...guardian(2, false), role: 'FATHER' }])).toEqual([]);
   });
 });
 
@@ -117,5 +117,28 @@ describe('family pricing summary (acceptance criterion)', () => {
     const lines = buildFamilyPricing([child(6, '2022-01-01')], [{ ...enrolment(6, 6, 'TODDLERS'), schoolYear: '2027/2028', startsOn: '2027-09-01' }], PRICE_LIST_SEED, '2027/2028');
     expect(lines[0]).toMatchObject({ tuition: null });
     expect(lines[0]?.problem).toContain('Nema cijene');
+  });
+});
+
+describe('Director feedback 2026-10-21', () => {
+  it('accepts IBANs typed with underscores, dashes or dots and formats them in groups of four', async () => {
+    const { compactIban, formatIban } = await import('./domain');
+    expect(isValidIban('BA39_1994990021809884')).toBe(true);
+    expect(isValidIban('BA39-1994-9900-2180-9884')).toBe(true);
+    expect(compactIban('ba39 1994.9900_2180-9884')).toBe('BA391994990021809884');
+    expect(formatIban('BA39_1994990021809884')).toBe('BA39 1994 9900 2180 9884');
+    expect(formatIban('')).toBe('');
+  });
+
+  it('rejects two mothers or two fathers; a guardian is allowed in addition', () => {
+    const mother1 = guardian(1, true);
+    const mother2 = { ...guardian(2, false) };
+    expect(guardianProblems([mother1, mother2])[0]).toContain('samo jednu majku');
+    const father1 = { ...guardian(3, false), role: 'FATHER' as const };
+    const father2 = { ...guardian(4, false), role: 'FATHER' as const };
+    expect(guardianProblems([mother1, father1, father2]).join(' ')).toContain('samo jednog oca');
+    const other = { ...guardian(5, false), role: 'GUARDIAN' as const };
+    const other2 = { ...guardian(6, false), role: 'GUARDIAN' as const };
+    expect(guardianProblems([mother1, father1, other, other2])).toEqual([]);
   });
 });

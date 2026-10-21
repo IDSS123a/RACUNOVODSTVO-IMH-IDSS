@@ -103,14 +103,14 @@ export function FamilyDetailView({
       <Card>
         <CardHeader>
           <CardTitle>Roditelji / staratelji</CardTitle>
-          <CardDescription>Platilac prima račune. IBAN se koristi za povrat subvencije Ministarstva.</CardDescription>
+          <CardDescription>Kupac na računu je osoba na koju glase računi. IBAN se koristi samo za povrat subvencije Ministarstva.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-2">
           {guardians.map((g) => (
             <div key={g.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
               <span className="font-medium">{g.fullName}</span>
               <span className="text-muted-foreground">{ROLE_LABEL[g.role]}</span>
-              {g.isPayer && <Badge>Platilac</Badge>}
+              {g.isPayer && <Badge>Kupac na računu</Badge>}
               {g.email && <span>{g.email}</span>}
               {g.phone && <span>{g.phone}</span>}
               {g.iban && <span className="font-mono text-xs">{g.iban}</span>}

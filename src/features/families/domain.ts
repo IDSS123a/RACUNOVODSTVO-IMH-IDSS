@@ -43,12 +43,24 @@ export function canTransition(from: EnrolmentStatus, to: EnrolmentStatus): boole
   return TRANSITIONS[from].includes(to);
 }
 
+/** Remove separators people type into IBANs (spaces, dashes, underscores, dots). */
+export function compactIban(value: string): string {
+  return value.replace(/[\s\-_.]/g, '').toUpperCase();
+}
+
+/** Canonical display form: groups of four, e.g. "BA39 1994 9900 2180 9884". Empty stays empty. */
+export function formatIban(value: string): string {
+  const compact = compactIban(value);
+  return compact.replace(/(.{4})/g, '$1 ').trim();
+}
+
 /**
  * Validate a Bosnian IBAN (BA + 2 check digits + 16 digits) with the ISO 13616 mod-97 check.
- * An empty value is allowed (the IBAN is only needed for subsidy refunds).
+ * Optional: empty is allowed. It is needed only for ministry-subsidy refunds (IMH, BiH citizens).
+ * WHY still check digits: a typo would send the refund to someone else's account.
  */
 export function isValidIban(value: string): boolean {
-  const compact = value.replace(/\s/g, '').toUpperCase();
+  const compact = compactIban(value);
   if (compact === '') return true;
   if (!/^BA\d{18}$/.test(compact)) return false;
   const rearranged = compact.slice(4) + compact.slice(0, 4);
@@ -65,6 +77,11 @@ export function guardianProblems(guardians: ReadonlyArray<Guardian>): string[] {
   if (guardians.length === 0) problems.push('Dodajte barem jednog roditelja ili staratelja.');
   else if (payers.length === 0) problems.push('Označite roditelja koji plaća (prima račune).');
   else if (payers.length > 1) problems.push('Samo jedan roditelj može biti platilac.');
+  for (const role of ['MOTHER', 'FATHER'] as const) {
+    if (guardians.filter((guardian) => guardian.role === role).length > 1) {
+      problems.push(role === 'MOTHER' ? 'Porodica može imati samo jednu majku — za drugu osobu odaberite „Staratelj“.' : 'Porodica može imati samo jednog oca — za drugu osobu odaberite „Staratelj“.');
+    }
+  }
   for (const guardian of guardians) {
     if (!isValidIban(guardian.iban)) problems.push(`IBAN za „${guardian.fullName}“ nije ispravan.`);
   }

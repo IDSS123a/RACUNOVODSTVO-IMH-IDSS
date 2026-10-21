@@ -14,8 +14,21 @@ import { ROLE_LABEL, type Family, type Guardian, type GuardianRole } from '../ty
 const FormSchema = z.object({
   family: FamilySchema,
   guardians: z
-    .array(GuardianSchema.refine((g) => isValidIban(g.iban), { message: 'IBAN nije ispravan', path: ['iban'] }))
-    .min(1, 'dodajte barem jednog roditelja'),
+    .array(GuardianSchema.refine((g) => isValidIban(g.iban), { message: 'IBAN nije ispravan (BA + 18 cifara)', path: ['iban'] }))
+    .min(1, 'dodajte barem jednog roditelja')
+    .superRefine((guardians, ctx) => {
+      // One mother and one father at most; any further person is a "Staratelj" (Director, 2026-10-21).
+      for (const role of ['MOTHER', 'FATHER'] as const) {
+        const indexes = guardians.flatMap((g, i) => (g.role === role ? [i] : []));
+        for (const index of indexes.slice(1)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [index, 'role'],
+            message: role === 'MOTHER' ? 'već postoji majka — odaberite „Staratelj“' : 'već postoji otac — odaberite „Staratelj“',
+          });
+        }
+      }
+    }),
 });
 type FormValues = z.infer<typeof FormSchema>;
 
@@ -55,7 +68,11 @@ export function FamilyForm({
       </div>
 
       <fieldset className="grid gap-4">
-        <legend className="mb-2 text-sm font-medium">Roditelji / staratelji</legend>
+        <legend className="mb-1 text-sm font-medium">Roditelji / staratelji</legend>
+        <p className="text-xs text-muted-foreground">
+          „Kupac na računu“ je osoba na koju glasi račun. Uplatu može izvršiti bilo koji član porodice — uplata se uvijek knjiži na račun.
+          IBAN je potreban samo za povrat subvencije Ministarstva (vrtić IMH, državljani BiH).
+        </p>
         {list.fields.map((field, index) => {
           const e = errors.guardians?.[index];
           return (
@@ -63,7 +80,7 @@ export function FamilyForm({
               <Field id={`g-${index}-name`} label="Ime i prezime" error={e?.fullName?.message} className="md:col-span-2">
                 <Input id={`g-${index}-name`} {...form.register(`guardians.${index}.fullName`)} aria-invalid={Boolean(e?.fullName)} />
               </Field>
-              <Field id={`g-${index}-role`} label="Uloga">
+              <Field id={`g-${index}-role`} label="Uloga" error={e?.role?.message}>
                 <Select
                   value={values[index]?.role ?? 'MOTHER'}
                   onValueChange={(role) => form.setValue(`guardians.${index}.role`, role as GuardianRole, { shouldDirty: true })}
@@ -86,12 +103,12 @@ export function FamilyForm({
               <Field id={`g-${index}-phone`} label="Telefon">
                 <Input id={`g-${index}-phone`} type="tel" {...form.register(`guardians.${index}.phone`)} />
               </Field>
-              <Field id={`g-${index}-iban`} label="IBAN (za povrat subvencije)" error={e?.iban?.message} className="md:col-span-3">
+              <Field id={`g-${index}-iban`} label="IBAN za povrat subvencije (nije obavezno)" error={e?.iban?.message} className="md:col-span-3">
                 <Input id={`g-${index}-iban`} placeholder="BA39 …" {...form.register(`guardians.${index}.iban`)} aria-invalid={Boolean(e?.iban)} />
               </Field>
               <label className="flex items-center gap-2 self-end pb-2 text-sm md:col-span-2">
                 <input type="radio" name="payer" checked={values[index]?.isPayer ?? false} onChange={() => choosePayer(index)} className="size-4" />
-                Platilac (prima račune)
+                Kupac na računu
               </label>
               <div className="flex items-end justify-end">
                 <Button

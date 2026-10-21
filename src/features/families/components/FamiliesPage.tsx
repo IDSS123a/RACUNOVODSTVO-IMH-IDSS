@@ -58,7 +58,7 @@ export function FamiliesPage({ defaultYear }: { defaultYear: SchoolYear }): Reac
 
       <div className="relative max-w-sm">
         <SearchIcon className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" aria-hidden />
-        <Input aria-label="Pretraga porodica" placeholder="Traži po porodici ili platiocu…" className="pl-8" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <Input aria-label="Pretraga porodica" placeholder="Traži po porodici ili kupcu…" className="pl-8" value={query} onChange={(e) => setQuery(e.target.value)} />
       </div>
 
       {families.state.status === 'loading' && <LoadingBlock />}
@@ -71,7 +71,7 @@ export function FamiliesPage({ defaultYear }: { defaultYear: SchoolYear }): Reac
           <TableHeader>
             <TableRow>
               <TableHead>Porodica</TableHead>
-              <TableHead>Platilac</TableHead>
+              <TableHead>Kupac na računu</TableHead>
               <TableHead className="text-right">Djece</TableHead>
             </TableRow>
           </TableHeader>

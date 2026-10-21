@@ -68,6 +68,11 @@ All of this happens without a single amount being computed in two different ways
   - not retroactive; valid for at most one school year.
 - **BR-8** Money is integer fenings. Rounding happens once, per invoice line (half away from zero). Totals are sums of rounded lines. The screen, the PDF, exports and reports all use the same function.
 
+### 4.2a Invoices (Director, 2026-10-21)
+- **BR-23** Invoice numbers: `IDSS-001/26` (school) and `IMH-001/26` (kindergarten): entity prefix, a three-digit sequence, `/`, and the last two digits of the year.
+- **BR-24** The invoice is addressed to the family's **"kupac na računu"** (one guardian). A payment may come from **any family member**; it is always booked against the invoice.
+- **BR-25** A family has at most one mother and one father; further persons are recorded as "Staratelj". The guardian IBAN is optional and is used only for ministry-subsidy refunds.
+
 ### 4.3 One-time fees
 - **BR-9** IMH: enrolment fee, deposit and materials participation are due before the child starts. Status `AWAITING_ENROLMENT_PAYMENT` until accounting confirms receipt.
   - Direct transfer IMH Preschoolers → IDSS Preschoolers: no enrolment fee, and the deposit carries over.

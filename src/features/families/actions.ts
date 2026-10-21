@@ -1,5 +1,5 @@
 import type { Result } from '@/lib/tauri/invoke';
-import { canTransition, enrolmentProblems, guardianProblems } from './domain';
+import { canTransition, enrolmentProblems, formatIban, guardianProblems } from './domain';
 import { saveEnrolment, saveFamily } from './repository';
 import type { Enrolment, EnrolmentStatus, Family, Guardian } from './types';
 
@@ -15,7 +15,8 @@ function failure(problems: string[]): Result<never> {
 export async function saveFamilyWithGuardians(family: Family, guardians: Guardian[]): Promise<Result<null>> {
   const problems = guardianProblems(guardians);
   if (problems.length > 0) return failure(problems);
-  return saveFamily(family, guardians);
+  // Store IBANs in one canonical form so the refund list never shows "BA39_1994…" variants.
+  return saveFamily(family, guardians.map((guardian) => ({ ...guardian, iban: formatIban(guardian.iban) })));
 }
 
 /** Save an enrolment after checking it against the child's other enrolments. */
