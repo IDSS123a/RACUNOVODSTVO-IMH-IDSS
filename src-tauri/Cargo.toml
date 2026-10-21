@@ -23,3 +23,16 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.12.4" }
 tauri-plugin-log = "2"
+rusqlite = { version = "0.40.2", features = ["bundled", "serialize"] }
+aes-gcm = "0.11.1"
+rand = "0.10.3"
+base64 = "0.23.1"
+thiserror = "2.0.21"
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+tauri-plugin-dialog = "2"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[target."cfg(windows)".dependencies]
+windows = { version = "0.62.2", features = ["Win32_Security_Cryptography", "Win32_Foundation", "Win32_System_Memory"] }

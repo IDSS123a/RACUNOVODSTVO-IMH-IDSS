@@ -57,18 +57,28 @@
 
 ---
 
-## DL-P004 — Database encryption at rest  `[PROPOSED — to be finalised in Sprint 01]`
+## DL-P004 — Database encryption at rest  `[DECIDED 2026-10-21 — supersedes the SQLCipher proposal of 2026-10-20]`
 
-**Date:** 2026-10-20
+**Decision:** in-memory SQLite (`rusqlite`, bundled) with **encrypted snapshots**.
+- After every committed write, the whole database is serialised and encrypted with **AES-256-GCM**, using crate `aes-gcm` (pure Rust, RustCrypto). A fresh random nonce is used per write.
+- The snapshot is written atomically (temp file + rename). The previous snapshot is kept as `.prev`.
+- The 256-bit data key is protected with **Windows DPAPI** (`CryptProtectData`, crate `windows` by Microsoft), so it is bound to the operator's Windows account.
+- A one-time **recovery key** (base64) is shown on first run, to be printed and kept by the Director. Restoring a backup on another machine or account uses it.
+- Backups are the same encrypted snapshot format (`*.fkbak`).
 
-**Proposal:** SQLCipher, via the Rust crate `rusqlite` with the `bundled-sqlcipher` feature.
-- The key is generated on first run and stored in Windows Credential Manager (DPAPI, bound to the operator's Windows account) via the crate `keyring`.
-- A one-time **recovery key** is shown at setup to be printed and kept by the Director.
-- Backups are encrypted copies of the database file, written to a folder chosen in Settings.
+**🔄 Course correction:** the SQLCipher proposal (`bundled-sqlcipher`) needs OpenSSL and a native Perl build on Windows. Neither exists on the build machine. Pure-Rust AES-GCM avoids the native crypto toolchain completely. Keyring was replaced with direct DPAPI, which has fewer moving parts.
 
 **Why:** Zakon o predškolskom odgoju KS čl. 53h requires cryptographic protection of personal data.
 
-**Open:** new Rust dependencies (`rusqlite` with SQLCipher, `keyring`) fall under M-12. They are part of the approved "encrypted local database" proposal; they will be confirmed in the Sprint 01 handoff.
+**Trade-off:** each write rewrites the whole file. This is fine for the expected size (a few MB).
+
+**New dependencies (M-12):** `rusqlite`, `aes-gcm`, `rand`, `base64`, `thiserror`, `chrono`, `windows`, `tauri-plugin-dialog`. All are part of the approved "encrypted local database" proposal (bootstrap answer 4). Listed here for the record.
+
+**Verified by tests:**
+- the file on disk is not readable SQLite;
+- a wrong key or a tampered file fails;
+- the DPAPI round trip works, and the raw key is never stored in clear;
+- restore with the recovery key works on another key store.
 
 ---
 
