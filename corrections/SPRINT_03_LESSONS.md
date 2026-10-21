@@ -24,3 +24,9 @@
 - **Fix:** pre-filled slip with the open amount (DL-P008); QR held back until a BiH bank confirms the format.
 - **Lesson:** when replacing an existing tool, list every user-visible feature of the old one and mark each kept / changed / dropped *with the Director* before building. A deliberate omission must be announced, not discovered.
 - **Commander candidate:** "replacement parity checklist" in FEATURE_LIFECYCLE.
+
+## L-S3-05 — Profiling a workbook with personal data: mask from the first query
+- **Trigger:** while profiling the old invoice workbook, two exploratory queries printed real child and parent names into the session transcript (not into the repository, logs or commits).
+- **Fix:** later queries printed only shapes, counts and masked values; temporary dumps were written to the scratchpad and deleted right after use; the staged diff was scanned for the names before committing.
+- **Lesson (M-15):** when a file is known to hold personal data, the *first* query must already mask values (length + first letters) and print aggregates only. "Most common values" of a name column is personal data.
+- **Commander candidate:** add to M-15 — "data profiling prints shapes and counts, never raw values of person columns".
