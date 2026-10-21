@@ -35,10 +35,10 @@ Payments from any family member are booked against invoices, and the open balanc
      - instalment amounts are rounded once, and the last instalment absorbs the rounding difference (so the sum equals the annual amount);
      - mid-year start: pro-rata (BR-12);
      - extended stay as an optional plan item (up to 10 instalments, pro-rata on a mid-year start);
-     - 📌 ASSUMED: the last instalment falls within the school year (by 31.08.);
+     - the latest due date of the last instalment is a **board decision** (Director, 2026-10-21): entered per school year in Settings with the decision reference; enforced only once entered;
      - monthly IDSS invoices bill every plan instalment due in the month, once (the plan instalment is marked with the invoice inside the issuing transaction);
      - an IDSS child without a tuition plan is listed in the preview as a problem.
-     - Breakfast: not yet — see Open questions.
+     - Breakfast (opt-in per child): billed as a line on the child's monthly IDSS invoice in the months the board decided (entered in Settings); until entered, the preview lists the child as a problem.
    - **Board decisions** (BR-7) applied to a line when a valid decision exists for the child, item and date.
    - **Invoice totals:** sum of rounded lines; no tax lines (the PDV note text is configurable, see Open questions).
    - **Payment allocation:**
@@ -69,8 +69,7 @@ Payments from any family member are booked against invoices, and the open balanc
    📌 ASSUMED until answered: yes, by the year of the invoice date. Easily reversible before the first real invoice.
 2. The PDV / tax-exemption note printed on invoices, per institution. The text is a legal statement and is not invented (M-4). It is entered in Settings by the operator; there is no default text.
 3. Storno / credit-note numbering (needed in Sprint 04).
-4. Breakfast (60 KM/month, opt-in): which months are billed (September–June = 10?), and is it a line on the monthly IDSS invoice of the child?
-5. The last instalment of an IDSS plan must fall by 31.08. of the school year (ASSUMED above).
+4. ✅ Breakfast months and the last-instalment deadline: decided by the board each year → Settings (Director, 2026-10-21).
 
 ## Acceptance criteria
 - [ ] Numbers are gap-free and unique per entity and year, also under rapid repeated issuing (Rust test).

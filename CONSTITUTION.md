@@ -92,6 +92,7 @@ All of this happens without a single amount being computed in two different ways
   - Options: pay in full (no advance discount unless a board decision exists), or 1–12 instalments; each instalment is due on the 5th of its month.
   - Extended stay: in full by 31.07. for the next year, or 10 monthly instalments with the director's approval.
   - Breakfast: 60 KM/month, opt-in, up to 10 instalments.
+  - The latest due date of a plan's last instalment and the months in which breakfast is billed are **decided by the board (UO IMH / ŠO IDSS)** per school year. They are entered in Settings with the decision reference and are never assumed by the app (Director, 2026-10-21).
   - Summer school: price set by ŠO per year.
 - **BR-12** Mid-year start:
   - IDSS charges the remaining months to June, with a monthly basis = annual / 10 and the start month counted in full (assumption confirmed by example 9.700/10 × 6);

@@ -3,13 +3,15 @@ import { toast } from 'sonner';
 import { ErrorBlock, LoadingBlock } from '@/components/feedback';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { BoardRulesPanel } from '@/features/board-rules/components/BoardRulesPanel';
+import type { SchoolYear } from '@/features/price-lists/types';
 import { useAsyncResult } from '@/lib/use-async-result';
 import { listInstitutions, saveSettings, type Settings } from '../repository';
 import { BackupPanel } from './BackupPanel';
 import { InstitutionForm } from './InstitutionForm';
 import { OperatorForm, type OperatorValues } from './OperatorForm';
 
-/** Settings screen: operator, institutions, backups. */
+/** Settings screen: operator, institutions, board billing rules, backups. */
 export function SettingsPage({ settings, onSettingsChanged }: { settings: Settings; onSettingsChanged: () => void }): React.JSX.Element {
   const loadInstitutions = useCallback(() => listInstitutions(), []);
   const institutions = useAsyncResult(loadInstitutions);
@@ -26,7 +28,7 @@ export function SettingsPage({ settings, onSettingsChanged }: { settings: Settin
     <div className="grid gap-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Postavke</h1>
-        <p className="text-sm text-muted-foreground">Operater, podaci ustanova i rezervne kopije.</p>
+        <p className="text-sm text-muted-foreground">Operater, podaci ustanova, pravila naplate i rezervne kopije.</p>
       </header>
 
       <Card>
@@ -63,6 +65,16 @@ export function SettingsPage({ settings, onSettingsChanged }: { settings: Settin
               ))}
             </Tabs>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Pravila naplate — odluke Školskog odbora IDSS</CardTitle>
+          <CardDescription>Rok posljednje rate plana i mjeseci naplate doručka. Unosi se samo ono što je odbor odlučio, s brojem odluke; svaka izmjena se bilježi u log.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <BoardRulesPanel defaultYear={settings.activeSchoolYear as SchoolYear} />
         </CardContent>
       </Card>
 

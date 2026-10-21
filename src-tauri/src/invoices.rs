@@ -207,14 +207,21 @@ pub fn save_payment_plan(tx: &Transaction, plan: &PaymentPlan) -> AppResult<()> 
     if plan.items.iter().enumerate().any(|(index, i)| i.sequence != index as i64 + 1 || i.amount < 0) {
         return Err(AppError::Validation("rate moraju biti redom 1..N i nenegativne".into()));
     }
-    let enrolment: Option<(String, String)> = tx
-        .query_row("SELECT child_id, program FROM enrolments WHERE id = ?1", params![plan.enrolment_id], |r| Ok((r.get(0)?, r.get(1)?)))
+    let enrolment: Option<(String, String, String)> = tx
+        .query_row("SELECT child_id, program, school_year FROM enrolments WHERE id = ?1", params![plan.enrolment_id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })
         .optional()?;
-    let Some((child_id, program)) = enrolment else {
+    let Some((child_id, program, school_year)) = enrolment else {
         return Err(AppError::NotFound("upis ne postoji".into()));
     };
     if entity_of_program(&program) != "IDSS" || child_id != plan.child_id {
         return Err(AppError::Validation("plan plaćanja postoji samo za upis u školu IDSS".into()));
+    }
+    // The deadline of the last instalment is a board decision; enforced only once it is entered.
+    let deadline = crate::rules::rules_for(tx, &school_year, "IDSS")?.and_then(|r| r.last_instalment_by);
+    if let Some(deadline) = deadline.filter(|d| plan.items.iter().any(|i| &i.due_date > d)) {
+        return Err(AppError::Validation(format!("prema odluci Školskog odbora posljednja rata dospijeva najkasnije {deadline}")));
     }
     let existing: Option<String> = tx
         .query_row(
@@ -584,6 +591,13 @@ mod tests {
         let mut kindergarten = idss_plan("p3", 2);
         kindergarten.enrolment_id = "e1".into();
         assert!(matches!(save_payment_plan(&tx, &kindergarten), Err(AppError::Validation(_))));
+        crate::rules::save_rules(&tx, &crate::rules::BoardBillingRules {
+            school_year: "2027/2028".into(), entity: "IDSS".into(), last_instalment_by: Some("2027-11-05".into()),
+            breakfast_months: vec![], decision_ref: "ŠO 1/2027".into(),
+        })
+        .unwrap();
+        assert!(matches!(save_payment_plan(&tx, &idss_plan("p4", 4)), Err(AppError::Validation(_))));
+        save_payment_plan(&tx, &idss_plan("p5", 3)).unwrap();
     }
 
     #[test]

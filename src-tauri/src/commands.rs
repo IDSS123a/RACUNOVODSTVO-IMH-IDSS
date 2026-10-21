@@ -314,3 +314,44 @@ pub fn list_payment_plans(state: State<'_, AppStore>, school_year: String) -> Ap
     let store = state.get()?;
     store.read(|c| invoices::list_payment_plans(c, &school_year))
 }
+
+// ---------- Board billing rules and breakfast ----------
+
+use crate::rules::{self, BoardBillingRules};
+
+#[tauri::command]
+pub fn list_board_rules(state: State<'_, AppStore>, school_year: String) -> AppResult<Vec<BoardBillingRules>> {
+    let store = state.get()?;
+    store.read(|c| rules::list_rules(c, &school_year))
+}
+
+#[tauri::command]
+pub fn save_board_rules(state: State<'_, AppStore>, rules: BoardBillingRules) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        rules::save_rules(tx, &rules)?;
+        repo::audit(
+            tx,
+            "SAVE",
+            "board_rules",
+            &format!("{} {}", rules.entity, rules.school_year),
+            &format!("rok {:?}, doručak {:?}, odluka {}", rules.last_instalment_by, rules.breakfast_months, rules.decision_ref),
+        )
+    })
+}
+
+#[tauri::command]
+pub fn set_breakfast(state: State<'_, AppStore>, enrolment_id: String, on: bool) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        rules::set_breakfast(tx, &enrolment_id, on)?;
+        repo::audit(tx, if on { "BREAKFAST_ON" } else { "BREAKFAST_OFF" }, "enrolment", &enrolment_id, "")
+    })
+}
+
+#[tauri::command]
+pub fn list_breakfast(state: State<'_, AppStore>, school_year: String) -> AppResult<Vec<String>> {
+    let store = state.get()?;
+    store.read(|c| rules::list_breakfast(c, &school_year))
+}
+

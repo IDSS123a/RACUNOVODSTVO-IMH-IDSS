@@ -265,3 +265,12 @@ export const PaymentPlanSchema = z.object({
   ),
 });
 export const PaymentPlansSchema = z.array(PaymentPlanSchema);
+
+/** Billing parameters decided by the board per school year (BR-11); never assumed by the app. */
+export const BoardBillingRulesSchema = z.object({
+  schoolYear: z.string().regex(/^\d{4}\/\d{4}$/),
+  entity: LegalEntityCodeSchema,
+  lastInstalmentBy: isoDate.nullable(),
+  breakfastMonths: z.array(z.number().int().min(1).max(12)),
+  decisionRef: z.string().trim().min(1, 'unesite broj i datum odluke odbora'),
+});

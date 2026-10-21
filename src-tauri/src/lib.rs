@@ -11,6 +11,7 @@ mod invoices;
 mod keystore;
 mod migrations;
 mod repository;
+mod rules;
 mod store;
 
 use tauri::Manager;
@@ -63,6 +64,10 @@ pub fn run() {
             commands::record_payment,
             commands::save_payment_plan,
             commands::list_payment_plans,
+            commands::list_board_rules,
+            commands::save_board_rules,
+            commands::set_breakfast,
+            commands::list_breakfast,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Tauri application");
