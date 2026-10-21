@@ -140,6 +140,12 @@
 - **No QR code for now.** The old app printed an EPC/SEPA QR (`BCD/002/SCT`), a EUR standard: BAM amounts, a payee name over 70 characters and a non-RF reference make it likely to be rejected by BiH banks (forensics §5.2). No BiH payment-QR standard or bank specification could be confirmed (web search 2026-10-21). Printing an unverified QR could send money wrongly or fail at the bank (M-4).
 - **To re-enable:** the bank (Sparkasse Bank BiH) provides the QR format its mBanking accepts, or a test with a real payment confirms one; then the QR is added to the slip and verified with a test payment.
 
+**Addendum (Director, 2026-10-21): provisional QR now.** The slip carries a QR in an **assumed** format until a bank confirms one:
+- EPC QR (`BCD` / `002` / UTF-8 / `SCT`), BIC and IBAN of the institution, payee = short name (≤ 70), amount = open balance as `BAM…` (not defined by EPC, which is a EUR standard), free text "Račun <number> <child>" (≤ 140), no structured reference;
+- printed next to the words "PROBNI FORMAT — banka ga još nije potvrdila. Prije potvrde uplate provjerite primaoca, račun i iznos.";
+- generated with `qrcode` 1.5.4 (MIT, pinned) and drawn as vector squares; verified by decoding the rendered PDF (OpenCV);
+- replace by the bank's format as soon as it is known, then remove the "probni" label.
+
 ---
 
 *Commander v1.6.2 — IDSS123a Organisation*

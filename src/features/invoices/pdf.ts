@@ -4,6 +4,7 @@ import { amountInWords } from '@/features/billing/amount-in-words';
 import { formatKM } from '@/features/billing/money';
 import type { Institution } from '@/features/settings/repository';
 import { formatDate } from '@/lib/format';
+import { epcPayload, qrMatrix } from './payment-qr';
 import type { InvoiceDetail } from './repository';
 
 /**
@@ -248,7 +249,7 @@ function drawPayment(w: Writer, data: InvoicePdfData): void {
 }
 
 /** Payment slip area at the bottom of the last page (bottom half of A4). */
-const SLIP = { bottom: MARGIN + 24, height: 262 } as const;
+const SLIP = { bottom: MARGIN + 24, height: 290 } as const;
 const SLIP_TOP = SLIP.bottom + SLIP.height;
 
 function box(w: Writer, x: number, top: number, width: number, height: number, label: string, value: string[], bold = false): void {
@@ -260,7 +261,7 @@ function box(w: Writer, x: number, top: number, width: number, height: number, l
 /**
  * Domestic payment slip ("Nalog za uplatu / Uplatnica") pre-filled for the parent (IDSS Pravilnik čl. 3:
  * payer, child and purpose; period for instalments). The amount is what is still open on the invoice.
- * No QR code: no payment-QR standard accepted by BiH banks is confirmed yet (forensics §5.2, DL-P008).
+ * The QR is PROVISIONAL (assumed EPC format with BAM, DL-P008 addendum) and is labelled as such on the slip.
  */
 function drawPaymentSlip(w: Writer, data: InvoicePdfData): void {
   const { invoice } = data.detail;
@@ -279,7 +280,7 @@ function drawPaymentSlip(w: Writer, data: InvoicePdfData): void {
   const rightWidth = CONTENT_WIDTH - leftWidth - gap;
   const inner = leftWidth - 10;
   const fit = (text: string, max: number) => wrapText(text, w.regular, 8.5, inner).slice(0, max);
-  let y = top - 18;
+  const y = top - 18;
 
   const payer = fit([invoice.buyerName, invoice.buyerAddress].filter(Boolean).join(', '), 3);
   box(w, MARGIN, y, leftWidth, 52, 'Uplatio je (ime, adresa i telefon)', payer);
@@ -301,11 +302,38 @@ function drawPaymentSlip(w: Writer, data: InvoicePdfData): void {
   ];
   rows.forEach(([label, value, bold], i) => box(w, rightX, y - i * 34.4, rightWidth, 30, label, value, bold));
 
-  y -= 184;
-  w.page.drawLine({ start: { x: MARGIN, y: y - 22 }, end: { x: MARGIN + 180, y: y - 22 }, thickness: 0.5, color: INK });
-  w.text('Potpis i pečat nalogodavca', MARGIN, { y: y - 32, size: 6.5, color: MUTED });
-  w.page.drawLine({ start: { x: rightX, y: y - 22 }, end: { x: PAGE.width - MARGIN, y: y - 22 }, thickness: 0.5, color: INK });
-  w.text('Potpis i pečat primaoca naloga', rightX, { y: y - 32, size: 6.5, color: MUTED });
+  const qrTop = y - 176;
+  if (open > 0) drawPaymentQr(w, data, open, rightX, rightWidth, qrTop);
+
+  w.page.drawLine({ start: { x: MARGIN, y: y - 214 }, end: { x: MARGIN + 180, y: y - 214 }, thickness: 0.5, color: INK });
+  w.text('Potpis i pečat nalogodavca', MARGIN, { y: y - 224, size: 6.5, color: MUTED });
+}
+
+const QR_SIZE = 84;
+
+function drawPaymentQr(w: Writer, data: InvoicePdfData, open: number, x: number, width: number, top: number): void {
+  const { invoice } = data.detail;
+  const matrix = qrMatrix(
+    epcPayload({
+      bic: data.institution.swift,
+      payeeName: data.institution.shortName,
+      iban: data.institution.iban,
+      amount: open,
+      remittance: `Račun ${invoice.number} ${invoice.childName}`,
+    }),
+  );
+  const quiet = 2; // modules of white border inside the drawn square
+  const module = QR_SIZE / (matrix.length + 2 * quiet);
+  const left = x + width - QR_SIZE;
+  matrix.forEach((row, r) =>
+    row.forEach((dark, c) => {
+      if (dark) {
+        w.page.drawRectangle({ x: left + (c + quiet) * module, y: top - (r + quiet + 1) * module, width: module, height: module, color: rgb(0, 0, 0) });
+      }
+    }),
+  );
+  const caption = ['QR za plaćanje', 'PROBNI FORMAT — banka ga još', 'nije potvrdila. Prije potvrde', 'uplate provjerite primaoca,', 'račun i iznos.'];
+  caption.forEach((line, i) => w.text(line, x, { y: top - 12 - i * 9, size: i === 0 ? 7.5 : 6.5, bold: i === 0, color: i === 0 ? INK : MUTED }));
 }
 
 function drawFooters(doc: PDFDocument, w: Writer, data: InvoicePdfData): void {
