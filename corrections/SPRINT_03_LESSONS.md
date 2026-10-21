@@ -17,3 +17,10 @@
 - **Cause:** `embedFont(..., { subset: true })` with @pdf-lib/fontkit 1.1.1 produced broken subsets of Noto Sans.
 - **Fix:** pre-subset the font to Latin with fontTools (~24 KB) and embed it whole (DL-P007, `src/assets/fonts/README.md`).
 - **Lesson:** a PDF test that only checks structure/metadata is not enough — render the page to an image and look at it before calling the PDF done.
+
+## L-S3-04 — The new PDF dropped a feature the old app had (payment slip)
+- **Trigger:** Director: "zašto nema uplatnice u donjoj polovini računa… zašto se ne prikazuje QR kod".
+- **Cause:** the Sprint 03 PDF spec listed the invoice content but not the slip; the old app's slip was noted only in the forensic report. The QR was left out on purpose but never told to the Director.
+- **Fix:** pre-filled slip with the open amount (DL-P008); QR held back until a BiH bank confirms the format.
+- **Lesson:** when replacing an existing tool, list every user-visible feature of the old one and mark each kept / changed / dropped *with the Director* before building. A deliberate omission must be announced, not discovered.
+- **Commander candidate:** "replacement parity checklist" in FEATURE_LIFECYCLE.
