@@ -107,6 +107,7 @@ Payments from any family member are booked against invoices, and the open balanc
   - credit notes, payment reversal, family credit and linking the legacy KO;
   - the Director issued a trial credit note in the running app (C-13).
 - ✅ F1 accounting-complete invoice PDF (2026-11-21, DL-P012, `specs/invoice-pdf-complete/`), from the matrix of the HTML document. The Director checked it in the running app (C-13).
+- ✅ F2 manual invoice „Novi račun“ for services outside the price list (2026-11-21, DL-P013, `specs/manual-invoice/`, migration 013). The Director checked it in the running app (C-13); the check also fixed the invoice PDF: credit notes reduce UKUPNO ZA UPLATU, and payments are never printed.
 
 ## Still open before Sprint 03 closes
 - ✅ Enrolment-fee invoice („Račun za upis“ on each enrolment): one invoice per child and school year (migration 007), separate lines.

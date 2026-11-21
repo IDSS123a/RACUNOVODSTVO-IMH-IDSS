@@ -11,7 +11,7 @@ import { getSettings, listInstitutions, type Institution } from '@/features/sett
 import { formatDate } from '@/lib/format';
 import { call, type Result } from '@/lib/tauri/invoke';
 import { buildEml, chunkBySize, zipFiles } from './bundle';
-import { invoiceFileName, renderInvoicePdf, type PdfAssets } from './pdf';
+import { amountDue, invoiceFileName, renderInvoicePdf, type PdfAssets } from './pdf';
 import { getInvoice, listInvoices, type InvoiceDetail, type InvoiceSummary } from './repository';
 
 /**
@@ -159,11 +159,12 @@ export async function exportPeriodZip(filter: PeriodFilter, onProgress?: (done: 
 }
 
 function mailBody(pdfs: ReadonlyArray<InvoicePdf>, filter: PeriodFilter, zip: string, operatorName: string): string {
-  const rows = pdfs.map((p) => `${p.number} | ${p.summary.childName || '—'} | ${p.summary.buyerName} | ${formatKM(p.summary.total)}`);
+  // the same amount as UKUPNO ZA UPLATU on each PDF: after credit notes
+  const rows = pdfs.map((p) => `${p.number} | ${p.summary.childName || '—'} | ${p.summary.buyerName} | ${formatKM(amountDue(p.summary))}`);
   return [
     'Poštovani,',
     '',
-    `u prilogu su računi (${periodLabel(filter)}): ${pdfs.length} računa, ukupno ${formatKM(sum(pdfs.map((p) => p.summary.total)))}.`,
+    `u prilogu su računi (${periodLabel(filter)}): ${pdfs.length} računa, ukupno ${formatKM(sum(pdfs.map((p) => amountDue(p.summary))))}.`,
     `Svaki račun je zaseban PDF za prosljeđivanje roditelju; isti računi su i u datoteci ${zip}.`,
     '',
     'Broj računa | Dijete | Kupac | Iznos',

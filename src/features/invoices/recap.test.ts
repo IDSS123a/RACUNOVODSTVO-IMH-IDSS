@@ -43,6 +43,20 @@ describe('invoice recapitulation (F1 C5, C7)', () => {
     expect(bad).toBe(0);
   });
 
+  it('a manual line: entered unit, quantity × unit price, Cijena per unit and Iznos per line (F2)', () => {
+    const r = invoiceRecap([
+      { itemCode: 'OTHER', description: 'Ljetna škola — sedmica', listAmount: 45150, amount: 45150, quantity: 3, unit: 'srv' },
+      { itemCode: 'OTHER', description: 'Majica', listAmount: 2500, amount: 2500, quantity: 1, unit: 'kom' },
+      { itemCode: 'TUITION', description: 'Stara stavka', listAmount: 71000, amount: 71000, quantity: 1, unit: null },
+    ]);
+    expect(r.lines.map((l) => [l.unit, l.quantity, l.price, l.discounted, l.netAmount])).toEqual([
+      ['srv', 3, 15050, 15050, 45150],
+      ['kom', 1, 2500, 2500, 2500],
+      ['srv', 1, 71000, 71000, 71000],
+    ]);
+    expect(r).toMatchObject({ salesValue: 118650, discount: 0, netValue: 118650, total: 118650 });
+  });
+
   it('credit notes (negative lines) keep the identities', () => {
     const r = invoiceRecap([{ itemCode: 'TUITION', description: 'Storno', listAmount: -71000, amount: -71000 }]);
     expect(r).toMatchObject({ salesValue: -71000, discount: 0, netValue: -71000, total: -71000 });

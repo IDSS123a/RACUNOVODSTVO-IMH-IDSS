@@ -4,7 +4,8 @@ import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { INSTITUTIONS_SEED } from '@/features/settings/institutions-seed';
 import { IMH_PDV_NOTE } from '@/constants';
-import { BOTTOM_THIRD_LIMIT, hasPaymentSlip, invoiceFileName, renderInvoicePdf, type InvoicePdfData, type PdfAssets } from './pdf';
+import { amountDue, BOTTOM_THIRD_LIMIT, hasPaymentSlip, invoiceFileName, recapitulationRows, renderInvoicePdf, slipAmount, type InvoicePdfData, type PdfAssets } from './pdf';
+import { invoiceRecap } from './recap';
 
 const asset = (path: string) => new Uint8Array(readFileSync(resolve(__dirname, '../../assets', path)));
 const ASSETS: PdfAssets = { regularFont: asset('fonts/NotoSans-Regular-Latin.ttf'), boldFont: asset('fonts/NotoSans-Bold-Latin.ttf'), logoPng: asset('logos/imh.png') };
@@ -14,7 +15,7 @@ function data(lineCount: number): InvoicePdfData {
   if (!IMH) throw new Error('seed missing');
   const line = {
     itemCode: 'TUITION' as const, description: 'Školarina za oktobar 2026 — Đurđa Čolić-Šećić (Toddlers)', childId: 'c', enrolmentId: 'e',
-    program: 'TODDLERS' as const, listAmount: 71000, boardDecisionId: null, amount: 71000,
+    program: 'TODDLERS' as const, listAmount: 71000, boardDecisionId: null, amount: 71000, quantity: 1, unit: null,
   };
   return {
     institution: { ...IMH, invoiceNote: 'Napomena koju unosi ustanova.' },
@@ -51,7 +52,7 @@ describe('invoice PDF', () => {
       ...d,
       detail: {
         invoice: { ...d.detail.invoice, kind: 'CREDIT_NOTE' as const, source: 'LEGACY' as const, number: 'IDSS KO-35/26', total: -91916 },
-        lines: [{ itemCode: 'OTHER', description: 'Knjižno odobrenje', childId: '', enrolmentId: '', program: '' as const, listAmount: -91916, boardDecisionId: null, amount: -91916 }],
+        lines: [{ itemCode: 'OTHER', description: 'Knjižno odobrenje', childId: '', enrolmentId: '', program: '' as const, listAmount: -91916, boardDecisionId: null, amount: -91916, quantity: 1, unit: null }],
       },
     };
     const doc = await PDFDocument.load(await renderInvoicePdf(credit, ASSETS));
@@ -122,6 +123,56 @@ describe('accounting-complete invoice (F1)', () => {
     const sample: InvoicePdfData = { ...d, institution: { ...d.institution, invoiceNote: IMH_PDV_NOTE } };
     const doc = await PDFDocument.load(await renderInvoicePdf(sample, ASSETS));
     expect(doc.getPageCount()).toBe(1);
+  });
+
+  it('a manual invoice with quantity × unit price renders on one page (F2)', async () => {
+    const d = data(1);
+    const manual: InvoicePdfData = {
+      ...d,
+      detail: {
+        invoice: { ...d.detail.invoice, kind: 'OTHER', total: 45150, reason: 'Obavijest o ljetnoj školi' },
+        lines: [{ itemCode: 'OTHER', description: 'Ljetna škola — sedmica', childId: 'c', enrolmentId: 'e', program: 'TODDLERS', listAmount: 45150, boardDecisionId: null, amount: 45150, quantity: 3, unit: 'srv' }],
+      },
+    };
+    const doc = await PDFDocument.load(await renderInvoicePdf(manual, ASSETS));
+    expect(doc.getPageCount()).toBe(1);
+  });
+
+  it('a credit note reduces UKUPNO ZA UPLATU: 710 − 705 = 5,00 (Director, 2026-11-21)', async () => {
+    const recap = invoiceRecap([{ itemCode: 'TUITION', description: 'Školarina', listAmount: 71000, amount: 71000 }]);
+    const invoice = { kind: 'MONTHLY', total: 71000, credited: -70500 };
+    expect(amountDue(invoice)).toBe(500);
+    expect(recapitulationRows(recap, invoice, [{ number: 'IMH-KO-001/26', total: -70500 }])).toEqual([
+      ['Prodajna vrijednost:', 71000, false],
+      ['Iznos odobrenog rabata:', 0, false],
+      ['Vrijednost bez PDV:', 71000, false],
+      ['Iznos PDV (0%):', 0, false],
+      ['Iznos računa:', 71000, false],
+      ['Knj. odobrenje IMH-KO-001/26:', -70500, false],
+      ['UKUPNO ZA UPLATU:', 500, true],
+    ]);
+    // two credit notes each by number; without the list (or an incomplete one) the stored sum is shown in one row
+    expect(recapitulationRows(recap, { ...invoice, credited: -71000 }, [{ number: 'A', total: -20000 }, { number: 'B', total: -51000 }]).slice(5)).toEqual([
+      ['Knj. odobrenje A:', -20000, false],
+      ['Knj. odobrenje B:', -51000, false],
+      ['UKUPNO ZA UPLATU:', 0, true],
+    ]);
+    expect(recapitulationRows(recap, invoice).slice(5)).toEqual([['Umanjeno knjižnim odobrenjima:', -70500, false], ['UKUPNO ZA UPLATU:', 500, true]]);
+    expect(recapitulationRows(recap, invoice, [{ number: 'A', total: -100 }]).slice(5, 6)).toEqual([['Umanjeno knjižnim odobrenjima:', -70500, false]]);
+    // without credit notes: exactly the sample invoice
+    expect(recapitulationRows(recap, { kind: 'MONTHLY', total: 71000, credited: 0 }).map((r) => r[0])).toEqual([
+      'Prodajna vrijednost:', 'Iznos odobrenog rabata:', 'Vrijednost bez PDV:', 'Iznos PDV (0%):', 'UKUPNO ZA UPLATU:',
+    ]);
+    expect(amountDue({ kind: 'CREDIT_NOTE', total: -70500, credited: 0 })).toBe(-70500);
+    // the slip asks for UKUPNO ZA UPLATU, also when a payment is already booked: the invoice never prints payments
+    expect(slipAmount({ kind: 'MONTHLY', total: 71000, credited: -70500, paid: 500 } as { kind: string; total: number; credited: number })).toBe(500);
+    expect(slipAmount({ kind: 'MONTHLY', total: 71000, credited: 0, paid: 71000 } as { kind: string; total: number; credited: number })).toBe(71000);
+    const d = data(1);
+    const reduced: InvoicePdfData = {
+      ...d,
+      detail: { ...d.detail, invoice: { ...d.detail.invoice, total: 71000, credited: -70500, paid: 500 }, creditNotes: [{ id: 'k', number: 'IMH-KO-001/26', issueDate: '2026-10-10', total: -70500, reason: 'x' }] },
+    };
+    expect((await PDFDocument.load(await renderInvoicePdf(reduced, ASSETS))).getPageCount()).toBe(1);
   });
 
   it('a long invoice keeps the slip on the last page only', async () => {

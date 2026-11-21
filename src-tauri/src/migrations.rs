@@ -19,6 +19,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (10, include_str!("../migrations/010_credit_notes.sql")),
     (11, include_str!("../migrations/011_credit_note_line_position.sql")),
     (12, include_str!("../migrations/012_imh_pdv_note.sql")),
+    (13, include_str!("../migrations/013_invoice_line_quantity.sql")),
 ];
 
 /// Latest schema version this build understands.
@@ -305,6 +306,39 @@ mod tests {
         assert_eq!(note(&empty, "IDSS"), "", "IDSS waits for the accountant");
         let entered = prepare("Tekst koji je unijela operaterka.");
         assert_eq!(note(&entered, "IMH"), "Tekst koji je unijela operaterka.", "an entered note is never overwritten");
+    }
+
+    /// F2 / E-19: a database at 012 with issued lines gets quantity 1 and no unit on every existing line, and the
+    /// invoice reads back unchanged; the new columns reject a bad quantity or unit.
+    #[test]
+    fn migration_013_keeps_existing_lines_at_quantity_one() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v <= 12) {
+            let tx = conn.transaction().unwrap();
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", version).unwrap();
+            tx.commit().unwrap();
+        }
+        conn.execute_batch(
+            "INSERT INTO families(id, display_name, created_at) VALUES ('f', 'T', 'x');
+             INSERT INTO invoices(id, number, entity, kind, family_id, buyer_name, issue_date, due_date, period_from, period_to,
+                                  total_fenings, status, created_at)
+               VALUES ('i', 'IMH-001/26', 'IMH', 'OTHER', 'f', 'B', '2026-10-01', '2026-10-05', '2026-10-01', '2026-10-31', 71000, 'ISSUED', 'x');
+             INSERT INTO invoice_lines(id, invoice_id, position, item_code, description, list_amount, amount)
+               VALUES ('i-1', 'i', 1, 'TUITION', 'Školarina', 71000, 71000);",
+        )
+        .unwrap();
+        apply(&mut conn).unwrap();
+        assert_eq!(current_version(&conn).unwrap(), latest_version());
+        let (quantity, unit): (i64, Option<String>) =
+            conn.query_row("SELECT quantity, unit FROM invoice_lines WHERE id = 'i-1'", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((quantity, unit), (1, None));
+        let detail = crate::invoices::get_invoice(&conn, "i").unwrap().unwrap();
+        assert_eq!(detail.lines[0].quantity, 1);
+        assert_eq!(detail.lines[0].amount, 71000);
+        assert!(conn.execute("UPDATE invoice_lines SET quantity = 0 WHERE id = 'i-1'", []).is_err());
+        assert!(conn.execute("UPDATE invoice_lines SET quantity = 1000 WHERE id = 'i-1'", []).is_err());
+        assert!(conn.execute("UPDATE invoice_lines SET unit = 'kg' WHERE id = 'i-1'", []).is_err());
     }
 
     #[test]

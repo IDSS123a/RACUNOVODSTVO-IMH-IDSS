@@ -152,6 +152,11 @@ function InvoiceContent({ detail, onPaid, onShowPdf }: { detail: InvoiceDetail; 
               <TableCell>
                 {line.description}
                 {line.boardDecisionId && <span className="ml-2 text-xs text-muted-foreground">(odluka odbora)</span>}
+                {line.quantity > 1 && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    ({line.quantity} {line.unit ?? 'srv'} × {formatKM(line.amount / line.quantity)})
+                  </span>
+                )}
               </TableCell>
               <TableCell className="text-right tabular-nums">{formatKM(line.listAmount)}</TableCell>
               <TableCell className="text-right tabular-nums">{formatKM(line.amount)}</TableCell>
@@ -180,6 +185,9 @@ function InvoiceContent({ detail, onPaid, onShowPdf }: { detail: InvoiceDetail; 
       </Table>
 
       {isCreditNote && <CreditNoteOrigin creditsInvoiceId={invoice.creditsInvoiceId} reason={invoice.reason} />}
+      {!isCreditNote && invoice.kind === 'OTHER' && invoice.source === 'APP' && invoice.reason && (
+        <p className="text-sm text-muted-foreground">Ručni račun · osnov: {invoice.reason}</p>
+      )}
 
       {showCreditNote && <CreditNotePanel detail={detail} onCancel={() => setShowCreditNote(false)} onIssued={onPaid} />}
 

@@ -261,6 +261,55 @@
   - all against the sample invoice.
 - **Open:** the PDV sentence for IDSS (P.U., not PPU), for the accountant.
 
+## DL-P013 — Manual invoice for services outside the price list (F2)
+
+**Date:** 2026-11-21 · **Spec:** `specs/manual-invoice/` · **Source:** `IMH-IDSS-Fakturisanje.html` (`vNew`, `saveNewInvoice`), CONSTITUTION BR-7, BR-9, BR-10, BR-24, BR-26, BR-27
+
+**Decision:**
+- „Novi račun“ on „Računi“ issues an invoice of kind `OTHER` for **one child of one institution**:
+  - lines: Naziv, JM (`kom` / `srv`), whole Količina 1–999, Cijena; Ukupno = količina × cijena in fenings;
+  - period: the billing month;
+  - due date: the document's rule (DL-P012), which the operator may change;
+  - number: the institution's series (BR-23);
+  - **basis** („Osnov“: decision, contract or notice): mandatory, stored in `invoices.reason`, written to the audit log and shown in the detail.
+- **Taken over from the document:** the fields, the totals and the validation messages (M1–M7).
+- **Not taken over, because the constitution decides otherwise:**
+  - **Rabat %** — any reduction needs a board-decision record (BR-7), and the register does not exist yet. A manual line is always at its entered amount.
+  - **Quick pick from the price list** — all 33 catalog rows are already billed by rule: through the monthly bulk (BR-26), or through „Račun za upis“ with the continuing-child and transfer rules (BR-9, BR-10). A manual copy could bypass those rules or bill twice. The screen points to those flows.
+  - **„+ Nova porodica“ / „+ Dodaj dijete“** — families and children are created in „Porodice“ with their validations.
+  - **The number preview** — the backend assigns the number in the issuing transaction.
+- The rules are enforced again in Rust: a manual invoice carries only `OTHER` lines and no other kind may; amount = list amount (no discount, no decision); the amount is divisible by the quantity; a unit; a basis; a total above 0.
+- **Migration 013** adds `invoice_lines.quantity` (default 1, 1–999) and `invoice_lines.unit`. Earlier lines keep quantity 1, and their JM is still derived from the item code, so their PDFs are unchanged.
+- PDF: Cijena and S rabatom per unit, Iznos bez PDV per line.
+- **Monthly bulk:** an app invoice of kind `OTHER` no longer counts as „already invoiced this month“. Otherwise summer school would stop the August tuition. Imported invoices (`OTHER`, `LEGACY`) still count (BR-32).
+
+**Verified:**
+- Vitest 217/217:
+  - every M5 message;
+  - entity from the enrolment;
+  - school year of the month;
+  - 5.000 random manual invoices equal quantity × price to the fening;
+  - recap with quantity;
+  - PDF with quantity 3;
+  - the monthly-bulk predicate.
+- cargo test 52/52:
+  - manual round trip;
+  - eleven rejections, with no number used;
+  - a monthly invoice still allowed after a manual one;
+  - migration 013 rehearsal on a database at 012 (E-19).
+- **Director check (C-13):** confirmed in the running app, 2026-11-21 (with amendments 1 and 2). **Open:** discounts and scholarships wait for the board-decision register.
+
+**Amendment 1 (2026-11-21, Director's check — amends DL-P012):** an invoice of 710,00 reduced by a 705,00 credit note printed „UKUPNO ZA UPLATU 710,00“ and „Slovima: sedam stotina deset“, and showed the reduction only in a small line below the table. The Director: „treba da plati samo 5,00 KM“.
+- The recapitulation now adds „Iznos računa“ and one row per credit note („Knj. odobrenje <broj>“). The dark **UKUPNO ZA UPLATU** row is the amount due after the credit notes, and **Slovima** states that amount.
+- The slip, the QR and the export mail list use the same figure (`amountDue`, M-7).
+- With more than five recap rows they are 15 pt high, so the slip stays in the bottom third of page 1.
+- „Dokument je izrađen na računaru…“ is printed once, also when the institution's note already contains it (it appeared twice on the trial database).
+
+**Amendment 2 (2026-11-21, Director — amends DL-P011 and DL-P008):** „Uplaćeno 5,00 KM · preostalo za uplatu 0,00 KM“ must not be on the invoice. The invoice is issued before the parent pays, and they pay on receiving it.
+- The PDF of an invoice **never prints payments**, and it reads the same whenever it is printed or sent.
+- The payment slip and the QR ask for UKUPNO ZA UPLATU (`slipAmount`: the invoice after its credit notes, never reduced by payments). This replaces DL-P008 „amount = what is still open“.
+- The payment status stays in the invoice register and the invoice detail („Uplate“).
+
 ---
 
 *Commander v1.8.1 — IDSS123a Organisation*
