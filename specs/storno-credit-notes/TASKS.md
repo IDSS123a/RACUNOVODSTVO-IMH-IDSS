@@ -47,10 +47,10 @@
 - *Vitest 184/184, tsc, ESLint, project-guard.*
 
 ## Phase 3 — close
-- [ ] 9. Self-review (Step 4).
-- [ ] 10. Testing:
-  - Rust and Vitest per acceptance criterion;
-  - real-data end-to-end (L-S3-08), including linking a legacy KO;
-  - Director check in the running app (C-13).
-- [ ] 11. Documentation: DECISION_LOG DL-P011, SPRINT_04 notes, lessons.
+- [x] 9. Self-review (Step 4).
+- [x] 10. Testing:
+  - Rust 48/48 and Vitest 184/184 per acceptance criterion;
+  - real-data end to end (L-S3-08), last run in phase 1. Linking a legacy KO is covered by `legacy_credit_note_is_linked_by_hand_s5`, not by the real-data run.
+  - The Director checked it in the running app: a trial credit note was issued (C-13). The failure found on the way was fixed in L-S3-11.
+- [x] 11. Documentation: DECISION_LOG DL-P011, SPRINT_03 note (Sprint 04 scope done early), lessons L-S3-09…11.
 - [ ] 12. Commit, PR, merge after the Director's approval.
