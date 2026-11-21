@@ -383,7 +383,7 @@ mod tests {
         assert_eq!((result.families, result.children, result.invoices, result.payments), (1, 1, 2, 1));
         // the next invoice issued in the app continues after the imported state
         let draft = InvoiceDraft {
-            id: "n1".into(), entity: "IMH".into(), kind: "OTHER".into(), family_id: F.into(), child_id: "c1".into(),
+            id: "n1".into(), entity: "IMH".into(), kind: "MONTHLY".into(), family_id: F.into(), child_id: "c1".into(),
             buyer_name: "Otac".into(), buyer_address: "".into(), issue_date: "2026-11-01".into(), due_date: "2026-11-05".into(),
             period_from: "2026-11-01".into(), period_to: "2026-11-30".into(), total: 100, plan_items: vec![],
             reason: "Odluka".into(),

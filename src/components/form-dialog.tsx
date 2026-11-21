@@ -18,7 +18,14 @@ export function FormDialog({
 }): React.JSX.Element {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={wide ? 'max-h-[90vh] overflow-y-auto sm:max-w-4xl' : 'max-h-[90vh] overflow-y-auto sm:max-w-2xl'}>
+      {/* wide dialogs use almost the whole window on every screen; on a phone every dialog is full width */}
+      <DialogContent
+        className={
+          wide
+            ? 'max-h-[94dvh] w-[calc(100vw-1rem)] max-w-none overflow-y-auto sm:max-w-[min(96vw,96rem)]'
+            : 'max-h-[94dvh] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-2xl'
+        }
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}

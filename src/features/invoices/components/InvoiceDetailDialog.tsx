@@ -18,6 +18,9 @@ import { BALANCE_LABEL, invoiceBalance } from '../credit-notes';
 import { getInvoice, recordPayment, reversePayment, type InvoiceDetail, type Payment } from '../repository';
 import { CreditMovePanel } from './CreditMovePanel';
 import { CreditNotePanel } from './CreditNotePanel';
+import { TemplateText } from './TemplateText';
+import { PAYMENT_PURPOSE_TEMPLATES, PAYMENT_REFERENCE_TEMPLATES, REVERSAL_REASON_TEMPLATES } from '../text-templates';
+import { MONTH_NAME } from '../types';
 
 const PaymentFormSchema = z.object({
   paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'unesite datum'),
@@ -30,7 +33,9 @@ const PaymentFormSchema = z.object({
     }
   }, 'unesite iznos, npr. 710,00'),
   payerName: z.string().trim().min(1, 'unesite ko je uplatio'),
-  reference: z.string().trim(),
+  // both come from a template (identical syntax); empty = a template field is still missing
+  reference: z.string().trim().min(1, 'popunite šablon reference'),
+  note: z.string().trim().min(1, 'popunite šablon svrhe uplate'),
 });
 type PaymentForm = z.infer<typeof PaymentFormSchema>;
 
@@ -91,9 +96,21 @@ function InvoiceContent({ detail, onPaid, onShowPdf }: { detail: InvoiceDetail; 
       amountKm: formatKM(summary.open).replace(' KM', ''),
       payerName: invoice.buyerName,
       reference: '',
+      note: '',
     },
   });
   const { errors, isSubmitting } = form.formState;
+  const setReference = useCallback((text: string | null) => form.setValue('reference', text ?? ''), [form]);
+  const setNote = useCallback((text: string | null) => form.setValue('note', text ?? ''), [form]);
+  // what the payment templates already know: this invoice and the month it covers
+  const periodMonth = Number(invoice.periodFrom.slice(5, 7));
+  const periodYear = Number(invoice.periodFrom.slice(0, 4));
+  const known = {
+    racun: invoice.number,
+    mjesec: MONTH_NAME[periodMonth - 1] ?? '',
+    godina: String(periodYear),
+    skolska: periodMonth >= 9 ? `${periodYear}/${periodYear + 1}` : `${periodYear - 1}/${periodYear}`,
+  };
 
   async function submit(values: PaymentForm): Promise<void> {
     const result = await recordPayment({
@@ -103,7 +120,7 @@ function InvoiceContent({ detail, onPaid, onShowPdf }: { detail: InvoiceDetail; 
       amount: kmToFenings(values.amountKm),
       payerName: values.payerName,
       reference: values.reference,
-      note: '',
+      note: values.note,
     });
     if (result.success) {
       toast.success('Uplata je evidentirana.');
@@ -216,9 +233,14 @@ function InvoiceContent({ detail, onPaid, onShowPdf }: { detail: InvoiceDetail; 
           <Field id="pay-payer" label="Uplatio/la" error={errors.payerName?.message}>
             <Input id="pay-payer" {...form.register('payerName')} />
           </Field>
-          <Field id="pay-ref" label="Referenca (izvod)">
-            <Input id="pay-ref" {...form.register('reference')} />
-          </Field>
+          <div className="grid gap-1 md:col-span-2">
+            <TemplateText id="pay-ref" label="Referenca" templates={PAYMENT_REFERENCE_TEMPLATES} onChange={setReference} />
+            {errors.reference && <p className="text-xs text-destructive">{errors.reference.message}</p>}
+          </div>
+          <div className="grid gap-1 md:col-span-2">
+            <TemplateText id="pay-note" label="Svrha uplate" templates={PAYMENT_PURPOSE_TEMPLATES} known={known} onChange={setNote} />
+            {errors.note && <p className="text-xs text-destructive">{errors.note.message}</p>}
+          </div>
           <div className="md:col-span-4">
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? 'Spremanje…' : 'Evidentiraj uplatu'}
@@ -233,12 +255,13 @@ function InvoiceContent({ detail, onPaid, onShowPdf }: { detail: InvoiceDetail; 
 /** One payment, with „Storno uplate“ (S4): a counter-entry with a reason; the payment itself stays visible. */
 function PaymentRow({ payment, onReversed }: { payment: Payment; onReversed: () => void }): React.JSX.Element {
   const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState('');
+  const [reason, setReason] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function reverse(): Promise<void> {
     setBusy(true);
     try {
+      if (!reason) return;
       const result = await reversePayment({ paymentId: payment.id, reversedOn: new Date().toISOString().slice(0, 10), reason });
       if (!result.success) return void toast.error(result.error);
       toast.success('Uplata je stornirana protuknjiženjem.');
@@ -261,16 +284,9 @@ function PaymentRow({ payment, onReversed }: { payment: Payment; onReversed: () 
         </Button>
       )}
       {open && (
-        <span className="mt-1 flex flex-wrap items-center gap-2">
-          <Input
-            aria-label="Razlog storna uplate"
-            className="h-8 max-w-sm"
-            maxLength={500}
-            placeholder="Razlog (npr. uplata je za drugo dijete)"
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-          />
-          <Button size="sm" variant="destructive" disabled={busy || !reason.trim()} onClick={() => void reverse()}>
+        <span className="mt-1 flex flex-wrap items-end gap-2 text-foreground">
+          <TemplateText id={`rev-${payment.id}`} label="Razlog storna uplate" templates={REVERSAL_REASON_TEMPLATES} onChange={setReason} />
+          <Button size="sm" variant="destructive" disabled={busy || !reason} onClick={() => void reverse()}>
             Storniraj uplatu
           </Button>
           <Button size="sm" variant="outline" disabled={busy} onClick={() => setOpen(false)}>

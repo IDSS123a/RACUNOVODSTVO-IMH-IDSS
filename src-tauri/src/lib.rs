@@ -3,6 +3,7 @@
 //! → store (encrypted SQLite) → crypto/keystore. Business rules live in TypeScript
 //! (`src/features/*/domain`), never here.
 
+mod audit;
 mod commands;
 mod credit_notes;
 mod crypto;
@@ -55,9 +56,13 @@ pub fn run() {
             commands::restore_backup,
             commands::list_families,
             commands::get_family,
+            commands::list_enrolment_overview,
+            commands::list_audit_log,
+            commands::list_billed_one_time,
             commands::save_family,
             commands::save_child,
             commands::save_enrolment,
+            commands::save_enrolments_bulk,
             commands::delete_child,
             commands::delete_enrolment,
             commands::delete_family,

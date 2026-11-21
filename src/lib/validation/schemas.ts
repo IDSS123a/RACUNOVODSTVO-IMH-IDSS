@@ -192,13 +192,15 @@ export const InvoiceKindSchema = z.enum(['MONTHLY', 'ENROLMENT_FEES', 'INSTALMEN
 /** Unit of measure of a line (document `vNew`: JM). */
 export const LineUnitSchema = z.enum(['kom', 'srv']);
 
-export const InvoiceLineSchema = z.object({
-  /** A price-list item, or `OTHER` = a service outside the price list on a manual invoice (specs/manual-invoice). */
+export const InvoiceLineSchema = z
+  .object({
+  /** A price-list item, or `OTHER` = a service outside the price list (monthly or manual invoice). */
   itemCode: z.union([PriceItemCodeSchema, z.literal('OTHER')]),
   description: z.string().trim().min(1),
   childId: z.string().min(1),
-  enrolmentId: z.string().min(1),
-  program: ProgramCodeSchema,
+  /** Empty only on a manual invoice for a child not enrolled in the institution (Director, 2026-11-21). */
+  enrolmentId: z.string(),
+  program: z.union([ProgramCodeSchema, z.literal('')]),
   listAmount: fenings.nonnegative(),
   boardDecisionId: z.string().nullable(),
   amount: fenings.nonnegative(),
@@ -206,7 +208,10 @@ export const InvoiceLineSchema = z.object({
   quantity: z.number().int().min(1).max(999).optional(),
   /** Omitted = derived from the item code. */
   unit: LineUnitSchema.nullable().optional(),
-});
+  })
+  .refine((l) => l.itemCode === 'OTHER' || (l.enrolmentId !== '' && l.program !== ''), {
+    message: 'stavka cjenovnika mora imati upis',
+  });
 
 export const PlanItemRefSchema = z.object({ planId: z.string().min(1), sequence: z.number().int().min(1).max(12) });
 

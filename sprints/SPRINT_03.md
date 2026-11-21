@@ -108,6 +108,13 @@ Payments from any family member are booked against invoices, and the open balanc
   - the Director issued a trial credit note in the running app (C-13).
 - ✅ F1 accounting-complete invoice PDF (2026-11-21, DL-P012, `specs/invoice-pdf-complete/`), from the matrix of the HTML document. The Director checked it in the running app (C-13).
 - ✅ F2 manual invoice „Novi račun“ for services outside the price list (2026-11-21, DL-P013, `specs/manual-invoice/`, migration 013). The Director checked it in the running app (C-13); the check also fixed the invoice PDF: credit notes reduce UKUPNO ZA UPLATU, and payments are never printed.
+- ✅ One invoice per child with all its costs (2026-11-21, DL-P014, `specs/one-invoice-per-child/`). The Director checked it in the running app (C-13).
+  - The monthly preview adds unbilled one-time items; the operator ticks lines and adds services with a basis.
+  - „Račun za upis“ is removed; the manual invoice is only for children not enrolled.
+  - „Upis djece bez upisa“ enrols imported children at once.
+  - Toddlers / Preschoolers is one choice.
+- ✅ Edge-to-edge responsive layout and text templates for every free-text entry (2026-11-21, DL-P015). The Director checked it in the running app (C-13).
+- ⏳ F3 dashboard and audit-log viewer: the backend is done (`audit.rs`, `list_enrolment_overview`); the screens are next.
 
 ## Still open before Sprint 03 closes
 - ✅ Enrolment-fee invoice („Račun za upis“ on each enrolment): one invoice per child and school year (migration 007), separate lines.

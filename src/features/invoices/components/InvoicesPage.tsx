@@ -109,11 +109,11 @@ export function InvoicesPage(): React.JSX.Element {
             <TableRow>
               <TableHead>Broj</TableHead>
               <TableHead>Dijete</TableHead>
-              <TableHead>Kupac</TableHead>
+              <TableHead className="hidden md:table-cell">Kupac</TableHead>
               <TableHead>Izdat</TableHead>
-              <TableHead>Rok</TableHead>
+              <TableHead className="hidden lg:table-cell">Rok</TableHead>
               <TableHead className="text-right">Iznos</TableHead>
-              <TableHead className="text-right">Uplaćeno</TableHead>
+              <TableHead className="hidden text-right sm:table-cell">Uplaćeno</TableHead>
               <TableHead>Status</TableHead>
             </TableRow>
           </TableHeader>
@@ -134,13 +134,13 @@ export function InvoicesPage(): React.JSX.Element {
                     )}
                   </TableCell>
                   <TableCell>{invoice.childName}</TableCell>
-                  <TableCell>{invoice.buyerName}</TableCell>
-                  <TableCell>{formatDate(invoice.issueDate)}</TableCell>
-                  <TableCell>{formatDate(invoice.dueDate)}</TableCell>
+                  <TableCell className="hidden md:table-cell">{invoice.buyerName}</TableCell>
+                  <TableCell className="tabular-nums">{formatDate(invoice.issueDate)}</TableCell>
+                  <TableCell className="hidden tabular-nums lg:table-cell">{formatDate(invoice.dueDate)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatKM(invoice.total)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatKM(invoice.paid)}</TableCell>
+                  <TableCell className="hidden text-right tabular-nums sm:table-cell">{formatKM(invoice.paid)}</TableCell>
                   <TableCell>
-                    <Badge variant={status === 'PAID' ? 'default' : status === 'CANCELLED' ? 'secondary' : 'outline'}>{label}</Badge>
+                    <Badge className="whitespace-nowrap" variant={status === 'PAID' ? 'default' : status === 'CANCELLED' ? 'secondary' : 'outline'}>{label}</Badge>
                   </TableCell>
                 </TableRow>
               );

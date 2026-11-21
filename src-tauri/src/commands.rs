@@ -193,6 +193,27 @@ pub fn list_families(state: State<'_, AppStore>) -> AppResult<Vec<FamilySummary>
     store.read(families::list_families)
 }
 
+/// Enrolments of a school year without names, for the dashboard (F3, BR-29).
+#[tauri::command]
+pub fn list_enrolment_overview(state: State<'_, AppStore>, school_year: String) -> AppResult<Vec<families::EnrolmentOverview>> {
+    let store = state.get()?;
+    store.read(|c| families::enrolment_overview(c, &school_year))
+}
+
+/// The audit log, read-only (F3, BR-30). There is no command that changes or deletes an entry.
+#[tauri::command]
+pub fn list_audit_log(state: State<'_, AppStore>, filter: crate::audit::AuditFilter) -> AppResult<crate::audit::AuditPage> {
+    let store = state.get()?;
+    store.read(|c| crate::audit::list_audit(c, &filter))
+}
+
+/// One-time items already billed for a school year (one invoice per child: the monthly preview adds the rest).
+#[tauri::command]
+pub fn list_billed_one_time(state: State<'_, AppStore>, school_year: String) -> AppResult<Vec<crate::invoices::BilledOneTime>> {
+    let store = state.get()?;
+    store.read(|c| crate::invoices::billed_one_time(c, &school_year))
+}
+
 #[tauri::command]
 pub fn get_family(state: State<'_, AppStore>, family_id: String) -> AppResult<FamilyDetail> {
     let store = state.get()?;
@@ -225,6 +246,28 @@ pub fn save_enrolment(state: State<'_, AppStore>, enrolment: Enrolment) -> AppRe
     store.write(|tx| {
         families::save_enrolment(tx, &enrolment)?;
         repo::audit(tx, "UPSERT", "enrolment", &enrolment.id, &format!("{} {}", enrolment.program, enrolment.status))
+    })
+}
+
+/// „Upis uvezene djece“: the child's data (date of birth, residency) and its new enrolment for many children in ONE
+/// transaction — all are saved or none (one invoice per child needs an enrolment; the old workbook has none).
+#[tauri::command]
+pub fn save_enrolments_bulk(state: State<'_, AppStore>, items: Vec<(Child, Enrolment)>) -> AppResult<usize> {
+    let store = state.get()?;
+    if items.is_empty() {
+        return Err(AppError::Validation("nijedno dijete nije odabrano".into()));
+    }
+    store.write(|tx| {
+        for (child, enrolment) in &items {
+            if enrolment.child_id != child.id {
+                return Err(AppError::Validation("upis ne pripada djetetu".into()));
+            }
+            families::save_child(tx, child)?;
+            repo::audit(tx, "UPSERT", "child", &child.id, "bulk")?;
+            families::save_enrolment(tx, enrolment)?;
+            repo::audit(tx, "UPSERT", "enrolment", &enrolment.id, &format!("{} {} bulk", enrolment.program, enrolment.status))?;
+        }
+        Ok(items.len())
     })
 }
 

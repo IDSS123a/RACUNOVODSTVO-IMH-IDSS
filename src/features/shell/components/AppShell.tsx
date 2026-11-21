@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ClipboardCheckIcon, FileTextIcon, MonitorIcon, MoonIcon, SettingsIcon, SunIcon, TableIcon, UsersIcon } from 'lucide-react';
+import { ClipboardCheckIcon, FileTextIcon, MenuIcon, MonitorIcon, MoonIcon, SettingsIcon, SunIcon, TableIcon, UsersIcon, XIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -30,6 +30,7 @@ export function AppShell({ settings, onSettingsChanged }: { settings: Settings; 
   const [page, setPage] = useState<Page>('families');
   // Open findings of the legacy import stay visible in the menu until resolved (Director, Q4).
   const [openFindings, setOpenFindings] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
   const refreshFindings = useCallback(async (): Promise<void> => {
     const result = await importFindingsOpenCount();
     if (result.success) setOpenFindings(result.data);
@@ -39,8 +40,18 @@ export function AppShell({ settings, onSettingsChanged }: { settings: Settings; 
   }, [page, refreshFindings]);
 
   return (
-    <div className="grid min-h-screen grid-cols-[15rem_1fr]">
-      <aside className="flex flex-col border-r bg-sidebar text-sidebar-foreground">
+    // Edge to edge on every screen: a fixed sidebar from laptop width (lg), a top bar with a slide-in menu below it.
+    <div className="flex h-dvh flex-col lg:grid lg:grid-cols-[14rem_minmax(0,1fr)]">
+      <header className="flex items-center justify-between border-b bg-sidebar px-3 py-2 text-sidebar-foreground lg:hidden">
+        <p className="font-semibold tracking-tight">Fakturisanje</p>
+        <Button variant="ghost" size="icon" aria-label={menuOpen ? 'Zatvori meni' : 'Otvori meni'} aria-expanded={menuOpen} onClick={() => setMenuOpen((o) => !o)}>
+          {menuOpen ? <XIcon aria-hidden /> : <MenuIcon aria-hidden />}
+        </Button>
+      </header>
+      {menuOpen && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" aria-hidden onClick={() => setMenuOpen(false)} />}
+      <aside
+        className={`${menuOpen ? 'fixed inset-y-0 left-0 z-40 flex w-64 shadow-xl' : 'hidden'} flex-col overflow-y-auto border-r bg-sidebar text-sidebar-foreground lg:static lg:flex lg:w-auto lg:shadow-none`}
+      >
         <div className="grid gap-3 px-5 py-5">
           <p className="text-lg font-semibold tracking-tight">Fakturisanje</p>
           {/* Logos sit on a white plate so they stay legible in the dark theme. */}
@@ -60,7 +71,10 @@ export function AppShell({ settings, onSettingsChanged }: { settings: Settings; 
                 variant={active ? 'secondary' : 'ghost'}
                 className="justify-start"
                 aria-current={active ? 'page' : undefined}
-                onClick={() => setPage(item.id)}
+                onClick={() => {
+                  setPage(item.id);
+                  setMenuOpen(false);
+                }}
               >
                 <Icon aria-hidden /> {item.label}
               </Button>
@@ -71,7 +85,10 @@ export function AppShell({ settings, onSettingsChanged }: { settings: Settings; 
               variant={page === 'review' ? 'secondary' : 'ghost'}
               className="justify-start"
               aria-current={page === 'review' ? 'page' : undefined}
-              onClick={() => setPage('review')}
+              onClick={() => {
+                setPage('review');
+                setMenuOpen(false);
+              }}
             >
               <ClipboardCheckIcon aria-hidden /> Za provjeru
               {openFindings > 0 && <span className="ml-auto rounded-full bg-amber-500 px-2 text-xs font-semibold text-white tabular-nums">{openFindings}</span>}
@@ -86,7 +103,7 @@ export function AppShell({ settings, onSettingsChanged }: { settings: Settings; 
           </div>
         </div>
       </aside>
-      <main className="min-w-0 overflow-auto p-8">
+      <main className="min-h-0 min-w-0 flex-1 overflow-auto p-3 sm:p-4 lg:p-6">
         {page === 'invoices' && <InvoicesPage />}
         {page === 'families' && <FamiliesPage defaultYear={settings.activeSchoolYear as SchoolYear} />}
         {page === 'price-lists' && <PriceListPage initialYear={settings.activeSchoolYear as SchoolYear} />}

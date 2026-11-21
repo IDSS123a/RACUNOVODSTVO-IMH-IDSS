@@ -28,6 +28,22 @@ export function issueInvoices(drafts: InvoiceDraftPayload[]): Promise<Result<str
   return call('issue_invoices', z.array(z.string()), { drafts: z.array(InvoiceDraftSchema).parse(drafts) });
 }
 
+export const BilledOneTimeSchema = z.object({
+  /** Null for an imported invoice of the old workbook (no enrolment). */
+  enrolmentId: z.string().nullable(),
+  childId: z.string(),
+  entity: z.enum(['IMH', 'IDSS']),
+  itemCode: z.string(),
+  invoiceNumber: z.string(),
+  issueDate: z.string(),
+});
+export type BilledOneTime = z.infer<typeof BilledOneTimeSchema>;
+
+/** Enrolment fee, materials and deposit already on issued invoices of a school year (one invoice per child). */
+export function listBilledOneTime(schoolYear: SchoolYear): Promise<Result<BilledOneTime[]>> {
+  return call('list_billed_one_time', z.array(BilledOneTimeSchema), { schoolYear });
+}
+
 export function listInvoices(filter: { entity: LegalEntityCode | null; month: string | null }): Promise<Result<InvoiceSummary[]>> {
   return call('list_invoices', InvoiceSummariesSchema, { entity: filter.entity, month: filter.month });
 }
