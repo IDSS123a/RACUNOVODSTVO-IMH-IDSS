@@ -80,6 +80,15 @@
 - the DPAPI round trip works, and the raw key is never stored in clear;
 - restore with the recovery key works on another key store.
 
+**Amendment 1 (2026-11-21, forensic finding V1, approved by the Director):** the write order is now disk first, then memory.
+- `Store::write` encrypts and writes the snapshot of the open transaction BEFORE `COMMIT`.
+  - If the disk write fails (file locked by an antivirus, full disk), the transaction is rolled back. The operator's error message is then true: the invoice does not exist and its number is not used.
+  - Before this amendment, the commit came first. A failed disk write left the invoice and its number in memory, where they were written to disk by the next successful write.
+- The temp file is flushed with `sync_all` before the rename, so a power cut cannot leave an empty database file.
+- `Store::restore` writes the restored database first and saves a new key only afterwards. If saving the key fails, the previous database is written back.
+  - Before this amendment, the key was saved first, and a failed database write left a key file that no longer opened the database.
+- Verified by `a_failed_disk_write_rolls_the_change_back_in_memory` and `a_restore_that_cannot_write_the_database_keeps_the_old_key`. Both tests fail against the previous order and pass with the new one.
+
 ---
 
 ## DL-P005 — Price lists are data, versioned per school year

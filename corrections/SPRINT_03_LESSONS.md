@@ -51,3 +51,9 @@
 - **Fix:** the test now stores the findings and prints stored / linked / open counts; run with `LEGACY_XLSM`, `LEGACY_JSON_OUT`, `LEGACY_PLAN` pointing into a scratch folder that is deleted afterwards (M-15).
 - **Env gotcha:** the frontend targets ES2020 — `Object.hasOwn` does not type-check; use `Object.prototype.hasOwnProperty.call`.
 - **Lesson:** a new persistence step of the import belongs in the real-data end-to-end test the same day, not only in unit tests.
+
+## L-S3-09 — A negative test must never touch the working tree through git
+- **Trigger:** while proving that the new store tests fail against the old write order, I put `git stash push` into the same command as the test run. That silently reverted `store.rs` to the committed version in the middle of the work. It was restored at once with `git stash pop`, and nothing was lost.
+- **Fix:** the proof was redone without git. The file was copied to the scratch folder, the old order was applied, the tests were run and failed as expected, and the copy was put back. A hash check confirmed the restored file was identical.
+- **Lesson (M-23 spirit):** commands that change the working tree or git state (stash, checkout, reset) are never chained into test or inspection commands. A "run the new test against the old code" check uses a file copy plus a hash check, never git.
+- **Also:** `tauri dev` watches `src-tauri` and rebuilds and restarts the running app on every source change, including temporary ones. Stop it before experimenting with the Rust code.

@@ -6,6 +6,7 @@
 //! children or parents ever touches the disk in clear text.
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -114,13 +115,22 @@ impl Store {
         f(&inner.conn)
     }
 
-    /// Run a write in one transaction, then persist the encrypted snapshot.
+    /// Run a write in one transaction. The encrypted snapshot, which includes the changes of
+    /// the open transaction, is written to disk BEFORE the commit (DL-P004 amendment, 2026-11-21).
+    /// If the disk write fails, the transaction is rolled back: memory and disk stay equal, so an
+    /// invoice the operator was told failed does not exist and its number is not used.
     pub fn write<T>(&self, f: impl FnOnce(&Transaction) -> AppResult<T>) -> AppResult<T> {
-        let mut inner = self.lock()?;
+        let mut guard = self.lock()?;
+        let inner = &mut *guard;
         let tx = inner.conn.transaction()?;
-        let result = f(&tx)?;
-        tx.commit()?;
-        persist(&inner)?;
+        let result = f(&tx)?; // an error drops `tx`, which rolls back
+        write_snapshot(&tx, &inner.key, &inner.db_path)?; // a failed write drops `tx` as well
+        if let Err(error) = tx.commit() {
+            // Practically impossible for an in-memory database; if it happens the disk is ahead of
+            // memory, so write the rolled-back state back to keep the two equal.
+            let _ = write_snapshot(&inner.conn, &inner.key, &inner.db_path);
+            return Err(error.into());
+        }
         Ok(result)
     }
 
@@ -169,12 +179,18 @@ impl Store {
         if inner.db_path.exists() {
             fs::copy(&inner.db_path, inner.db_path.with_extension("before-restore"))?;
         }
+        // The database file and the key file must always match. Write the restored database first;
+        // only then replace the key, and if that fails put the previous database back (DL-P004 amendment).
+        let target_key = new_key.unwrap_or(inner.key);
+        write_snapshot(&conn, &target_key, &inner.db_path)?;
         if let Some(key) = new_key {
-            keystore::save(&inner.key_path, &key)?;
+            if let Err(error) = keystore::save(&inner.key_path, &key) {
+                let _ = write_snapshot(&inner.conn, &inner.key, &inner.db_path);
+                return Err(error);
+            }
             inner.key = key;
         }
         inner.conn = conn;
-        persist(&inner)?;
         Ok(())
     }
 }
@@ -190,14 +206,25 @@ fn load_snapshot(key: &DataKey, file: &[u8]) -> AppResult<Connection> {
 
 /// Serialise, encrypt and atomically write the database; keep the previous file as `.prev`.
 fn persist(inner: &Inner) -> AppResult<()> {
-    let plain = inner.conn.serialize(MAIN_DB)?;
-    let file = crypto::encrypt(&inner.key, &plain)?;
-    let tmp = inner.db_path.with_extension("tmp");
-    fs::write(&tmp, &file)?;
-    if inner.db_path.exists() {
-        fs::copy(&inner.db_path, inner.db_path.with_extension("prev"))?;
+    write_snapshot(&inner.conn, &inner.key, &inner.db_path)
+}
+
+/// Serialise `conn` (including the changes of an open transaction on it), encrypt, and replace the
+/// file atomically: write a temp file, flush it to the disk (`sync_all`, so a power cut cannot leave
+/// an empty file), keep the previous file as `.prev`, then rename over the database file.
+fn write_snapshot(conn: &Connection, key: &DataKey, db_path: &Path) -> AppResult<()> {
+    let plain = conn.serialize(MAIN_DB)?;
+    let file = crypto::encrypt(key, &plain)?;
+    let tmp = db_path.with_extension("tmp");
+    {
+        let mut out = fs::File::create(&tmp)?;
+        out.write_all(&file)?;
+        out.sync_all()?;
     }
-    fs::rename(&tmp, &inner.db_path)?;
+    if db_path.exists() {
+        fs::copy(db_path, db_path.with_extension("prev"))?;
+    }
+    fs::rename(&tmp, db_path)?;
     Ok(())
 }
 
@@ -238,6 +265,105 @@ mod tests {
         assert!(Connection::open(dir.path().join(DB_FILE))
             .and_then(|c| c.query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get::<_, i64>(0)))
             .is_err());
+    }
+
+    #[test]
+    fn a_failed_disk_write_rolls_the_change_back_in_memory() {
+        let dir = tempfile::tempdir().unwrap();
+        let count = |store: &Store| -> i64 {
+            store.read(|c| Ok(c.query_row("SELECT count(*) FROM families", [], |r| r.get(0))?)).unwrap()
+        };
+        let insert = |store: &Store, id: &str| {
+            store.write(|tx| {
+                tx.execute("INSERT INTO families(id, display_name, created_at) VALUES (?1, 'P', 'now')", [id])?;
+                tx.execute(
+                    "INSERT INTO invoice_sequences(entity, year, last_number) VALUES ('IMH', 2026, 1)
+                     ON CONFLICT(entity, year) DO UPDATE SET last_number = last_number + 1",
+                    [],
+                )?;
+                Ok(())
+            })
+        };
+        let last_number = |store: &Store| -> i64 {
+            store.read(|c| Ok(c.query_row("SELECT last_number FROM invoice_sequences", [], |r| r.get(0))?)).unwrap()
+        };
+        let store = Store::open(dir.path()).unwrap();
+        insert(&store, "f1").unwrap();
+        let before = fs::read(dir.path().join(DB_FILE)).unwrap();
+
+        // A directory where the temp file must be written makes every disk write fail.
+        let blocker = dir.path().join(DB_FILE).with_extension("tmp");
+        fs::create_dir(&blocker).unwrap();
+        assert!(matches!(insert(&store, "f2"), Err(AppError::Io(_))));
+        assert_eq!(count(&store), 1, "the failed change is not left in memory");
+        assert_eq!(last_number(&store), 1, "the invoice number of the failed write is not used");
+        assert_eq!(fs::read(dir.path().join(DB_FILE)).unwrap(), before, "the file on disk is unchanged");
+
+        fs::remove_dir(&blocker).unwrap();
+        insert(&store, "f3").unwrap();
+        assert_eq!(last_number(&store), 2, "numbering continues without a gap");
+        drop(store);
+        let reopened = Store::open(dir.path()).unwrap();
+        assert_eq!(count(&reopened), 2, "the snapshot written before the commit holds the change");
+        assert_eq!(last_number(&reopened), 2);
+    }
+
+    #[test]
+    fn a_restore_that_cannot_save_the_new_key_leaves_a_database_that_still_opens() {
+        let source = tempfile::tempdir().unwrap();
+        let from = Store::open(source.path()).unwrap();
+        from.write(|tx| {
+            tx.execute("INSERT INTO families(id, display_name, created_at) VALUES ('s1','Iz kopije','now')", [])?;
+            Ok(())
+        })
+        .unwrap();
+        let backup = from.encrypted_snapshot().unwrap();
+        let recovery = from.recovery_key().unwrap();
+
+        let target = tempfile::tempdir().unwrap();
+        let to = Store::open(target.path()).unwrap();
+        to.write(|tx| {
+            tx.execute("INSERT INTO families(id, display_name, created_at) VALUES ('t1','Postojeća','now')", [])?;
+            Ok(())
+        })
+        .unwrap();
+        // Saving the new key fails (its temp file path is a directory).
+        fs::create_dir(target.path().join(KEY_FILE).with_extension("tmp")).unwrap();
+        assert!(to.restore(&backup, Some(&recovery)).is_err());
+        let names = |store: &Store| -> String {
+            store.read(|c| Ok(c.query_row("SELECT group_concat(id) FROM families", [], |r| r.get(0))?)).unwrap()
+        };
+        assert_eq!(names(&to), "t1", "memory keeps the previous database");
+        drop(to);
+        let reopened = Store::open(target.path()).expect("database file and key file still match");
+        assert_eq!(names(&reopened), "t1");
+    }
+
+    #[test]
+    fn a_restore_that_cannot_write_the_database_keeps_the_old_key() {
+        // Before 2026-11-21 the new key was saved first; a failed database write then left a key
+        // file that no longer matched the database on disk, which could not be opened again.
+        let source = tempfile::tempdir().unwrap();
+        let from = Store::open(source.path()).unwrap();
+        let backup = from.encrypted_snapshot().unwrap();
+        let recovery = from.recovery_key().unwrap();
+
+        let target = tempfile::tempdir().unwrap();
+        let to = Store::open(target.path()).unwrap();
+        to.write(|tx| {
+            tx.execute("INSERT INTO families(id, display_name, created_at) VALUES ('t1','Postojeća','now')", [])?;
+            Ok(())
+        })
+        .unwrap();
+        let key_before = fs::read(target.path().join(KEY_FILE)).unwrap();
+        fs::create_dir(target.path().join(DB_FILE).with_extension("tmp")).unwrap();
+        assert!(to.restore(&backup, Some(&recovery)).is_err());
+        assert_eq!(fs::read(target.path().join(KEY_FILE)).unwrap(), key_before, "the key file is untouched");
+        drop(to);
+        fs::remove_dir(target.path().join(DB_FILE).with_extension("tmp")).unwrap(); // the disk works again
+        let reopened = Store::open(target.path()).expect("database file and key file still match");
+        let count: i64 = reopened.read(|c| Ok(c.query_row("SELECT count(*) FROM families", [], |r| r.get(0))?)).unwrap();
+        assert_eq!(count, 1);
     }
 
     #[test]
