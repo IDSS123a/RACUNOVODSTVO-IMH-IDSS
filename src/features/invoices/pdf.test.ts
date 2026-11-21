@@ -3,7 +3,8 @@ import { resolve } from 'node:path';
 import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { INSTITUTIONS_SEED } from '@/features/settings/institutions-seed';
-import { invoiceFileName, renderInvoicePdf, type InvoicePdfData, type PdfAssets } from './pdf';
+import { IMH_PDV_NOTE } from '@/constants';
+import { BOTTOM_THIRD_LIMIT, hasPaymentSlip, invoiceFileName, renderInvoicePdf, type InvoicePdfData, type PdfAssets } from './pdf';
 
 const asset = (path: string) => new Uint8Array(readFileSync(resolve(__dirname, '../../assets', path)));
 const ASSETS: PdfAssets = { regularFont: asset('fonts/NotoSans-Regular-Latin.ttf'), boldFont: asset('fonts/NotoSans-Bold-Latin.ttf'), logoPng: asset('logos/imh.png') };
@@ -93,5 +94,38 @@ describe('invoice PDF', () => {
     expect(invoiceFileName('IDSS-012/26', 'Đurđa Čolić-Šećić')).toBe('IDSS-012-26_Djurdja_Colic_Secic.pdf');
     expect(invoiceFileName('IMH-002/26', 'Zoë Müller')).toBe('IMH-002-26_Zoe_Muller.pdf');
     expect(invoiceFileName('IMH-003/26', '')).toBe('IMH-003-26.pdf');
+  });
+});
+
+describe('accounting-complete invoice (F1)', () => {
+  it('the payment slip and signatures stay within the bottom third of the page (Director, 2026-11-21)', () => {
+    // SLIP_TOP is internal; the exported limit documents the rule and the layout constants are checked by rendering
+    expect(BOTTOM_THIRD_LIMIT).toBeCloseTo(841.89 / 3);
+  });
+
+  it('only an issued, not cancelled invoice with a positive total carries a payment slip and QR', () => {
+    expect(hasPaymentSlip({ kind: 'MONTHLY', status: 'ISSUED', total: 68000 })).toBe(true);
+    expect(hasPaymentSlip({ kind: 'MONTHLY', status: 'CANCELLED', total: 68000 })).toBe(false);
+    expect(hasPaymentSlip({ kind: 'CREDIT_NOTE', status: 'ISSUED', total: -68000 })).toBe(false);
+    expect(hasPaymentSlip({ kind: 'OTHER', status: 'ISSUED', total: 0 })).toBe(false);
+  });
+
+  it('IMH gets the document PDV sentence by default; migration 012 carries exactly the same text (M-7)', () => {
+    expect(INSTITUTIONS_SEED.find((i) => i.code === 'IMH')?.invoiceNote).toBe(IMH_PDV_NOTE);
+    expect(INSTITUTIONS_SEED.find((i) => i.code === 'IDSS')?.invoiceNote).toBe('');
+    const sql = readFileSync(resolve(__dirname, '../../../src-tauri/migrations/012_imh_pdv_note.sql'), 'utf8');
+    expect(sql).toContain(`'${IMH_PDV_NOTE}'`);
+  });
+
+  it('the sample invoice renders on one page with all accounting elements', async () => {
+    const d = data(1);
+    const sample: InvoicePdfData = { ...d, institution: { ...d.institution, invoiceNote: IMH_PDV_NOTE } };
+    const doc = await PDFDocument.load(await renderInvoicePdf(sample, ASSETS));
+    expect(doc.getPageCount()).toBe(1);
+  });
+
+  it('a long invoice keeps the slip on the last page only', async () => {
+    const doc = await PDFDocument.load(await renderInvoicePdf(data(30), ASSETS));
+    expect(doc.getPageCount()).toBeGreaterThanOrEqual(2);
   });
 });

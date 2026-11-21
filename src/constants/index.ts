@@ -21,6 +21,19 @@ export const SCHOOL_YEAR_START_MONTH = 9;
 /** Day of month on which instalments are due (both Pravilnici). */
 export const INSTALMENT_DUE_DAY = 5;
 
+/** Days to pay when an invoice is issued after the due day (document `dueFor`; sample invoice 14.10 → 19.10). */
+export const DUE_DAYS_AFTER_ISSUE = 5;
+
+/** Printed on every invoice: place of issue and method of payment (document template, F1 / SPEC C3). */
+export const ISSUE_PLACE = 'Sarajevo';
+export const PAYMENT_METHOD = 'Virman / Nalog za plaćanje';
+
+/** Printed under the PDV note on every invoice (document template, F1 / SPEC C6). */
+export const INVOICE_VALIDITY_NOTE = 'Dokument je izrađen na računaru, i punovažan je bez potpisa i pečata.';
+
+/** Default PDV exemption sentence of P.P.U. IMH (document constant `NOTE`, F1 / SPEC C6). */
+export const IMH_PDV_NOTE = 'PPU nije obveznik PDV-a, u skladu sa članom 24. stav 1. tačka 4. Zakona o PDV.';
+
 /** Maximum IDSS tuition instalments per year (IDSS Pravilnik čl. 2). */
 export const IDSS_MAX_TUITION_INSTALMENTS = 12;
 

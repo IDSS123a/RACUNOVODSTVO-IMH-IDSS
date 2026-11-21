@@ -18,6 +18,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (9, include_str!("../migrations/009_legacy_import_findings.sql")),
     (10, include_str!("../migrations/010_credit_notes.sql")),
     (11, include_str!("../migrations/011_credit_note_line_position.sql")),
+    (12, include_str!("../migrations/012_imh_pdv_note.sql")),
 ];
 
 /// Latest schema version this build understands.
@@ -270,6 +271,40 @@ mod tests {
         assert!(has_column(&conn));
         assert_eq!(current_version(&conn).unwrap(), latest_version());
         assert!(crate::invoices::get_invoice(&conn, "i").unwrap().is_some(), "the invoice detail works after 011");
+    }
+
+    /// F1 / SPEC C6: 012 gives IMH the document's PDV sentence only while its note is empty; IDSS and any note an
+    /// operator entered are never touched.
+    #[test]
+    fn migration_012_sets_the_imh_pdv_note_only_when_empty() {
+        let prepare = |imh_note: &str| -> Connection {
+            let mut conn = Connection::open_in_memory().unwrap();
+            for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v <= 11) {
+                let tx = conn.transaction().unwrap();
+                tx.execute_batch(sql).unwrap();
+                tx.pragma_update(None, "user_version", version).unwrap();
+                tx.commit().unwrap();
+            }
+            for code in ["IMH", "IDSS"] {
+                conn.execute(
+                    "INSERT INTO legal_entities(code, full_name, short_name, address, tax_id, registration_number, bank_name,
+                                                bank_account, iban, swift, updated_at, invoice_note)
+                     VALUES (?1, 'F', 'S', 'A', 'T', 'R', 'B', 'BA', 'I', 'S', 'x', ?2)",
+                    rusqlite::params![code, if code == "IMH" { imh_note } else { "" }],
+                )
+                .unwrap();
+            }
+            apply(&mut conn).unwrap();
+            conn
+        };
+        let note = |conn: &Connection, code: &str| -> String {
+            conn.query_row("SELECT invoice_note FROM legal_entities WHERE code = ?1", [code], |r| r.get(0)).unwrap()
+        };
+        let empty = prepare("  ");
+        assert_eq!(note(&empty, "IMH"), "PPU nije obveznik PDV-a, u skladu sa članom 24. stav 1. tačka 4. Zakona o PDV.");
+        assert_eq!(note(&empty, "IDSS"), "", "IDSS waits for the accountant");
+        let entered = prepare("Tekst koji je unijela operaterka.");
+        assert_eq!(note(&entered, "IMH"), "Tekst koji je unijela operaterka.", "an entered note is never overwritten");
     }
 
     #[test]

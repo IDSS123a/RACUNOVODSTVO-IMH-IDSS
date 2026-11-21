@@ -42,7 +42,15 @@ describe('calendar helpers', () => {
     expect(schoolYearOfMonth('2026-10')).toBe('2026/2027');
     expect(schoolYearOfMonth('2027-08')).toBe('2026/2027');
     expect(dueDateForMonth('2026-10', '2026-10-01')).toBe('2026-10-05');
-    expect(dueDateForMonth('2026-10', '2026-10-20')).toBe('2026-10-20');
+    expect(dueDateForMonth('2026-10', '2026-10-05')).toBe('2026-10-05');
+    // issued after the 5th → issue date + 5 days (document `dueFor`; sample invoice 14.10 → 19.10)
+    expect(dueDateForMonth('2026-10', '2026-10-14')).toBe('2026-10-19');
+    expect(dueDateForMonth('2026-10', '2026-10-20')).toBe('2026-10-25');
+    // month-end and leap-year boundaries (FEATURE_LIFECYCLE Step 5)
+    expect(dueDateForMonth('2026-10', '2026-10-29')).toBe('2026-11-03');
+    expect(dueDateForMonth('2026-12', '2026-12-30')).toBe('2027-01-04');
+    expect(dueDateForMonth('2027-02', '2027-02-26')).toBe('2027-03-03');
+    expect(dueDateForMonth('2028-02', '2028-02-26')).toBe('2028-03-02');
   });
 });
 

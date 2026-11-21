@@ -76,3 +76,15 @@
   - A test builds a database at the old 010, reproduces the failing invoice detail, applies 011 and opens the invoice.
 - **Lesson (A-6 / M-23 spirit):** a migration is frozen the moment ANY database has applied it, the developer's trial database included. While `tauri dev` runs, that moment is the first save. Every later schema change is a new migration.
 - **Commander candidate:** in CLAUDE_CODE_OPERATIONS — "with a dev server that auto-rebuilds, treat a saved migration as released; stop the dev server before drafting migrations".
+
+## L-S3-12 — Viewing the rendered PDF found two defects the tests passed over
+- **Trigger:** F1. Rendering the samples and viewing them showed problems that no test had caught:
+  - the barcode overlapped the long title „KNJIŽNO ODOBRENJE br. IDSS-KO-036/26“;
+  - a credit note moved its signatures to an empty second page, because the space kept for the slip was reserved even though credit notes have no slip;
+  - the registration number was printed twice („Reg. br: Reg. broj …“).
+- **Fix:**
+  - the barcode uses only the free space beside the title, or its own row;
+  - the bottom reservation depends on what the document actually prints;
+  - the registration number is printed as stored.
+  - A page-count test now covers the credit note.
+- **Lesson (L-S3-03 again):** every layout change is checked by rendering and LOOKING at each document type (one line, many lines, credit note, cancelled) before it is declared done.

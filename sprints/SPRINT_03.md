@@ -106,6 +106,7 @@ Payments from any family member are booked against invoices, and the open balanc
 - ✅ Storno (2026-11-21, DL-P011, `specs/storno-credit-notes/`, Sprint 04 scope done early):
   - credit notes, payment reversal, family credit and linking the legacy KO;
   - the Director issued a trial credit note in the running app (C-13).
+- ✅ F1 accounting-complete invoice PDF (2026-11-21, DL-P012, `specs/invoice-pdf-complete/`), from the matrix of the HTML document. ⏳ Director check in the running app.
 
 ## Still open before Sprint 03 closes
 - ✅ Enrolment-fee invoice („Račun za upis“ on each enrolment): one invoice per child and school year (migration 007), separate lines.
