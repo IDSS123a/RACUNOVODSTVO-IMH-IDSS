@@ -17,6 +17,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (8, include_str!("../migrations/008_legacy_import.sql")),
     (9, include_str!("../migrations/009_legacy_import_findings.sql")),
     (10, include_str!("../migrations/010_credit_notes.sql")),
+    (11, include_str!("../migrations/011_credit_note_line_position.sql")),
 ];
 
 /// Latest schema version this build understands.
@@ -236,6 +237,39 @@ mod tests {
         assert!(conn
             .execute("INSERT INTO credit_movements(id, from_invoice_id, amount, moved_on, note, created_at) VALUES ('m', 'a', 0, '2026-11-02', 'n', 'x')", [])
             .is_err(), "a movement moves money");
+    }
+
+    /// L-S3-11: a database that applied 010 before the credit-note line position was split into 011
+    /// (the trial database on the developer PC) gets the column from 011, and the invoice detail works.
+    #[test]
+    fn a_database_at_010_gets_the_credit_note_line_position_from_011() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v <= 10) {
+            let tx = conn.transaction().unwrap();
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", version).unwrap();
+            tx.commit().unwrap();
+        }
+        let has_column = |conn: &Connection| -> bool {
+            conn.query_row("SELECT count(*) FROM pragma_table_info('invoice_lines') WHERE name = 'credits_position'", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .unwrap()
+                == 1
+        };
+        assert!(!has_column(&conn), "the state of the trial database before the fix");
+        conn.execute_batch(
+            "INSERT INTO families(id, display_name, created_at) VALUES ('f', 'T', 'x');
+             INSERT INTO invoices(id, number, entity, kind, family_id, buyer_name, issue_date, due_date, period_from, period_to,
+                                  total_fenings, status, created_at)
+               VALUES ('i', 'IMH-001/26', 'IMH', 'OTHER', 'f', 'B', '2026-10-01', '2026-10-05', '2026-10-01', '2026-10-31', 100, 'ISSUED', 'x');",
+        )
+        .unwrap();
+        assert!(crate::invoices::get_invoice(&conn, "i").is_err(), "the invoice detail failed exactly like on the trial database");
+        apply(&mut conn).unwrap();
+        assert!(has_column(&conn));
+        assert_eq!(current_version(&conn).unwrap(), latest_version());
+        assert!(crate::invoices::get_invoice(&conn, "i").unwrap().is_some(), "the invoice detail works after 011");
     }
 
     #[test]

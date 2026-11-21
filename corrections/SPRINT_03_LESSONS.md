@@ -62,3 +62,17 @@
 - **Trigger:** `/^KO-?(\d+)\/(\d{2})$/` became `/^KO-?(d+)/(d{2})$/` when a Node script in a bash heredoc inserted it. This is the third time escapes were corrupted in this sprint (L-S3-07: no-break space; the `dijete:` regex).
 - **Fix:** the line was corrected with the file-edit tool; tsc caught it at once.
 - **Lesson (E-17 recurrence):** code containing a regex or any backslash is inserted ONLY with the file-edit / file-write tools, never through a shell heredoc or a `node -e` string, even when the surrounding change is scripted.
+
+## L-S3-11 — A migration was edited after the running dev app had applied it
+- **Trigger:** Director (2026-11-21), screenshot: opening any invoice showed „Greška u bazi podataka“.
+- **Cause:**
+  - `tauri dev` watches `src-tauri` and rebuilt and restarted the app as soon as migration 010 was first written, so the trial database applied that first version and moved to version 10.
+  - I then added `invoice_lines.credits_position` **to the same migration 010**.
+  - The trial database never ran the addition, and the invoice detail query, which reads the column, failed.
+  - Unit tests could not see it, because they always start from an empty database.
+- **Fix:**
+  - 010 is restored to exactly the content the trial database applied.
+  - The column moved to a new migration 011, so fresh and existing databases both get it once.
+  - A test builds a database at the old 010, reproduces the failing invoice detail, applies 011 and opens the invoice.
+- **Lesson (A-6 / M-23 spirit):** a migration is frozen the moment ANY database has applied it, the developer's trial database included. While `tauri dev` runs, that moment is the first save. Every later schema change is a new migration.
+- **Commander candidate:** in CLAUDE_CODE_OPERATIONS — "with a dev server that auto-rebuilds, treat a saved migration as released; stop the dev server before drafting migrations".

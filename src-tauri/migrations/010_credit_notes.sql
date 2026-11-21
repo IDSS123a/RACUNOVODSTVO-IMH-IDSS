@@ -47,10 +47,6 @@ CREATE UNIQUE INDEX ux_invoices_monthly_child ON invoices(child_id, entity, peri
 CREATE UNIQUE INDEX ux_invoices_enrolment_fees ON invoices(child_id, entity, period_from)
   WHERE kind = 'ENROLMENT_FEES' AND status = 'ISSUED';
 
--- A credit-note line names the line of the original invoice it credits (position), so the remaining
--- creditable amount of every original line is known (S2: never more than the invoice).
-ALTER TABLE invoice_lines ADD COLUMN credits_position INTEGER CHECK (credits_position IS NULL OR credits_position >= 1);
-
 -- 2. Credit-note numbering (S1): own series per entity and calendar year, e.g. IDSS-KO-036/26.
 CREATE TABLE credit_note_sequences (
   entity      TEXT NOT NULL CHECK (entity IN ('IMH', 'IDSS')),
