@@ -30,3 +30,17 @@
 - **Fix:** later queries printed only shapes, counts and masked values; temporary dumps were written to the scratchpad and deleted right after use; the staged diff was scanned for the names before committing.
 - **Lesson (M-15):** when a file is known to hold personal data, the *first* query must already mask values (length + first letters) and print aggregates only. "Most common values" of a name column is personal data.
 - **Commander candidate:** add to M-15 — "data profiling prints shapes and counts, never raw values of person columns".
+
+## L-S3-06 — Legacy import merged two different invoices that share a number
+- **Trigger:** forensic review (2026-11-21). The DB sheet rows were grouped by entity + number across the whole sheet, so a number reused for a different buyer further down was merged into the first invoice, billed to the first buyer and booked as fully paid, with no warning. The real workbook has two such numbers (IDSS 056/26, IDSS 363/26; 1.727,53 KM attributed to the wrong families).
+- **Fix:** an invoice is a block of ADJACENT rows with the same number. A later block with the same number is absorbed only when it is an empty block of the same buyer and child; otherwise it is isolated (not imported, not renumbered) and listed in the preview with its Excel rows and amount. An amount typed as text is parsed (bs-BA or plain); an unreadable amount stops the import instead of becoming 0 KM.
+- **Lesson:** a "key" in a legacy spreadsheet is a claim, not a guarantee. Before grouping by it, count how often it repeats in non-adjacent rows of the real file, and decide the duplicate rule with the Director. The previous HTML app already had this rule (isolate and report); replacement parity (L-S3-04) must cover data-integrity rules, not only visible features.
+- **Commander candidate:** add to the import checklist — "measure key uniqueness on the real source before choosing a grouping key".
+
+## L-S3-07 — The import resolved inconsistencies silently by defaulting
+- **Trigger:** Director (2026-11-21): on go-live day every invoice is imported; the import must recognise and categorise every inconsistency precisely so it can be resolved afterwards.
+- **Finding:** besides merging reused numbers (L-S3-06), the import silently replaced missing billing periods (16 invoices) and missing due dates (9) by the invoice date, booked invoices with „plaćeno“ on only some lines as fully paid (18), and rounded amounts with more than two decimals (3) — none of it visible.
+- **Fix:** `diagnostics.ts` — 31 categories with a Director-confirmed severity (BLOCK / ISOLATE / REVIEW / INFO); every default, skip, isolation or rounding is exactly one finding; partly flagged invoices get a payment of the flagged lines (Q1); Excel report for the accountant (Q3). Spec: `specs/legacy-import-diagnostics/`.
+- **Lesson:** a *default* is a decision. In an import of accounting data, every value the code fills in on its own must be reported like an error, or the books and the source silently diverge.
+- **Env gotcha:** the agent's file-writing tool turned `\uXXXX` escape sequences into the literal characters (a no-break space inside a regex, a control-character range). Avoid `\u` escapes in source written by the agent; compare character codes instead, and let ESLint (no-irregular-whitespace) catch what slips through.
+- **Commander candidate:** in the import checklist — "list every default the importer applies and report each one as a finding".
