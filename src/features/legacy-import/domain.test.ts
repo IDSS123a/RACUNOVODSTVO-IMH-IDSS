@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildImportPlan, itemCodeOf, PAYMENT_NOTE, sequenceOf, type Cell, type ExistingKeys, type LegacyWorkbook } from './domain';
+import { buildImportPlan, decimalOf, itemCodeOf, PAYMENT_NOTE, sequenceOf, type Cell, type ExistingKeys, type LegacyWorkbook } from './domain';
 
 // Fictional data only (M-15).
 const T = (v: string): Cell => ({ t: 'Text', v });
@@ -84,9 +84,12 @@ describe('legacy import plan', () => {
     expect(byNumber.get('IDSS 001/23')?.issueDate).toBe('2023-01-16');
   });
 
-  it('paid flag → one payment of the full amount on the due date, noted as from Excel', () => {
+  it('paid flag on some lines only → payment of the flagged lines on the due date, marked for review (Director, Q1)', () => {
     const paid = plan.invoices.find((i) => i.number === 'IMH 895/26')?.payment;
-    expect(paid).toMatchObject({ paidOn: '2026-10-05', amount: 91000, payerName: 'Otac Prvi', note: PAYMENT_NOTE });
+    expect(paid).toMatchObject({ paidOn: '2026-10-05', amount: 71000, payerName: 'Otac Prvi', note: PAYMENT_NOTE });
+    expect(report.findings.filter((f) => f.category === 'PAID_PARTIALLY_FLAGGED')).toEqual([
+      expect.objectContaining({ severity: 'REVIEW', entity: 'IMH', number: '895/26', amount: 71000 }),
+    ]);
     expect(plan.invoices.find((i) => i.number === 'IMH 896-B/26')?.payment).toBeNull();
   });
 
@@ -117,8 +120,8 @@ describe('legacy import plan', () => {
   });
 
   it('reports problems instead of skipping silently', () => {
-    expect(report.warnings.some((w) => w.includes('neispravan rok') && w.includes('568/26'))).toBe(true);
-    expect(report.warnings.some((w) => w.includes('897/26') && w.includes('nema kupca'))).toBe(true);
+    expect(report.findings.some((f) => f.category === 'DUE_DATE_INVALID' && f.number === '568/26' && f.reason.includes('nije stvaran datum'))).toBe(true);
+    expect(report.findings.some((f) => f.category === 'NO_BUYER' && f.number === '897/26' && f.severity === 'ISOLATE')).toBe(true);
     expect(report.byEntity.IMH).toMatchObject({ invoices: 2, paid: 1 });
     expect(report.byEntity.IDSS).toMatchObject({ invoices: 3, creditNotes: 1 });
   });
@@ -146,5 +149,76 @@ describe('legacy import plan', () => {
     const db = book.db.map((row) => [...row]);
     db[7] = HEADER.map((c, i) => (i === 19 ? T('nešto drugo') : c));
     expect(() => buildImportPlan({ ...book, db }, NONE, ids())).toThrow(/struktura/);
+  });
+});
+
+describe('legacy import integrity (forensic 2026-11-21)', () => {
+  const book = (rows: Cell[][]): LegacyWorkbook => ({ fileName: 'dup.xlsm', setting: [[T('r.br.')]], db: [HEADER, ...rows] });
+  const PRVI = { father: 'Otac Prvi', child: 'Dijete Prvo' };
+  const DRUGI = { father: 'Otac Drugi', child: 'Dijete Drugo' };
+
+  it('the same number in a separate block for another buyer is isolated, never merged or marked paid', () => {
+    const { plan, report } = buildImportPlan(
+      book([
+        line('IDSS', '363/26', { ...PRVI, desc: 'Školarina jul', price: 919.19, paid: true }),
+        line('IDSS', '100/26', { ...PRVI, desc: 'Školarina jul', price: 500 }),
+        line('IDSS', '363/26', { ...DRUGI, desc: 'Školarina avgust', price: 808.34 }),
+      ]),
+      NONE,
+      ids(),
+    );
+    const kept = plan.invoices.find((i) => i.number === 'IDSS 363/26');
+    expect(kept).toMatchObject({ buyerName: 'Otac Prvi', total: 91919 });
+    expect(kept?.lines).toHaveLength(1);
+    expect(kept?.payment?.amount).toBe(91919);
+    expect(plan.invoices.filter((i) => i.number === 'IDSS 363/26')).toHaveLength(1);
+    expect(report.isolated).toEqual([
+      { entity: 'IDSS', number: '363/26', excelRows: 'DB 4', buyerName: 'Otac Drugi', childName: 'Dijete Drugo', total: 80834, reason: 'Broj ponovljen - drugi kupac' },
+    ]);
+    expect(report.findings.filter((f) => f.category === 'NUMBER_REUSED_OTHER_PARTY')).toEqual([
+      expect.objectContaining({ severity: 'ISOLATE', entity: 'IDSS', number: '363/26', excelRows: 'DB 4', amount: 80834 }),
+    ]);
+    expect(JSON.stringify(report.findings)).not.toContain('Otac'); // no personal data in findings (BR-22)
+  });
+
+  it('a second block of the same buyer with money is isolated too; an empty block of the same buyer is absorbed', () => {
+    const { plan, report } = buildImportPlan(
+      book([
+        line('IMH', '010/26', { ...PRVI, desc: 'Školarina jul', price: 710 }),
+        line('IMH', '011/26', { ...DRUGI, desc: 'Školarina jul', price: 710 }),
+        line('IMH', '010/26', { ...PRVI }), // empty template row of 010/26, separated by sorting
+        line('IMH', '012/26', { ...DRUGI, desc: 'Školarina jul', price: 710 }),
+        line('IMH', '010/26', { ...PRVI, desc: 'Školarina avgust', price: 710 }),
+      ]),
+      NONE,
+      ids(),
+    );
+    expect(plan.invoices.find((i) => i.number === 'IMH 010/26')?.total).toBe(71000);
+    expect(report.isolated.map((i) => [i.number, i.total, i.reason])).toEqual([['010/26', 71000, 'Broj ponovljen - isti kupac']]);
+  });
+
+  it('an empty first block does not hide the real invoice that follows later', () => {
+    const { plan, report } = buildImportPlan(
+      book([line('IMH', '020/26', { ...PRVI }), line('IMH', '021/26', { ...DRUGI, desc: 'Školarina', price: 570 }), line('IMH', '020/26', { ...PRVI, desc: 'Školarina', price: 750 })]),
+      NONE,
+      ids(),
+    );
+    expect(plan.invoices.find((i) => i.number === 'IMH 020/26')?.total).toBe(75000);
+    expect(report.isolated).toEqual([]);
+  });
+
+  it('amounts typed as text are read exactly; an unreadable amount stops the import instead of becoming 0 KM', () => {
+    const withAmount = (amount: Cell, number: string): Cell[] => line('IMH', number, { ...PRVI, desc: 'Školarina', price: 1 }).map((c, i) => (i === 19 ? amount : c));
+    const ok = buildImportPlan(book([withAmount(T('1.234,50'), '030/26'), withAmount(T('450,00 KM'), '031/26'), withAmount(T('-125'), '032/26')]), NONE, ids());
+    expect(ok.plan.invoices.map((i) => i.total)).toEqual([123450, 45000, -12500]);
+    expect(() => buildImportPlan(book([withAmount(T('devetsto'), '033/26'), withAmount(T('9oo'), '034/26')]), NONE, ids())).toThrow(/Iznos nije broj: 2 \(list „DB“, red: 2, 3\)/);
+  });
+
+  it('decimalOf reads bs-BA and plain notation and refuses everything else', () => {
+    const cases: Array<[string, number | null]> = [
+      ['1.234,50', 1234.5], ['450,00', 450], ['919.19', 919.19], ['1.500', 1500], ['0.125', 0.125], ['-919,16', -919.16],
+      ['1 234,50 KM', 1234.5], ['12', 12], ['abc', null], ['1,2,3', null], ['4..5', null], ['', null],
+    ];
+    for (const [raw, expected] of cases) expect([raw, decimalOf(raw)]).toEqual([raw, expected]);
   });
 });

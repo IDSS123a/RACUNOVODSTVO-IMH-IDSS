@@ -6,10 +6,10 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatKM } from '@/features/billing/money';
-import { prepareLegacyImport, runLegacyImport, type PreparedImport } from '../actions';
+import { prepareLegacyImport, runLegacyImport, saveFindingsReport, type PreparedImport } from '../actions';
 import type { LegacyImportResult } from '../repository';
+import { FindingsSummary } from './FindingsSummary';
 
-const SHOWN_WARNINGS = 50;
 
 /**
  * Import from the previous Excel solution (BR-32): choose the newest workbook, review what will be
@@ -59,6 +59,13 @@ export function LegacyImportPanel({ onImported }: { onImported?: () => void }): 
     } finally {
       setBusy(null);
     }
+  }
+
+  async function saveReport(): Promise<void> {
+    if (!prepared) return;
+    const outcome = await saveFindingsReport(prepared.report.findings, prepared.report.fileName);
+    if (!outcome.success) toast.error(outcome.error);
+    else if (outcome.data) toast.success(`Izvještaj je sačuvan: ${outcome.data}`);
   }
 
   const report = prepared?.report;
@@ -111,19 +118,52 @@ export function LegacyImportPanel({ onImported }: { onImported?: () => void }): 
             </TableBody>
           </Table>
           <p className="text-xs text-muted-foreground">
-            Brojevi i iznosi se preuzimaju tačno kako su u Excelu. Račun označen „plaćeno“ dobija uplatu u punom iznosu na dan roka plaćanja (stvarni datum nije poznat).
-            Djeca se uvoze bez datuma rođenja i označena su „Dopuniti podatke“.
+            Brojevi i iznosi se preuzimaju tačno kako su u Excelu. Račun označen „plaćeno“ dobija uplatu na dan roka plaćanja (stvarni datum nije poznat): u
+            punom iznosu ako su označene sve stavke, inače u iznosu označenih stavki. Djeca se uvoze bez datuma rođenja i označena su „Dopuniti podatke“.
           </p>
-          {report.warnings.length > 0 && (
-            <Alert>
-              <AlertTitle>Upozorenja ({report.warnings.length})</AlertTitle>
+          <FindingsSummary findings={report.findings} />
+          {report.findings.length > 0 && (
+            <div>
+              <Button variant="outline" disabled={busy !== null} onClick={() => void saveReport()}>
+                <FileSpreadsheetIcon aria-hidden /> Sačuvaj izvještaj za knjigovođu (Excel)
+              </Button>
+            </div>
+          )}
+          {report.isolated.length > 0 && (
+            <Alert variant="destructive">
+              <AlertTitle>Računi koji se NEĆE uvesti ({report.isolated.length})</AlertTitle>
               <AlertDescription>
-                <ul className="list-disc pl-5">
-                  {report.warnings.slice(0, SHOWN_WARNINGS).map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
-                </ul>
-                {report.warnings.length > SHOWN_WARNINGS && <p>… i još {report.warnings.length - SHOWN_WARNINGS}.</p>}
+                <p>
+                  Ovi računi nisu spojeni ni prenumerisani. Riješite ih s knjigovođom u Excelu (npr. novi broj, kupac ili datum) i ponovite uvoz. Ukupno:{' '}
+                  {formatKM(report.isolated.reduce((total, invoice) => total + invoice.total, 0))}.
+                </p>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Broj</TableHead>
+                      <TableHead>Excel redovi</TableHead>
+                      <TableHead>Kupac / dijete</TableHead>
+                      <TableHead className="text-right">Iznos</TableHead>
+                      <TableHead>Razlog</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {report.isolated.map((invoice) => (
+                      <TableRow key={`${invoice.entity}|${invoice.number}|${invoice.excelRows}`}>
+                        <TableCell className="font-medium">
+                          {invoice.entity} {invoice.number}
+                        </TableCell>
+                        <TableCell className="tabular-nums">{invoice.excelRows}</TableCell>
+                        <TableCell>
+                          {invoice.buyerName}
+                          {invoice.childName && ` / ${invoice.childName}`}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{formatKM(invoice.total)}</TableCell>
+                        <TableCell className="text-sm">{invoice.reason}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </AlertDescription>
             </Alert>
           )}
@@ -139,7 +179,7 @@ export function LegacyImportPanel({ onImported }: { onImported?: () => void }): 
         <Alert>
           <AlertTitle>Uvoz je završen</AlertTitle>
           <AlertDescription>
-            {result.invoices} računa, {result.families} porodica, {result.children} djece, {result.payments} uplata. Nova numeracija:{' '}
+            {result.invoices} računa, {result.families} porodica, {result.children} djece, {result.payments} uplata, {result.findings} nalaza za meni „Za provjeru“. Nova numeracija:{' '}
             {result.nextNumbers.map(([entity, year, next]) => `${entity}-${String(next).padStart(3, '0')}/${String(year).slice(2)}`).join(', ')}.
           </AlertDescription>
         </Alert>

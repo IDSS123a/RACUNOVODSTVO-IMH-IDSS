@@ -1,6 +1,6 @@
 # CONSTITUTION.md — Fakturisanje IMH & IDSS
 # Project Constitution (wins over Commander for this project — CONSTITUTION precedence 5)
-# Commander v1.6.2 · Mode: FULL · Created: 2026-10-20
+# Commander v1.8.1 (created under v1.6.2) · Mode: FULL · Created: 2026-10-20
 
 ---
 
@@ -147,4 +147,4 @@ All of this happens without a single amount being computed in two different ways
 
 ---
 
-*Commander v1.6.2 — IDSS123a Organisation — Davor Mulalić*
+*Commander v1.8.1 — IDSS123a Organisation — Davor Mulalić*

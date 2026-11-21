@@ -1,17 +1,19 @@
-import { useState } from 'react';
-import { FileTextIcon, MonitorIcon, MoonIcon, SettingsIcon, SunIcon, TableIcon, UsersIcon } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { ClipboardCheckIcon, FileTextIcon, MonitorIcon, MoonIcon, SettingsIcon, SunIcon, TableIcon, UsersIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { FamiliesPage } from '@/features/families/components/FamiliesPage';
 import { InvoicesPage } from '@/features/invoices/components/InvoicesPage';
+import { ReviewFindingsPage } from '@/features/legacy-import/components/ReviewFindingsPage';
+import { importFindingsOpenCount } from '@/features/legacy-import/repository';
 import { PriceListPage } from '@/features/price-lists/components/PriceListPage';
 import type { SchoolYear } from '@/features/price-lists/types';
 import { SettingsPage } from '@/features/settings/components/SettingsPage';
 import { ENTITY_LOGO } from '@/features/settings/logos';
 import type { Settings } from '@/features/settings/repository';
 
-type Page = 'invoices' | 'families' | 'price-lists' | 'settings';
+type Page = 'invoices' | 'families' | 'price-lists' | 'settings' | 'review';
 
 const NAV: ReadonlyArray<{ id: Page; label: string; icon: typeof TableIcon }> = [
   { id: 'invoices', label: 'Računi', icon: FileTextIcon },
@@ -26,6 +28,15 @@ const NAV: ReadonlyArray<{ id: Page; label: string; icon: typeof TableIcon }> = 
  */
 export function AppShell({ settings, onSettingsChanged }: { settings: Settings; onSettingsChanged: () => void }): React.JSX.Element {
   const [page, setPage] = useState<Page>('families');
+  // Open findings of the legacy import stay visible in the menu until resolved (Director, Q4).
+  const [openFindings, setOpenFindings] = useState(0);
+  const refreshFindings = useCallback(async (): Promise<void> => {
+    const result = await importFindingsOpenCount();
+    if (result.success) setOpenFindings(result.data);
+  }, []);
+  useEffect(() => {
+    void refreshFindings();
+  }, [page, refreshFindings]);
 
   return (
     <div className="grid min-h-screen grid-cols-[15rem_1fr]">
@@ -55,6 +66,17 @@ export function AppShell({ settings, onSettingsChanged }: { settings: Settings; 
               </Button>
             );
           })}
+          {(openFindings > 0 || page === 'review') && (
+            <Button
+              variant={page === 'review' ? 'secondary' : 'ghost'}
+              className="justify-start"
+              aria-current={page === 'review' ? 'page' : undefined}
+              onClick={() => setPage('review')}
+            >
+              <ClipboardCheckIcon aria-hidden /> Za provjeru
+              {openFindings > 0 && <span className="ml-auto rounded-full bg-amber-500 px-2 text-xs font-semibold text-white tabular-nums">{openFindings}</span>}
+            </Button>
+          )}
         </nav>
         <div className="mt-auto grid gap-3 p-4 text-xs">
           <ThemeSwitch />
@@ -69,6 +91,7 @@ export function AppShell({ settings, onSettingsChanged }: { settings: Settings; 
         {page === 'families' && <FamiliesPage defaultYear={settings.activeSchoolYear as SchoolYear} />}
         {page === 'price-lists' && <PriceListPage initialYear={settings.activeSchoolYear as SchoolYear} />}
         {page === 'settings' && <SettingsPage settings={settings} onSettingsChanged={onSettingsChanged} />}
+        {page === 'review' && <ReviewFindingsPage onChanged={() => void refreshFindings()} />}
       </main>
     </div>
   );
