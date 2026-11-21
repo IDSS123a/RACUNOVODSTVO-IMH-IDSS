@@ -5,11 +5,11 @@ import { monthBounds, schoolYearOfMonth } from './domain';
 import type { BillingMonth, InvoiceDraft, InvoiceLine } from './types';
 
 /**
- * Manual invoice „Novi račun“ (specs/manual-invoice, F2; document `vNew`, `saveNewInvoice`).
- * A service outside the price list, for one child of one institution: lines of description, unit, whole quantity
- * and unit price, a mandatory basis (M11), no discount (BR-7: only with a board-decision record).
- * Price-list items are never entered here: they are billed by the monthly bulk (BR-26) or the enrolment-fee
- * invoice (BR-9, BR-10). Pure function; the backend checks the same rules again.
+ * Manual invoice „Novi račun“ (specs/manual-invoice, F2; document `vNew`, `saveNewInvoice`; Director 2026-11-21).
+ * Only for services used temporarily by a child NOT regularly enrolled in the institution (e.g. summer school only):
+ * lines of description, unit, whole quantity and unit price, a mandatory basis (M11), no discount (BR-7).
+ * Everything else of a child — tuition, one-time items, extra services — goes on its one monthly invoice
+ * (`monthly.ts`). Pure function; the backend checks the same rules again.
  */
 
 export type ManualUnit = 'kom' | 'srv';
@@ -105,20 +105,22 @@ export function buildManualInvoice(detail: FamilyDetail, input: ManualInvoiceInp
   if (input.issueDate && input.dueDate && input.dueDate < input.issueDate) errors.push('Rok plaćanja ne može biti prije datuma izdavanja.');
   if (!input.reason.trim()) errors.push('Unesite osnov računa (odluka, ugovor ili obavijest).');
 
-  const enrolment =
+  // Director, 2026-11-21: only for a child NOT regularly enrolled in the institution that school year (e.g. it attends
+  // only the summer school). An enrolled child's extra services go on its monthly invoice (one invoice per child).
+  const enrolled =
     child && input.month
-      ? (() => {
-          const schoolYear = schoolYearOfMonth(input.month);
-          const { from, to } = monthBounds(input.month);
-          const candidates = detail.enrolments.filter(
-            (e) => e.childId === child.id && e.schoolYear === schoolYear && PROGRAM_ENTITY[e.program] === input.entity && e.status !== 'WITHDRAWN',
-          );
-          // prefer the enrolment that covers the month; any other of that school year still names the program
-          return candidates.find((e) => e.startsOn <= to && (e.endsOn === null || e.endsOn >= from)) ?? candidates[0] ?? null;
-        })()
-      : null;
-  if (child && input.month && !enrolment) {
-    errors.push(`Dijete nema upis u ${input.entity} za školsku godinu ${schoolYearOfMonth(input.month)} — račun ${input.entity} se izdaje samo za dijete te ustanove.`);
+      ? detail.enrolments.some(
+          (e) =>
+            e.childId === child.id &&
+            e.schoolYear === schoolYearOfMonth(input.month as BillingMonth) &&
+            PROGRAM_ENTITY[e.program] === input.entity &&
+            e.status !== 'WITHDRAWN',
+        )
+      : false;
+  if (child && input.month && enrolled) {
+    errors.push(
+      `Dijete je redovno upisano u ${input.entity} (${schoolYearOfMonth(input.month)}) — dodatne usluge idu na njegov mjesečni račun („Mjesečni računi“ → „Dodaj uslugu van cjenovnika“).`,
+    );
   }
 
   const lines: InvoiceLine[] = [];
@@ -129,13 +131,14 @@ export function buildManualInvoice(detail: FamilyDetail, input: ManualInvoiceInp
     if (!row.description.trim()) errors.push(`Red ${n}: Unesite naziv usluge/stavke.`);
     if (quantity === null) errors.push(`Red ${n}: Količina mora biti cijeli broj od 1 do ${MAX_QUANTITY}.`);
     if (unitPrice === null) errors.push(`Red ${n}: Cijena mora biti iznos u KM (najviše dvije decimale) i ne može biti negativna.`);
-    if (child && enrolment && row.description.trim() && quantity !== null && total !== null) {
+    if (child && !enrolled && row.description.trim() && quantity !== null && total !== null) {
       lines.push({
         itemCode: 'OTHER',
         description: row.description.trim(),
         childId: child.id,
-        enrolmentId: enrolment.id,
-        program: enrolment.program,
+        // a child not enrolled in the institution: the line has no enrolment and no program
+        enrolmentId: '',
+        program: '',
         listAmount: total,
         boardDecisionId: null,
         amount: total,
@@ -148,7 +151,7 @@ export function buildManualInvoice(detail: FamilyDetail, input: ManualInvoiceInp
   const invoiceTotal = sum(lines.map((l) => l.amount));
   if (lines.length > 0 && invoiceTotal <= 0) errors.push('Ukupan iznos računa mora biti veći od 0 KM.');
 
-  if (errors.length > 0 || !child || !buyer || !enrolment || !input.month) return { ok: false, errors };
+  if (errors.length > 0 || !child || !buyer || !input.month) return { ok: false, errors };
   const { from, to } = monthBounds(input.month);
   return {
     ok: true,

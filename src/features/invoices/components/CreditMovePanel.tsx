@@ -6,6 +6,8 @@ import { Label } from '@/components/ui/label';
 import { formatKM, kmToFenings, MoneyError } from '@/features/billing/money';
 import { invoiceBalance } from '../credit-notes';
 import { listInvoices, moveCredit, type InvoiceSummary } from '../repository';
+import { CREDIT_MOVE_TEMPLATES, CREDIT_REFUND_TEMPLATES } from '../text-templates';
+import { TemplateText } from './TemplateText';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 const REFUND = 'refund';
@@ -19,7 +21,7 @@ export function CreditMovePanel({ invoice, credit, onMoved }: { invoice: Invoice
   const [target, setTarget] = useState<string>(REFUND);
   const [amountKm, setAmountKm] = useState(formatKM(credit).replace(' KM', ''));
   const [movedOn, setMovedOn] = useState(today());
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -52,6 +54,7 @@ export function CreditMovePanel({ invoice, credit, onMoved }: { invoice: Invoice
     }
     setBusy(true);
     try {
+      if (!note) return;
       const result = await moveCredit({ fromInvoiceId: invoice.id, toInvoiceId: target === REFUND ? null : target, amount, movedOn, note });
       if (!result.success) return void toast.error(result.error);
       toast.success(target === REFUND ? 'Povrat roditelju je evidentiran.' : 'Kredit je prebačen.');
@@ -92,19 +95,20 @@ export function CreditMovePanel({ invoice, credit, onMoved }: { invoice: Invoice
           <Label htmlFor="credit-date">Datum</Label>
           <Input id="credit-date" type="date" value={movedOn} onChange={(event) => setMovedOn(event.target.value)} />
         </div>
-        <div className="grid gap-1.5 md:col-span-4">
-          <Label htmlFor="credit-note">Napomena (obavezno)</Label>
-          <Input
+        <div className="md:col-span-4">
+          {/* remounted per target: a refund and a move to an invoice have their own template */}
+          <TemplateText
+            key={target}
             id="credit-note"
-            maxLength={500}
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            placeholder={target === REFUND ? 'npr. vraćeno na račun roditelja, izvod br. …' : 'npr. prebačeno na novembar'}
+            label="Napomena (obavezno)"
+            templates={target === REFUND ? CREDIT_REFUND_TEMPLATES : CREDIT_MOVE_TEMPLATES}
+            known={{ racun: targets?.find((i) => i.id === target)?.number ?? '' }}
+            onChange={setNote}
           />
         </div>
       </div>
       <div>
-        <Button variant="outline" disabled={busy || !note.trim()} onClick={() => void submit()}>
+        <Button variant="outline" disabled={busy || !note} onClick={() => void submit()}>
           {busy ? 'Spremanje…' : target === REFUND ? 'Evidentiraj povrat' : 'Prebaci kredit'}
         </Button>
       </div>

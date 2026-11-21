@@ -7,6 +7,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { formatKM, kmToFenings, MoneyError } from '@/features/billing/money';
 import { creditableLines, CreditNoteError, creditNoteLines, creditNoteTotal, type CreditSelection } from '../credit-notes';
 import { issueCreditNote, type InvoiceDetail } from '../repository';
+import { CREDIT_NOTE_REASON_TEMPLATES } from '../text-templates';
+import { TemplateText } from './TemplateText';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -19,7 +21,7 @@ export function CreditNotePanel({ detail, onIssued, onCancel }: { detail: Invoic
   const lines = useMemo(() => creditableLines(detail.lines, detail.creditedLines), [detail]);
   const [mode, setMode] = useState<'WHOLE' | 'LINES'>('WHOLE');
   const [amounts, setAmounts] = useState<Record<number, string>>({});
-  const [reason, setReason] = useState('');
+  const [reason, setReason] = useState<string | null>(null);
   const [issueDate, setIssueDate] = useState(today());
   const [busy, setBusy] = useState(false);
 
@@ -47,6 +49,7 @@ export function CreditNotePanel({ detail, onIssued, onCancel }: { detail: Invoic
     if (preview.error || preview.lines.length === 0) return;
     setBusy(true);
     try {
+      if (!reason) return;
       const result = await issueCreditNote({ id: crypto.randomUUID(), invoiceId: detail.invoice.id, issueDate, reason, lines: preview.lines });
       if (!result.success) {
         toast.error(result.error);
@@ -105,10 +108,7 @@ export function CreditNotePanel({ detail, onIssued, onCancel }: { detail: Invoic
         </TableBody>
       </Table>
       <div className="grid gap-3 md:grid-cols-[1fr_12rem]">
-        <div className="grid gap-1.5">
-          <Label htmlFor="cn-reason">Razlog (obavezno)</Label>
-          <Input id="cn-reason" maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="npr. dijete ispisano od 15.10." />
-        </div>
+        <TemplateText id="cn-reason" label="Razlog (obavezno)" templates={CREDIT_NOTE_REASON_TEMPLATES} onChange={setReason} />
         <div className="grid gap-1.5">
           <Label htmlFor="cn-date">Datum knjižnog odobrenja</Label>
           <Input id="cn-date" type="date" min={detail.invoice.issueDate} value={issueDate} onChange={(event) => setIssueDate(event.target.value)} />
@@ -118,7 +118,7 @@ export function CreditNotePanel({ detail, onIssued, onCancel }: { detail: Invoic
         {preview.error ? <span className="text-destructive">{preview.error}</span> : <>Knjižno odobrenje: <strong className="tabular-nums">{formatKM(total)}</strong></>}
       </p>
       <div className="flex gap-2">
-        <Button variant="destructive" disabled={busy || Boolean(preview.error) || !reason.trim()} onClick={() => void submit()}>
+        <Button variant="destructive" disabled={busy || Boolean(preview.error) || !reason} onClick={() => void submit()}>
           {busy ? 'Izdajem…' : 'Izdaj knjižno odobrenje'}
         </Button>
         <Button variant="outline" disabled={busy} onClick={onCancel}>

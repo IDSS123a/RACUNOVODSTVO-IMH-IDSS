@@ -19,6 +19,8 @@ import { buildManualInvoice, rowTotal, type ManualRowInput, type ManualUnit } fr
 import { issueInvoices } from '../repository';
 import type { BillingMonth } from '../types';
 import { InvoicePdfDialog } from './InvoicePdfDialog';
+import { TemplateText } from './TemplateText';
+import { BASIS_TEMPLATES, SERVICE_TEMPLATES } from '../text-templates';
 
 const lineTotalText = (total: number | null): string => (total === null ? '—' : formatKM(total));
 
@@ -42,8 +44,8 @@ export function ManualInvoiceDialog({ open, onOpenChange, onCreated }: { open: b
       <FormDialog
         open={open}
         onOpenChange={onOpenChange}
-        title="Novi račun — usluga van cjenovnika"
-        description="Za ljetnu školu, izlet, dodatni program i slične usluge. Školarina, produženi boravak i doručak se fakturišu kroz „Mjesečni računi“, a upisnina, materijal i depozit kroz „Račun za upis“ u kartici porodice."
+        title="Novi račun — privremena usluga"
+        description="Samo za dijete koje nije redovno upisano u ustanovu i privremeno koristi uslugu (npr. pohađa samo ljetnu školu). Upisanom djetetu svi troškovi, i dodatne usluge, idu na njegov mjesečni račun („Mjesečni računi“)."
         wide
       >
         {open && (
@@ -189,9 +191,7 @@ function InvoiceForm({ detail, onCreated }: { detail: FamilyDetail; onCreated: (
           <p className="pt-2 text-sm text-muted-foreground">dodjeljuje se pri kreiranju ({entity}-…)</p>
         </Field>
       </div>
-      <Field id="manual-reason" label="Osnov (odluka, ugovor ili obavijest)">
-        <Input id="manual-reason" value={reason} placeholder="npr. Obavijest o ljetnoj školi od 01.06.2027." onChange={(e) => setReason(e.target.value)} />
-      </Field>
+      <TemplateText id="manual-reason" label="Osnov (odluka, ugovor ili obavijest)" templates={BASIS_TEMPLATES} onChange={(text) => setReason(text ?? '')} />
 
       <Table>
         <TableHeader>
@@ -208,7 +208,12 @@ function InvoiceForm({ detail, onCreated }: { detail: FamilyDetail; onCreated: (
           {rows.map((row, index) => (
             <TableRow key={row.key}>
               <TableCell>
-                <Input aria-label={`Naziv, red ${index + 1}`} value={row.description} onChange={(e) => setRow(index, { description: e.target.value })} />
+                <TemplateText
+                  id={`manual-desc-${row.key}`}
+                  label={`Naziv usluge, red ${index + 1}`}
+                  templates={SERVICE_TEMPLATES}
+                  onChange={(text) => setRows((all) => all.map((r) => (r.key === row.key ? { ...r, description: text ?? '' } : r)))}
+                />
               </TableCell>
               <TableCell>
                 <select

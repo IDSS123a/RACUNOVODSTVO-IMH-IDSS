@@ -3,13 +3,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PROGRAM_ENTITY, PROGRAM_LABEL, type ProgramCode, type SchoolYear } from '@/features/price-lists/types';
+import { PROGRAM_ENTITY, PROGRAM_LABEL, programChoices, type ProgramCode, type SchoolYear } from '@/features/price-lists/types';
 import { Field } from '@/features/settings/components/OperatorForm';
 import { EnrolmentSchema } from '@/lib/validation/schemas';
 import { schoolYearBounds } from '../domain';
 import type { Enrolment } from '../types';
-
-const PROGRAMS = Object.keys(PROGRAM_LABEL) as ProgramCode[];
 
 /**
  * New enrolment. The program decides the legal entity (BR-1) — shown, never chosen.
@@ -37,7 +35,7 @@ export function EnrolmentForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {PROGRAMS.map((code) => (
+            {programChoices(enrolment.program).map((code) => (
               <SelectItem key={code} value={code}>
                 {PROGRAM_LABEL[code]} ({PROGRAM_ENTITY[code]})
               </SelectItem>

@@ -13,7 +13,8 @@ function enrolment(n: number, childId: string, program: Enrolment['program'], st
   return { id: id(n), childId, program, schoolYear, startsOn: `${schoolYear.slice(0, 4)}-09-01`, endsOn: null, status };
 }
 
-function family(enrolments: Enrolment[] = [enrolment(20, IMH_CHILD, 'TODDLERS'), enrolment(22, IDSS_CHILD, 'PRIMARY_1_4')], address = 'Buka 1'): FamilyDetail {
+/** By default the „IMH child“ is NOT enrolled in IMH (e.g. it attends only the summer school); the other child is an IDSS pupil. */
+function family(enrolments: Enrolment[] = [enrolment(22, IDSS_CHILD, 'PRIMARY_1_4')], address = 'Buka 1'): FamilyDetail {
   return {
     family: { id: FAMILY, displayName: 'Test', address },
     guardians: [{ id: id(2), familyId: FAMILY, fullName: 'Majka Test', role: 'MOTHER', email: '', phone: '', iban: '', isPayer: true }],
@@ -42,7 +43,7 @@ const input = (over: Partial<ManualInvoiceInput> = {}): ManualInvoiceInput => ({
 const errorsOf = (r: ReturnType<typeof buildManualInvoice>) => (r.ok ? [] : r.errors);
 
 describe('manual invoice (F2)', () => {
-  it('builds an IMH draft: quantity × unit price in fenings, month period, basis, program from the enrolment', () => {
+  it('builds an IMH draft for a child not enrolled in IMH: quantity × unit price, month period, basis, no enrolment', () => {
     const r = buildManualInvoice(family(), input());
     if (!r.ok) throw new Error(r.errors.join('; '));
     expect(r.draft).toMatchObject({
@@ -50,23 +51,29 @@ describe('manual invoice (F2)', () => {
       periodFrom: '2027-07-01', periodTo: '2027-07-31', total: 45150, reason: 'Obavijest o ljetnoj školi 2027',
     });
     expect(r.draft.lines).toEqual([
-      { itemCode: 'OTHER', description: 'Ljetna škola — sedmica', childId: IMH_CHILD, enrolmentId: id(20), program: 'TODDLERS', listAmount: 45150, boardDecisionId: null, amount: 45150, quantity: 3, unit: 'srv' },
+      { itemCode: 'OTHER', description: 'Ljetna škola — sedmica', childId: IMH_CHILD, enrolmentId: '', program: '', listAmount: 45150, boardDecisionId: null, amount: 45150, quantity: 3, unit: 'srv' },
     ]);
     // the payload the backend receives passes the IPC schema unchanged
     expect(InvoiceDraftSchema.safeParse({ ...r.draft, id: id(99), kind: 'OTHER', lines: [...r.draft.lines], planItems: [] }).success).toBe(true);
   });
 
-  it('IDSS child on an IDSS invoice; a child is never invoiced by the other institution (BR-1)', () => {
-    const idss = buildManualInvoice(family(), input({ entity: 'IDSS', childId: IDSS_CHILD, month: '2027-02' }));
-    expect(idss.ok && idss.draft.lines[0]?.program).toBe('PRIMARY_1_4');
-    expect(errorsOf(buildManualInvoice(family(), input({ entity: 'IDSS' })))[0]).toContain('nema upis u IDSS za školsku godinu 2026/2027');
+  it('Director 2026-11-21: never for a child regularly enrolled in that institution — its extras go on the monthly invoice', () => {
+    const errors = errorsOf(buildManualInvoice(family(), input({ entity: 'IDSS', childId: IDSS_CHILD, month: '2027-02' })));
+    expect(errors).toEqual([
+      'Dijete je redovno upisano u IDSS (2026/2027) — dodatne usluge idu na njegov mjesečni račun („Mjesečni računi“ → „Dodaj uslugu van cjenovnika“).',
+    ]);
+    // the IDSS pupil may attend the IMH summer school: it is not enrolled in IMH
+    expect(buildManualInvoice(family(), input({ entity: 'IMH', childId: IDSS_CHILD })).ok).toBe(true);
+    // a child of the other institution's year: enrolled in IMH for 2026/2027 only
+    const imhPupil = family([enrolment(20, IMH_CHILD, 'TODDLERS')]);
+    expect(buildManualInvoice(imhPupil, input()).ok).toBe(false);
+    expect(buildManualInvoice(imhPupil, input({ month: '2027-09', issueDate: '2027-09-01', dueDate: '2027-09-05' })).ok).toBe(true);
   });
 
-  it('school year of the month: August belongs to the year that started in September; a withdrawn enrolment does not count', () => {
-    expect(buildManualInvoice(family(), input({ month: '2027-08' })).ok).toBe(true);
-    expect(errorsOf(buildManualInvoice(family(), input({ month: '2027-09' })))[0]).toContain('2027/2028');
-    expect(buildManualInvoice(family([enrolment(20, IMH_CHILD, 'TODDLERS', 'WITHDRAWN')]), input()).ok).toBe(false);
-    expect(buildManualInvoice(family([enrolment(20, IMH_CHILD, 'TODDLERS', 'COMPLETED')]), input()).ok).toBe(true);
+  it('school year of the month; a withdrawn enrolment is not a regular enrolment, a completed one is', () => {
+    expect(buildManualInvoice(family([enrolment(20, IMH_CHILD, 'TODDLERS', 'WITHDRAWN')]), input()).ok).toBe(true);
+    expect(buildManualInvoice(family([enrolment(20, IMH_CHILD, 'TODDLERS', 'COMPLETED')]), input()).ok).toBe(false);
+    expect(buildManualInvoice(family([enrolment(20, IMH_CHILD, 'TODDLERS', 'ACTIVE', '2025/2026')]), input()).ok).toBe(true);
   });
 
   it('every required field has the document message (M5)', () => {

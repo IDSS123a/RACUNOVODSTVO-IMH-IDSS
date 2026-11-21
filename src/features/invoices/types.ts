@@ -11,8 +11,9 @@ export interface InvoiceLine {
   readonly itemCode: PriceItemCode | 'OTHER';
   readonly description: string;
   readonly childId: string;
+  /** Empty only on a manual invoice for a child not enrolled in the institution (Director, 2026-11-21). */
   readonly enrolmentId: string;
-  readonly program: ProgramCode;
+  readonly program: ProgramCode | '';
   /** Price-list amount before any board decision. */
   readonly listAmount: Fenings;
   /** Board decision applied to this line, if any (BR-7). */

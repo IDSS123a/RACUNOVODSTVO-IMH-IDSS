@@ -3,7 +3,7 @@ import { assignSiblingTiers, findPrice } from '@/features/billing/pricing';
 import { ACTIVE_STATUSES, knownBirthDate, schoolYearBounds } from '@/features/families/domain';
 import type { Enrolment, EnrolmentStatus, FamilyDetail } from '@/features/families/types';
 import { previousSchoolYear } from '@/features/price-lists/domain';
-import { ITEM_LABEL, PROGRAM_ENTITY, PROGRAM_LABEL, type PriceItemCode, type PriceListItem, type SchoolYear } from '@/features/price-lists/types';
+import { isToddlersOrPreschoolers, ITEM_LABEL, PROGRAM_ENTITY, PROGRAM_LABEL, type PriceItemCode, type PriceListItem, type SchoolYear } from '@/features/price-lists/types';
 import { InvoiceError } from './domain';
 import type { PaymentPlan } from './plans';
 import type { InvoiceDraft, InvoiceLine } from './types';
@@ -90,7 +90,7 @@ export function buildEnrolmentFeeInvoice(
     });
 
   if (entity === 'IMH') {
-    const transfer = enrolment.program === 'IDSS_PRESCHOOLERS' && attendedLastYear((e) => e.program === 'PRESCHOOLERS');
+    const transfer = enrolment.program === 'IDSS_PRESCHOOLERS' && attendedLastYear((e) => isToddlersOrPreschoolers(e.program));
     const continuing = attendedLastYear((e) => PROGRAM_ENTITY[e.program] === 'IMH');
     if (transfer) notes.push('Upisnina se ne naplaćuje i depozit se prenosi: direktan prelazak iz Preschoolers u IDSS Preschoolers.');
     else if (continuing) notes.push('Upisnina se ne naplaćuje (važi do ispisa) i depozit se prenosi: dijete je pohađalo IMH prošle godine.');

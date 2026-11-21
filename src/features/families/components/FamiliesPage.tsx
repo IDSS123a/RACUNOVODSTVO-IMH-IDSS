@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { PlusIcon, SearchIcon } from 'lucide-react';
+import { ListChecksIcon, PlusIcon, SearchIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '@/components/feedback';
 import { FormDialog } from '@/components/form-dialog';
@@ -11,6 +11,7 @@ import { useAsyncResult } from '@/lib/use-async-result';
 import { saveFamilyWithGuardians } from '../actions';
 import { listFamilies } from '../repository';
 import type { Family } from '../types';
+import { BulkEnrolmentDialog } from './BulkEnrolmentDialog';
 import { FamilyDetailView } from './FamilyDetailView';
 import { newGuardian } from '../factories';
 import { FamilyForm } from './FamilyForm';
@@ -22,6 +23,7 @@ export function FamiliesPage({ defaultYear }: { defaultYear: SchoolYear }): Reac
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState<Family | null>(null);
+  const [bulk, setBulk] = useState(false);
 
   const visible = useMemo(() => {
     if (families.state.status !== 'ready') return [];
@@ -51,10 +53,16 @@ export function FamiliesPage({ defaultYear }: { defaultYear: SchoolYear }): Reac
           <h1 className="text-2xl font-semibold tracking-tight">Porodice</h1>
           <p className="text-sm text-muted-foreground">Roditelji, djeca i upisi u IMH i IDSS.</p>
         </div>
-        <Button onClick={() => setCreating({ id: crypto.randomUUID(), displayName: '', address: '' })}>
-          <PlusIcon aria-hidden /> Nova porodica
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setBulk(true)}>
+            <ListChecksIcon aria-hidden /> Upis djece bez upisa
+          </Button>
+          <Button onClick={() => setCreating({ id: crypto.randomUUID(), displayName: '', address: '' })}>
+            <PlusIcon aria-hidden /> Nova porodica
+          </Button>
+        </div>
       </header>
+      <BulkEnrolmentDialog open={bulk} onOpenChange={setBulk} schoolYear={defaultYear} onSaved={families.reload} />
 
       <div className="relative max-w-sm">
         <SearchIcon className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" aria-hidden />

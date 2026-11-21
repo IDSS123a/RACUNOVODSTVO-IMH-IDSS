@@ -27,7 +27,7 @@ export function newEnrolment(childId: string, schoolYear: SchoolYear): Enrolment
   return {
     id: crypto.randomUUID(),
     childId,
-    program: 'TODDLERS',
+    program: 'PRESCHOOLERS',
     schoolYear,
     startsOn: schoolYearBounds(schoolYear).from,
     endsOn: null,

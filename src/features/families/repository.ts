@@ -37,6 +37,13 @@ export function saveEnrolment(enrolment: Enrolment): Promise<Result<null>> {
   return call('save_enrolment', Nothing, { enrolment: EnrolmentSchema.parse(enrolment) });
 }
 
+/** „Upis uvezene djece“: children and their new enrolments in ONE transaction; returns how many were saved. */
+export function saveEnrolmentsBulk(items: ReadonlyArray<[Child, Enrolment]>): Promise<Result<number>> {
+  return call('save_enrolments_bulk', z.number().int(), {
+    items: items.map(([child, enrolment]) => [ChildSchema.parse(child), EnrolmentSchema.parse(enrolment)]),
+  });
+}
+
 export function deleteChild(childId: string): Promise<Result<null>> {
   return call('delete_child', Nothing, { childId });
 }

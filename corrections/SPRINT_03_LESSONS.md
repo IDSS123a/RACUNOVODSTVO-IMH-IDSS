@@ -98,3 +98,12 @@
   - UKUPNO ZA UPLATU, the amount in words, the slip and the QR all state one figure (`amountDue` / `slipAmount`): the invoice after its credit notes.
   - Payments are never printed on the invoice (DL-P013 amendments 1 and 2).
 - **Lesson:** an invoice is a document the parent acts on. Every printed amount must answer „how much do I pay on this invoice“. Payment state belongs to the register, never to the document. When a feature adds a state that changes an invoice's balance (credit notes, payments), render an invoice in that state and read it as the parent would.
+
+## L-S3-14 — A silent empty preview hid a go-live blocker
+- **Trigger:** the Director's check of one invoice per child (2026-11-21). The December preview said only „nema računa za izdavanje“.
+  - The cause: the legacy import creates families, children and invoices, but no enrolments. The old sheet `Setting` has no program and no date of birth, so monthly billing had no one to bill.
+  - The tests built families WITH enrolments, so none of them ever met an imported family.
+- **Fix:**
+  - the preview lists every child without an enrolment (and how many were imported);
+  - „Upis djece bez upisa“ enrols them in one transaction, never guessing the program or the date of birth.
+- **Lesson (E-5 again):** a bulk action must explain every record it does not act on, never only „nothing to do“. Test every bulk flow on data in the shape the legacy import produces, not only on data the app creates.

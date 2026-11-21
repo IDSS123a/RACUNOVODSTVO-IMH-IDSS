@@ -64,14 +64,31 @@ export const PROGRAM_ENTITY: Readonly<Record<ProgramCode, LegalEntityCode>> = {
   PRIMARY_5_9: 'IDSS',
 };
 
-/** Bosnian labels for the UI. */
+/**
+ * Bosnian labels for the UI. Toddlers and Preschoolers are ONE choice (Director, 2026-11-21): same price, and a child
+ * moves from one to the other during the year on the pedagogue's assessment. Both codes stay valid for stored data
+ * and the price list; they read the same everywhere.
+ */
 export const PROGRAM_LABEL: Readonly<Record<ProgramCode, string>> = {
-  TODDLERS: 'Toddlers',
-  PRESCHOOLERS: 'Preschoolers',
+  TODDLERS: 'Toddlers / Preschoolers',
+  PRESCHOOLERS: 'Toddlers / Preschoolers',
   IDSS_PRESCHOOLERS: 'IDSS Preschoolers',
   PRIMARY_1_4: 'Osnovna škola I–IV',
   PRIMARY_5_9: 'Osnovna škola V–IX',
 };
+
+/** Programs offered for a NEW enrolment: Toddlers / Preschoolers once (stored as PRESCHOOLERS). */
+export const ENROLLABLE_PROGRAMS: ReadonlyArray<ProgramCode> = ['PRESCHOOLERS', 'IDSS_PRESCHOOLERS', 'PRIMARY_1_4', 'PRIMARY_5_9'];
+
+/** The program choices for a form: the enrollable ones, plus the stored one if it is the other Toddlers/Preschoolers code. */
+export function programChoices(current: ProgramCode | ''): ProgramCode[] {
+  return current && !ENROLLABLE_PROGRAMS.includes(current) ? [current, ...ENROLLABLE_PROGRAMS.filter((p) => p !== 'PRESCHOOLERS')] : [...ENROLLABLE_PROGRAMS];
+}
+
+/** Same group for billing rules: Toddlers and Preschoolers are one IMH program (Director, 2026-11-21). */
+export function isToddlersOrPreschoolers(program: ProgramCode): boolean {
+  return program === 'TODDLERS' || program === 'PRESCHOOLERS';
+}
 
 export const ITEM_LABEL: Readonly<Record<PriceItemCode, string>> = {
   ENROLMENT_FEE: 'Upisnina',

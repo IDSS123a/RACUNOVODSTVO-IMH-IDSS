@@ -99,6 +99,27 @@ pub fn list_families(conn: &Connection) -> AppResult<Vec<FamilySummary>> {
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
+/// One enrolment of a school year without any name (dashboard counts, specs/dashboard-audit D1).
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EnrolmentOverview {
+    pub family_id: String,
+    pub child_id: String,
+    pub program: String,
+    pub status: String,
+}
+
+pub fn enrolment_overview(conn: &Connection, school_year: &str) -> AppResult<Vec<EnrolmentOverview>> {
+    let mut stmt = conn.prepare(
+        "SELECT c.family_id, e.child_id, e.program, e.status FROM enrolments e JOIN children c ON c.id = e.child_id
+         WHERE e.school_year = ?1 ORDER BY e.id",
+    )?;
+    let rows = stmt.query_map(params![school_year], |r| {
+        Ok(EnrolmentOverview { family_id: r.get(0)?, child_id: r.get(1)?, program: r.get(2)?, status: r.get(3)? })
+    })?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
 pub fn get_family(conn: &Connection, family_id: &str) -> AppResult<Option<FamilyDetail>> {
     let family = conn
         .query_row("SELECT id, display_name, address FROM families WHERE id = ?1", params![family_id], |r| {

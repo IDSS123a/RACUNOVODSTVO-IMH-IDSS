@@ -310,6 +310,101 @@
 - The payment slip and the QR ask for UKUPNO ZA UPLATU (`slipAmount`: the invoice after its credit notes, never reduced by payments). This replaces DL-P008 „amount = what is still open“.
 - The payment status stays in the invoice register and the invoice detail („Uplate“).
 
+## DL-P014 — One invoice per child with all its costs; manual invoice only for children not enrolled
+
+**Date:** 2026-11-21 · **Spec:** `specs/one-invoice-per-child/` · **Source:** Director, 2026-11-21. The HTML document does not settle it: its monthly bulk makes a tuition line only, and its manual invoice allows anything. **Amends:** DL-P013 (F2), the enrolment-fee invoice of Sprint 03, CONSTITUTION BR-27.
+
+**Director:**
+- „Za jedno dijete svi troškovi idu na jedan račun. Na primjer: školarina za decembar 2026 710,00 KM, upisnina, potrošni materijal…“
+- „Ručni račun … samo za usluge koje se privremeno koriste i isključivo za novu djecu (npr. dijete pohađa samo našu ljetnu školu, a inače je redovno upisano u neku drugu školu).“
+- „… operaterka koja kreira račun potvrdi tačnost i po potrebi odredi … šta će se na tom računu prikazati.“
+
+**Decision:**
+- **The monthly preview builds one invoice per child and institution.** It contains:
+  - tuition (IDSS: the plan instalments due and breakfast);
+  - every one-time item of the enrolment **not yet billed**: enrolment fee, materials, deposit. They follow the existing rules: continuing child, transfer Preschoolers → IDSS Preschoolers, sibling tier of the deposit, reduced IDSS fee.
+- An IDSS pupil with no instalment due that month still gets an invoice for its unbilled one-time items.
+- **The operator confirms each invoice and decides what it shows:**
+  - every line has a tick, and the whole invoice can be left out;
+  - a one-time item left out is proposed again the next month;
+  - an excluded IDSS instalment is not marked invoiced;
+  - a **service outside the price list** can be added with its basis;
+  - price-list amounts are never edited (BR-7).
+- **Proposed but not ticked:**
+  - the IDSS deposit (the school's decision, only with 2+ instalments);
+  - an item already found on an **imported** invoice of the old workbook (from March of the year before the school year). The note names that invoice, because those invoices carry no enrolment and only the operator can judge.
+- **„Račun za upis“ is removed** from the family card. Existing invoices of kind `ENROLMENT_FEES` stay valid and count as billed.
+- **„Novi račun“ (manual) only for a child not regularly enrolled** in the institution in that school year: no enrolment other than withdrawn. A withdrawn enrolment does not count; a completed one does.
+  - Its lines carry no enrolment and no program.
+  - An enrolled child's extra services go on its monthly invoice.
+- **Rust enforces:**
+  - a one-time item at most once per enrolment, across all issued invoices; the two enrolment-fee codes are one item, and a cancelled invoice frees it (S6);
+  - `OTHER` lines only on monthly or manual invoices, with a basis;
+  - lines without a program only on a manual invoice;
+  - a manual invoice is refused for an enrolled child.
+- New command `list_billed_one_time(school_year)` tells the preview what is already billed.
+- **Due date:** the monthly one (the 5th, or issue + 5 days). One-time items therefore no longer have their own due date (BR-9 „before the child starts“, BR-10 „7 days“). The status `AWAITING_ENROLMENT_PAYMENT` still waits for the payment.
+
+**Verified:**
+- Vitest 226/226, including nine cases of the monthly preview:
+  - new child in December;
+  - siblings;
+  - already billed;
+  - continuing child;
+  - imported invoice;
+  - IDSS deposit and plan;
+  - IDSS without an instalment;
+  - operator's exclusions;
+  - an extra service with its basis.
+- cargo test 57/57, including the one-time guard, extras on the monthly invoice, and the manual invoice refused for an enrolled child.
+- **Director check (C-13):** confirmed in the running app, 2026-11-21, after amendments 1 and 2.
+
+**Amendment 1 (2026-11-21, Director's check).** The December preview was empty: children imported from the old workbook have no enrolment. Its sheet `Setting` holds only father, mother, child and address, with no program and no date of birth.
+- The preview now lists every child without an enrolment in the school year, and how many of them were imported, instead of a silent „nema računa“ (E-5).
+- New screen **„Upis djece bez upisa“** (Porodice):
+  - one table for all such children;
+  - the institution is suggested from the child's latest invoice;
+  - program, date of birth, residency, start and status are entered by the operator, never guessed (M-4);
+  - ticked complete rows are saved in ONE transaction (`save_enrolments_bulk`), audited, and the child's import-review flag is cleared.
+
+**Amendment 2 (2026-11-21, Director):** „Kategorija Toddler/Preschooler nije relevantna … dijete po procjeni pedagoga prelazi iz toddler u preschooler, a cijena je ista.“
+- **Toddlers / Preschoolers is one choice** in every form; a new enrolment is stored as `PRESCHOOLERS`.
+- The code `TODDLERS` stays valid for stored data and the price list, with the same price, and both read „Toddlers / Preschoolers“.
+- No migration.
+- IDSS Preschoolers stays separate (other price).
+- The direct transfer to IDSS Preschoolers (BR-9) counts from either code.
+
+## DL-P015 — Edge-to-edge responsive layout; templates for every free-text entry
+
+**Date:** 2026-11-21 · **Source:** Director, 2026-11-21: „neke ćelije se odsijecaju … UI za sve uređaje, platforme i veličine ekrana; desktop i laptop preko cijelog ekrana od ivice do ivice … ponudi operateru gotove šablone … svi unosi moraju biti identične sintakse.“
+
+**Decision — layout:**
+- The window opens **maximized** and can shrink to 360 × 560 (was a fixed 1366 × 860, minimum 1024).
+- The shell has a sidebar from laptop width (lg). Below that, a top bar with a slide-in menu. The content uses the full width with small margins.
+- Table cells **wrap** instead of being cut off; amounts (`tabular-nums`) never break.
+- The invoice register hides secondary columns on narrow screens: Kupac below md, Rok below lg, Uplaćeno below sm.
+- Wide dialogs use up to 96 % of the window (max 96 rem); on a phone every dialog is full width.
+
+**Decision — templates (`invoices/text-templates.ts`, component `TemplateText`):**
+- Every free-text entry on invoices and payments is a **template** with typed fields: month from a list, year, school year, date picker, number, short name. The text is assembled in one place, so the same fact is always written the same way.
+- Covered entries:
+  - payment reference (Izvod br. … od …, Priznanica …);
+  - payment purpose (Uplata školarine za {mjesec} {godina}, upisni troškovi, po računu …). This was a new field: payments had an empty note;
+  - payment-reversal reason;
+  - credit-note reason;
+  - credit move / refund note;
+  - basis (obavijest, odluka UO IMH / ŠO IDSS, ugovor);
+  - description of a service outside the price list (ljetna škola — sedmica, izlet, dodatni program, radionica, ostala usluga).
+- A missing or malformed field gives no text, so the entry cannot be saved.
+- „Uplatio/la“ stays a name field: it is a person, not a sentence.
+
+**Verified:**
+- Vitest 233/233; the template tests cover syntax, rejection of malformed fields and defaults.
+- tsc, eslint and build are clean.
+- **Director check (C-13):** confirmed in the running app, 2026-11-21.
+
+---
+
 ---
 
 *Commander v1.8.1 — IDSS123a Organisation*
