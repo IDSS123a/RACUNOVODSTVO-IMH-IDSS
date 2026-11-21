@@ -59,7 +59,7 @@
 |---|---|---|---|
 | 3.1 | **Kontrolni panel:** aktivni upisi i porodice po ustanovi, neplaćeni računi, ukupan dug, djelimično plaćeni, grafikon statusa po mjesecu | ❌ | BR-29 (Sprint 04) → **F3**. |
 | 3.2 | Lista računa, filteri (ustanova, mjesec, status), detalj | ✅ | — |
-| 3.3 | **Novi račun (ručni):** stavke iz cjenovnika, količina, rabat, brzo dodavanje porodice ili djeteta | ❌ | → **F2** (ljetna škola, stipendija i naknadne stavke se danas ne mogu fakturisati). |
+| 3.3 | **Novi račun (ručni):** stavke iz cjenovnika, količina, rabat, brzo dodavanje porodice ili djeteta | ✅ F2 | **F2 (DL-P013):** „Novi račun“ za usluge van cjenovnika: naziv, JM, količina, cijena i obavezan osnov. Rabat nije preuzet, jer umanjenje traži odluku odbora (BR-7). Brzi odabir iz cjenovnika nije preuzet, jer se tih 33 stavki fakturiše po pravilima kroz „Mjesečni računi“ i „Račun za upis“. Porodica i dijete se dodaju u „Porodice“. Stipendije čekaju registar odluka. |
 | 3.4 | Mjesečni obračun (prijedlog → potvrda → izdavanje) | ✅ | BR-26. |
 | 3.5 | Porodice i djeca | ✅ | — |
 | 3.6 | **Kalkulator Porodice 3+** i obračun subvencije | ❌ | → **F5**. |

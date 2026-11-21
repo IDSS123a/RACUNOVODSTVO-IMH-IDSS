@@ -19,6 +19,16 @@ pub struct InvoiceLine {
     pub list_amount: i64,
     pub board_decision_id: Option<String>,
     pub amount: i64,
+    /// Whole quantity 1–999 (migration 013); `amount = quantity × unit price`. Earlier lines are 1.
+    #[serde(default = "one")]
+    pub quantity: i64,
+    /// `kom` or `srv` when entered (manual invoice); None = derived from the item code (F1 / SPEC C5).
+    #[serde(default)]
+    pub unit: Option<String>,
+}
+
+fn one() -> i64 {
+    1
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -37,6 +47,9 @@ pub struct InvoiceDraft {
     pub period_to: String,
     pub lines: Vec<InvoiceLine>,
     pub total: i64,
+    /// Basis of a manual invoice (decision, contract, notice — specs/manual-invoice M11); empty for the others.
+    #[serde(default)]
+    pub reason: String,
     /// IDSS plan instalments billed by this invoice; each is marked invoiced exactly once.
     #[serde(default)]
     pub plan_items: Vec<PlanItemRef>,
@@ -178,14 +191,15 @@ pub fn issue_invoice(tx: &Transaction, draft: &InvoiceDraft) -> AppResult<String
     if draft.lines.iter().any(|l| l.child_id != draft.child_id) {
         return Err(AppError::Validation("račun se izdaje za jedno dijete — sve stavke moraju biti za to dijete".into()));
     }
+    validate_lines(draft)?;
     let number = next_number(tx, &draft.entity, &draft.issue_date)?;
     tx.execute(
         "INSERT INTO invoices(id, number, entity, kind, family_id, child_id, buyer_name, buyer_address, issue_date, due_date,
-                              period_from, period_to, total_fenings, status, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 'ISSUED', ?14)",
+                              period_from, period_to, total_fenings, status, created_at, reason)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 'ISSUED', ?14, ?15)",
         params![
             draft.id, number, draft.entity, draft.kind, draft.family_id, draft.child_id, draft.buyer_name, draft.buyer_address,
-            draft.issue_date, draft.due_date, draft.period_from, draft.period_to, draft.total, now()
+            draft.issue_date, draft.due_date, draft.period_from, draft.period_to, draft.total, now(), draft.reason.trim()
         ],
     )
     .map_err(|e| match &e {
@@ -197,11 +211,12 @@ pub fn issue_invoice(tx: &Transaction, draft: &InvoiceDraft) -> AppResult<String
     for (index, line) in draft.lines.iter().enumerate() {
         tx.execute(
             "INSERT INTO invoice_lines(id, invoice_id, position, item_code, description, child_id, enrolment_id, program,
-                                       list_amount, board_decision_id, amount)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                                       list_amount, board_decision_id, amount, quantity, unit)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 format!("{}-{}", draft.id, index + 1), draft.id, (index + 1) as i64, line.item_code, line.description,
-                line.child_id, line.enrolment_id, line.program, line.list_amount, line.board_decision_id, line.amount
+                line.child_id, line.enrolment_id, line.program, line.list_amount, line.board_decision_id, line.amount,
+                line.quantity, line.unit
             ],
         )?;
     }
@@ -217,6 +232,55 @@ pub fn issue_invoice(tx: &Transaction, draft: &InvoiceDraft) -> AppResult<String
         }
     }
     Ok(number)
+}
+
+/// Line rules of every issued invoice, and the manual-invoice rules (specs/manual-invoice, kind `OTHER`):
+/// only `OTHER` lines, entered at their amount (no discount without a board-decision record, BR-7), quantity × unit
+/// price, a unit of measure, a basis and a total above zero. No other kind may carry an `OTHER` line.
+fn validate_lines(draft: &InvoiceDraft) -> AppResult<()> {
+    for (index, line) in draft.lines.iter().enumerate() {
+        let row = index + 1;
+        if !(1..=999).contains(&line.quantity) {
+            return Err(AppError::Validation(format!("red {row}: količina mora biti cijeli broj od 1 do 999")));
+        }
+        if line.amount % line.quantity != 0 || line.list_amount % line.quantity != 0 {
+            return Err(AppError::Validation(format!("red {row}: iznos stavke mora biti količina × cijena")));
+        }
+        if line.unit.as_deref().is_some_and(|u| u != "kom" && u != "srv") {
+            return Err(AppError::Validation(format!("red {row}: jedinica mjere je kom ili srv")));
+        }
+    }
+    let manual_lines = draft.lines.iter().filter(|l| l.item_code == "OTHER").count();
+    if draft.kind != "OTHER" {
+        if manual_lines > 0 {
+            return Err(AppError::Validation("stavka van cjenovnika ide samo na ručni račun".into()));
+        }
+        return Ok(());
+    }
+    if manual_lines != draft.lines.len() {
+        return Err(AppError::Validation(
+            "ručni račun sadrži samo usluge van cjenovnika — stavke cjenovnika se fakturišu mjesečnim obračunom ili računom za upis".into(),
+        ));
+    }
+    if draft.reason.trim().is_empty() {
+        return Err(AppError::Validation("unesite osnov ručnog računa (odluka, ugovor ili obavijest)".into()));
+    }
+    for (index, line) in draft.lines.iter().enumerate() {
+        let row = index + 1;
+        if line.description.trim().is_empty() {
+            return Err(AppError::Validation(format!("red {row}: unesite naziv usluge/stavke")));
+        }
+        if line.amount != line.list_amount || line.board_decision_id.is_some() {
+            return Err(AppError::Validation(format!("red {row}: rabat na ručnom računu nije dozvoljen bez odluke odbora")));
+        }
+        if line.unit.is_none() {
+            return Err(AppError::Validation(format!("red {row}: odaberite jedinicu mjere")));
+        }
+    }
+    if draft.total <= 0 {
+        return Err(AppError::Validation("ukupan iznos računa mora biti veći od 0 KM".into()));
+    }
+    Ok(())
 }
 
 /// Save (create or replace) a payment plan. A plan with an invoiced instalment can no longer be replaced.
@@ -378,7 +442,7 @@ pub fn get_invoice(conn: &Connection, invoice_id: &str) -> AppResult<Option<Invo
     let mut stmt = conn.prepare(
         // Imported lines (BR-32) have no child/enrolment/program; they are returned as empty strings.
         "SELECT item_code, description, COALESCE(child_id, ''), COALESCE(enrolment_id, ''), COALESCE(program, ''),
-                list_amount, board_decision_id, amount
+                list_amount, board_decision_id, amount, quantity, unit
          FROM invoice_lines WHERE invoice_id = ?1 ORDER BY position",
     )?;
     let lines = stmt
@@ -392,6 +456,8 @@ pub fn get_invoice(conn: &Connection, invoice_id: &str) -> AppResult<Option<Invo
                 list_amount: r.get(5)?,
                 board_decision_id: r.get(6)?,
                 amount: r.get(7)?,
+                quantity: r.get(8)?,
+                unit: r.get(9)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -509,10 +575,67 @@ mod tests {
             lines: vec![InvoiceLine {
                 item_code: "TUITION".into(), description: "Školarina".into(), child_id: "c1".into(),
                 enrolment_id: "e1".into(), program: "TODDLERS".into(), list_amount: 71000, board_decision_id: None, amount: 71000,
+                quantity: 1, unit: None,
             }],
             total: 71000,
+            reason: String::new(),
             plan_items: Vec::new(),
         }
+    }
+
+    fn manual(id: &str) -> InvoiceDraft {
+        let mut d = draft(id, "2027-07", "2027-07-01", "OTHER");
+        d.reason = "Obavijest o ljetnoj školi 2027".into();
+        d.lines = vec![InvoiceLine {
+            item_code: "OTHER".into(), description: "Ljetna škola — sedmica".into(), child_id: "c1".into(),
+            enrolment_id: "e1".into(), program: "TODDLERS".into(), list_amount: 3 * 15050, board_decision_id: None,
+            amount: 3 * 15050, quantity: 3, unit: Some("srv".into()),
+        }];
+        d.total = 3 * 15050;
+        d
+    }
+
+    /// specs/manual-invoice: a manual invoice is numbered in its institution's series, keeps quantity, unit and basis.
+    #[test]
+    fn manual_invoice_round_trips_quantity_unit_and_basis() {
+        let mut conn = db_with_family();
+        let tx = conn.transaction().unwrap();
+        assert_eq!(issue_invoice(&tx, &manual("m1")).unwrap(), "IMH-001/27");
+        tx.commit().unwrap();
+        let detail = get_invoice(&conn, "m1").unwrap().unwrap();
+        assert_eq!(detail.invoice.kind, "OTHER");
+        assert_eq!(detail.invoice.reason, "Obavijest o ljetnoj školi 2027");
+        assert_eq!((detail.lines[0].quantity, detail.lines[0].unit.as_deref(), detail.lines[0].amount), (3, Some("srv"), 45150));
+        // a manual invoice does not block the monthly invoice of the same child and month
+        let tx = conn.transaction().unwrap();
+        assert!(issue_invoice(&tx, &draft("i1", "2027-07", "2027-07-01", "MONTHLY")).is_ok());
+    }
+
+    /// Every rule of the manual invoice is enforced here too, not only in the form (defence in depth).
+    #[test]
+    fn manual_invoice_rejections() {
+        let mut conn = db_with_family();
+        let tx = conn.transaction().unwrap();
+        let rejected = |change: &dyn Fn(&mut InvoiceDraft)| {
+            let mut d = manual("bad");
+            change(&mut d);
+            matches!(issue_invoice(&tx, &d), Err(AppError::Validation(_)))
+        };
+        assert!(rejected(&|d| d.reason = "  ".into()), "basis required");
+        assert!(rejected(&|d| d.lines[0].quantity = 0), "quantity ≥ 1");
+        assert!(rejected(&|d| d.lines[0].quantity = 1000), "quantity ≤ 999");
+        assert!(rejected(&|d| d.lines[0].quantity = 4), "amount = quantity × unit price");
+        assert!(rejected(&|d| d.lines[0].unit = None), "unit required");
+        assert!(rejected(&|d| d.lines[0].unit = Some("kg".into())), "unit kom/srv");
+        assert!(rejected(&|d| d.lines[0].description = " ".into()), "description required");
+        assert!(rejected(&|d| { d.lines[0].amount = 30000; d.total = 30000; }), "no discount without a board decision");
+        assert!(rejected(&|d| d.lines[0].board_decision_id = Some("x".into())), "no board decision on a manual line");
+        assert!(rejected(&|d| { d.lines[0].item_code = "TUITION".into(); }), "price-list items go through their flows");
+        assert!(rejected(&|d| { d.lines[0].list_amount = 0; d.lines[0].amount = 0; d.total = 0; }), "total above zero");
+        let mut monthly = draft("bad2", "2027-07", "2027-07-01", "MONTHLY");
+        monthly.lines[0].item_code = "OTHER".into();
+        assert!(matches!(issue_invoice(&tx, &monthly), Err(AppError::Validation(_))), "OTHER lines only on a manual invoice");
+        assert_eq!(next_number(&tx, "IMH", "2027-07-01").unwrap(), "IMH-001/27", "no number was used by a rejected draft");
     }
 
     #[test]
@@ -533,8 +656,8 @@ mod tests {
         let mut conn = db_with_family();
         let tx = conn.transaction().unwrap();
         for n in 1..=150 {
-            let number = issue_invoice(&tx, &draft(&format!("x{n}"), "2026-09", "2026-09-01", "OTHER")).unwrap();
-            assert_eq!(number, format!("IMH-{n:03}/26"));
+            let number = issue_invoice(&tx, &manual(&format!("x{n}"))).unwrap();
+            assert_eq!(number, format!("IMH-{n:03}/27"));
         }
     }
 

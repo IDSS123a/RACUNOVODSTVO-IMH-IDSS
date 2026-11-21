@@ -189,15 +189,23 @@ export const FamilySummariesSchema = z.array(FamilySummarySchema);
 
 export const InvoiceKindSchema = z.enum(['MONTHLY', 'ENROLMENT_FEES', 'INSTALMENT', 'OTHER', 'CREDIT_NOTE']);
 
+/** Unit of measure of a line (document `vNew`: JM). */
+export const LineUnitSchema = z.enum(['kom', 'srv']);
+
 export const InvoiceLineSchema = z.object({
-  itemCode: PriceItemCodeSchema,
-  description: z.string().min(1),
+  /** A price-list item, or `OTHER` = a service outside the price list on a manual invoice (specs/manual-invoice). */
+  itemCode: z.union([PriceItemCodeSchema, z.literal('OTHER')]),
+  description: z.string().trim().min(1),
   childId: z.string().min(1),
   enrolmentId: z.string().min(1),
   program: ProgramCodeSchema,
   listAmount: fenings.nonnegative(),
   boardDecisionId: z.string().nullable(),
   amount: fenings.nonnegative(),
+  /** Whole quantity 1–999 (migration 013); omitted = 1. */
+  quantity: z.number().int().min(1).max(999).optional(),
+  /** Omitted = derived from the item code. */
+  unit: LineUnitSchema.nullable().optional(),
 });
 
 export const PlanItemRefSchema = z.object({ planId: z.string().min(1), sequence: z.number().int().min(1).max(12) });
@@ -218,6 +226,8 @@ export const InvoiceDraftSchema = z.object({
   lines: z.array(InvoiceLineSchema).min(1),
   total: fenings.nonnegative(),
   planItems: z.array(PlanItemRefSchema),
+  /** Basis of a manual invoice (M11); omitted for the other kinds. */
+  reason: z.string().optional(),
 });
 
 export const InvoiceSummarySchema = z.object({
@@ -269,6 +279,8 @@ export const InvoiceDetailLineSchema = z.object({
   listAmount: fenings,
   boardDecisionId: z.string().nullable(),
   amount: fenings,
+  quantity: z.number().int().min(1),
+  unit: LineUnitSchema.nullable(),
 });
 
 export const InvoiceDetailSchema = z.object({

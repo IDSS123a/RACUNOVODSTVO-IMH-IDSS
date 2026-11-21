@@ -43,27 +43,37 @@ export interface InvoiceRecap {
 
 /**
  * Rows and recapitulation of an invoice.
- * @param lines stored lines in position order: item code, description, price-list amount and invoiced amount
+ * @param lines stored lines in position order: item code, description, price-list amount and invoiced amount of the
+ *   whole line, and (migration 013) quantity and unit. Cijena and S rabatom are per unit, Iznos bez PDV per line, as in
+ *   the document (`qty × price`). The backend guarantees both amounts are divisible by the quantity (F2).
  */
 export function invoiceRecap(
-  lines: ReadonlyArray<{ readonly itemCode: string; readonly description: string; readonly listAmount: Fenings; readonly amount: Fenings }>,
+  lines: ReadonlyArray<{
+    readonly itemCode: string;
+    readonly description: string;
+    readonly listAmount: Fenings;
+    readonly amount: Fenings;
+    readonly quantity?: number;
+    readonly unit?: 'kom' | 'srv' | null;
+  }>,
 ): InvoiceRecap {
   const rows: RecapLine[] = lines.map((line, index) => {
+    const quantity = line.quantity ?? 1;
     const discountBp = line.listAmount > 0 ? Math.round(((line.listAmount - line.amount) * 10000) / line.listAmount) : 0;
     return {
       position: index + 1,
       description: line.description,
-      unit: ONE_TIME_ITEMS.has(line.itemCode) ? 'kom' : 'srv',
-      quantity: 1,
-      price: line.listAmount,
-      discounted: line.amount,
+      unit: line.unit ?? (ONE_TIME_ITEMS.has(line.itemCode) ? 'kom' : 'srv'),
+      quantity,
+      price: line.listAmount / quantity,
+      discounted: line.amount / quantity,
       discountBp,
       vatPercent: 0,
       vat: 0,
       netAmount: line.amount,
     };
   });
-  const salesValue = sum(rows.map((r) => r.price));
+  const salesValue = sum(lines.map((l) => l.listAmount));
   const netValue = sum(rows.map((r) => r.netAmount));
   return { lines: rows, salesValue, discount: salesValue - netValue, netValue, vat: 0, total: netValue };
 }

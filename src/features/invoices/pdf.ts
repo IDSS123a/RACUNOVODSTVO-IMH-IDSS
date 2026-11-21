@@ -16,7 +16,8 @@ import type { InvoiceDetail } from './repository';
  */
 
 export interface InvoicePdfData {
-  readonly detail: Pick<InvoiceDetail, 'invoice' | 'lines'>;
+  /** `creditNotes`: the credit notes that reduce this invoice, each printed in the recapitulation (storno). */
+  readonly detail: Pick<InvoiceDetail, 'invoice' | 'lines'> & { readonly creditNotes?: InvoiceDetail['creditNotes'] };
   readonly institution: Institution;
   /** Printed as "Fakturisao/la" — the operator profile from Settings. */
   readonly operatorName: string;
@@ -305,7 +306,50 @@ function drawLines(w: Writer, data: InvoicePdfData, recap: InvoiceRecap): void {
 }
 
 /**
- * PDV note box (F1 / SPEC C6) beside the recapitulation (C7); then credit-note reduction, payments, amount in words (C8).
+ * The amount the invoice asks for: its total reduced by the credit notes that cancel it (storno S2; Director,
+ * 2026-11-21: „račun 710, storniran za 705 → treba platiti 5,00“). A credit note states its own (negative) total.
+ */
+export function amountDue(invoice: { readonly kind: string; readonly total: number; readonly credited: number }): number {
+  return invoice.kind === 'CREDIT_NOTE' ? invoice.total : invoice.total + invoice.credited;
+}
+
+/**
+ * Amount on the payment slip and in the QR: UKUPNO ZA UPLATU. Payments are deliberately not an input (no `paid`):
+ * the invoice is issued before the parent pays and reads the same whenever printed (Director, 2026-11-21).
+ */
+export function slipAmount(invoice: { readonly kind: string; readonly total: number; readonly credited: number }): number {
+  return Math.max(0, amountDue(invoice));
+}
+
+/**
+ * Recapitulation rows (F1 / SPEC C7). When credit notes reduce the invoice, each one is a row
+ * („Knjižno odobrenje IMH-KO-001/26“) and the dark final row UKUPNO ZA UPLATU is the amount due after them, so the
+ * table, the amount in words and the payment slip all state the same figure. Without credit notes: as the sample invoice.
+ */
+export function recapitulationRows(
+  recap: InvoiceRecap,
+  invoice: { readonly kind: string; readonly total: number; readonly credited: number },
+  creditNotes: ReadonlyArray<{ readonly number: string; readonly total: number }> = [],
+): Array<[label: string, amount: number, isTotal: boolean]> {
+  const rows: Array<[string, number, boolean]> = [
+    ['Prodajna vrijednost:', recap.salesValue, false],
+    ['Iznos odobrenog rabata:', recap.discount, false],
+    ['Vrijednost bez PDV:', recap.netValue, false],
+    ['Iznos PDV (0%):', recap.vat, false],
+  ];
+  if (invoice.kind === 'CREDIT_NOTE') return [...rows, ['UKUPNO ODOBRENO:', recap.total, true]];
+  if (invoice.credited < 0) {
+    rows.push(['Iznos računa:', recap.total, false]);
+    const listed = creditNotes.reduce((a, cn) => a + cn.total, 0);
+    // every credit note by number; should the list be missing or incomplete, the stored sum is still shown in full
+    if (creditNotes.length > 0 && listed === invoice.credited) creditNotes.forEach((cn) => rows.push([`Knj. odobrenje ${cn.number}:`, cn.total, false]));
+    else rows.push(['Umanjeno knjižnim odobrenjima:', invoice.credited, false]);
+  }
+  return [...rows, ['UKUPNO ZA UPLATU:', amountDue(invoice), true]];
+}
+
+/**
+ * PDV note box (F1 / SPEC C6) beside the recapitulation (C7); then payments and the amount in words (C8).
  */
 function drawNoteAndRecap(w: Writer, data: InvoicePdfData, recap: InvoiceRecap): void {
   const { invoice } = data.detail;
@@ -316,21 +360,18 @@ function drawNoteAndRecap(w: Writer, data: InvoicePdfData, recap: InvoiceRecap):
   const recapWidth = CONTENT_WIDTH - noteWidth - 12;
 
   const pdvNote = institution.invoiceNote.trim();
+  const squash = (text: string) => text.replace(/\s+/g, ' ').toLowerCase();
   const noteParagraphs = [
     pdvNote,
-    INVOICE_VALIDITY_NOTE,
+    // printed once, also when the institution's own note already contains the sentence
+    squash(pdvNote).includes(squash(INVOICE_VALIDITY_NOTE)) ? '' : INVOICE_VALIDITY_NOTE,
     // nothing is paid on a credit note
     isCreditNote ? '' : `Uplatu izvršiti na TRN: ${institution.bankName} -> ${institution.bankAccount.replace(/\s+/g, '')}`,
   ].filter(Boolean);
   const noteLines = noteParagraphs.flatMap((p) => wrapText(p, w.regular, 8, noteWidth - 16));
-  const recapRows: Array<[string, number, boolean]> = [
-    ['Prodajna vrijednost:', recap.salesValue, false],
-    ['Iznos odobrenog rabata:', recap.discount, false],
-    ['Vrijednost bez PDV:', recap.netValue, false],
-    ['Iznos PDV (0%):', recap.vat, false],
-    [isCreditNote ? 'UKUPNO ODOBRENO:' : 'UKUPNO ZA UPLATU:', recap.total, true],
-  ];
-  const rowHeight = 19;
+  const recapRows = recapitulationRows(recap, invoice, data.detail.creditNotes);
+  // the sample's 19 pt rows; rows for credit notes are tighter so the slip stays on the first page
+  const rowHeight = recapRows.length > 5 ? 15 : 19;
   const height = Math.max(noteLines.length * 10.5 + 30, recapRows.length * rowHeight);
   w.ensure(height + 60);
   const top = w.y + 6;
@@ -345,26 +386,16 @@ function drawNoteAndRecap(w: Writer, data: InvoicePdfData, recap: InvoiceRecap):
     w.page.drawRectangle({ x: recapX, y: y - rowHeight, width: recapWidth, height: rowHeight, color: total ? DARK : WHITE, borderColor: RULE, borderWidth: 0.6 });
     w.page.drawLine({ start: { x: recapX + recapWidth * 0.62, y }, end: { x: recapX + recapWidth * 0.62, y: y - rowHeight }, thickness: 0.6, color: RULE });
     const color = total ? WHITE : INK;
-    w.text(label, recapX + 6, { y: y - 13, size: total ? 9 : 8.5, bold: total, color });
-    w.rightText(formatKM(value), recapX + recapWidth - 6, { y: y - 13, size: total ? 9.5 : 8.5, bold: total, color });
+    w.text(label, recapX + 6, { y: y - rowHeight + 6, size: total ? 9 : 8.5, bold: total, color });
+    w.rightText(formatKM(value), recapX + recapWidth - 6, { y: y - rowHeight + 6, size: total ? 9.5 : 8.5, bold: total, color });
   });
   w.y = top - height - 14;
 
-  if (!isCreditNote && invoice.credited < 0) {
-    w.rightText(
-      `Umanjeno knjižnim odobrenjima ${formatKM(invoice.credited)} · za uplatu ${formatKM(invoice.total + invoice.credited)}`,
-      PAGE.width - MARGIN,
-      { size: 8.5, bold: true },
-    );
-    w.y -= 12;
-  }
-  if (!isCreditNote && invoice.paid > 0) {
-    const open = Math.max(0, invoice.total + invoice.credited - invoice.paid);
-    w.rightText(`Uplaćeno ${formatKM(invoice.paid)} · preostalo za uplatu ${formatKM(open)}`, PAGE.width - MARGIN, { size: 8.5 });
-    w.y -= 12;
-  }
-  // Credit notes are negative: "minus …" in words.
-  const words = `${invoice.total < 0 ? 'minus ' : ''}${amountInWords(Math.abs(invoice.total))}`;
+  // Payments are never printed: the invoice is the demand the parent receives before paying, and it reads the same
+  // whenever it is printed or sent (Director, 2026-11-21). Payment status lives in the register and the invoice detail.
+  // The words state the final recap row: the amount due after credit notes; a credit note is negative ("minus …").
+  const due = amountDue(invoice);
+  const words = `${due < 0 ? 'minus ' : ''}${amountInWords(Math.abs(due))}`;
   for (const line of wrapText(`Slovima: ${words}`, w.bold, 9, CONTENT_WIDTH)) {
     w.text(line, MARGIN, { size: 9, bold: true });
     w.y -= 12;
@@ -390,13 +421,14 @@ function underline(w: Writer, x: number, y: number, width: number): void {
 
 /**
  * Domestic payment slip („Nalog za uplatu“), pre-filled for the parent, in the layout of the institutions' invoice
- * (F1 / SPEC C9). Purpose = number, child, period (DL-P008, IDSS Pravilnik čl. 3); amount = what is still open;
- * place/date of payment stay blank for the parent (DL-P008). The QR uses the assumed EPC/BAM format (DL-P008 addendum).
+ * (F1 / SPEC C9). Purpose = number, child, period (DL-P008, IDSS Pravilnik čl. 3); amount = UKUPNO ZA UPLATU, i.e.
+ * the invoice after its credit notes, independent of payments (DL-P013 amendment 2, replacing DL-P008 „what is still
+ * open“); place/date of payment stay blank for the parent (DL-P008). The QR uses the assumed EPC/BAM format.
  */
 function drawPaymentSlip(w: Writer, data: InvoicePdfData): void {
   const { invoice } = data.detail;
   const { institution } = data;
-  const open = Math.max(0, invoice.total + invoice.credited - invoice.paid);
+  const open = slipAmount(invoice);
   const top = SLIP_TOP;
   const bottom = SLIP.bottom;
   w.page.drawRectangle({ x: MARGIN, y: bottom, width: CONTENT_WIDTH, height: SLIP.height, borderColor: INK, borderWidth: 0.9 });
@@ -444,7 +476,7 @@ function drawPaymentSlip(w: Writer, data: InvoicePdfData): void {
   label(w, 'IZNOS (KM):', mx, my);
   label(w, 'ROK UPLATE:', mx + 86, my);
   w.page.drawRectangle({ x: mx, y: my - 24, width: 80, height: 18, borderColor: INK, borderWidth: 0.9 });
-  const amount = open > 0 ? `= ${formatKM(open)}` : 'plaćeno';
+  const amount = `= ${formatKM(open)}`;
   w.text(amount, mx + 40 - w.bold.widthOfTextAtSize(amount, 9.5) / 2, { y: my - 18, size: 9.5, bold: true });
   w.text(`do ${formatDate(invoice.dueDate)}`, mx + 86, { y: my - 18, size: 8.5, bold: true });
   my -= 34;

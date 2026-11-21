@@ -88,3 +88,13 @@
   - the registration number is printed as stored.
   - A page-count test now covers the credit note.
 - **Lesson (L-S3-03 again):** every layout change is checked by rendering and LOOKING at each document type (one line, many lines, credit note, cancelled) before it is declared done.
+
+## L-S3-13 — The invoice document mixed in the register's state
+- **Trigger:** F2 check by the Director (2026-11-21).
+  - An invoice of 710,00 with a 705,00 credit note printed „UKUPNO ZA UPLATU 710,00“, with the reduction only in a small line below.
+  - The same PDF printed „Uplaćeno 5,00 · preostalo 0,00“, and its slip showed „plaćeno“, although the parent pays only after receiving the invoice.
+  - The tests checked page counts and arithmetic, not what the document asks the parent to pay.
+- **Fix:**
+  - UKUPNO ZA UPLATU, the amount in words, the slip and the QR all state one figure (`amountDue` / `slipAmount`): the invoice after its credit notes.
+  - Payments are never printed on the invoice (DL-P013 amendments 1 and 2).
+- **Lesson:** an invoice is a document the parent acts on. Every printed amount must answer „how much do I pay on this invoice“. Payment state belongs to the register, never to the document. When a feature adds a state that changes an invoice's balance (credit notes, payments), render an invoice in that state and read it as the parent would.

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { FilePlusIcon, SendIcon } from 'lucide-react';
+import { FilePlusIcon, FileTextIcon, SendIcon } from 'lucide-react';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '@/components/feedback';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import { BALANCE_LABEL, invoiceBalance } from '../credit-notes';
 import { listInvoices } from '../repository';
 import { InvoiceDetailDialog } from './InvoiceDetailDialog';
 import { InvoicePdfDialog } from './InvoicePdfDialog';
+import { ManualInvoiceDialog } from './ManualInvoiceDialog';
 import { ExportDialog, type ExportRequest } from './ExportDialog';
 
 function currentMonthRange(): ExportRequest {
@@ -31,6 +32,7 @@ export function InvoicesPage(): React.JSX.Element {
   const [entity, setEntity] = useState<EntityFilter>('ALL');
   const [month, setMonth] = useState<string>('');
   const [issuing, setIssuing] = useState(false);
+  const [manual, setManual] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [pdfId, setPdfId] = useState<string | null>(null);
   const [exportRequest, setExportRequest] = useState<ExportRequest | null>(null);
@@ -57,6 +59,9 @@ export function InvoicesPage(): React.JSX.Element {
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setExportRequest(currentMonthRange())}>
             <SendIcon aria-hidden /> Izvoz i slanje
+          </Button>
+          <Button variant="outline" onClick={() => setManual(true)}>
+            <FileTextIcon aria-hidden /> Novi račun
           </Button>
           <Button onClick={() => setIssuing(true)}>
             <FilePlusIcon aria-hidden /> Mjesečni računi
@@ -152,6 +157,7 @@ export function InvoicesPage(): React.JSX.Element {
           setExportRequest({ from: issueDate, to: issueDate });
         }}
       />
+      <ManualInvoiceDialog open={manual} onOpenChange={setManual} onCreated={invoices.reload} />
       <ExportDialog request={exportRequest} onClose={() => setExportRequest(null)} />
       <InvoiceDetailDialog invoiceId={openId} onClose={() => setOpenId(null)} onChanged={invoices.reload} onShowPdf={(id) => { setOpenId(null); setPdfId(id); }} />
       <InvoicePdfDialog invoiceId={pdfId} onClose={() => setPdfId(null)} />

@@ -7,7 +7,8 @@ import type { LegalEntityCode, PriceItemCode, ProgramCode } from '@/features/pri
 export type BillingMonth = `${number}-${number}`;
 
 export interface InvoiceLine {
-  readonly itemCode: PriceItemCode;
+  /** A price-list item, or `OTHER` = a service outside the price list on a manual invoice (specs/manual-invoice). */
+  readonly itemCode: PriceItemCode | 'OTHER';
   readonly description: string;
   readonly childId: string;
   readonly enrolmentId: string;
@@ -18,6 +19,10 @@ export interface InvoiceLine {
   readonly boardDecisionId: string | null;
   /** Final line amount — rounded once (DL-P003). */
   readonly amount: Fenings;
+  /** Whole quantity 1–999; omitted = 1. `amount = quantity × unit price` (migration 013). */
+  readonly quantity?: number;
+  /** Unit of measure when entered; omitted = derived from the item code. */
+  readonly unit?: 'kom' | 'srv';
 }
 
 /** An invoice before it gets a number — one per child, entity and month (BR-27). */
@@ -34,6 +39,8 @@ export interface InvoiceDraft {
   readonly periodTo: string;
   readonly lines: ReadonlyArray<InvoiceLine>;
   readonly total: Fenings;
+  /** Basis of a manual invoice (decision, contract, notice — M11). */
+  readonly reason?: string;
 }
 
 /** One instalment of an IDSS payment plan. */

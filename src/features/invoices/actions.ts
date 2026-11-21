@@ -4,6 +4,7 @@ import { listBoardRules, listBreakfast } from '@/features/board-rules/repository
 import { getFamily, listFamilies } from '@/features/families/repository';
 import { listPriceItems } from '@/features/price-lists/repository';
 import { buildImhMonthlyInvoices, InvoiceError, schoolYearOfMonth, type BoardDecision } from './domain';
+import { countsAsMonthlyBilled } from './manual';
 import { buildIdssMonthlyInvoices } from './plans';
 import { issueInvoices, listInvoices, listPaymentPlans, type InvoiceDraftPayload } from './repository';
 import type { BillingMonth } from './types';
@@ -40,10 +41,9 @@ export async function prepareMonth(month: BillingMonth, issueDate: string): Prom
   if (!rules.success) return rules;
   if (!breakfast.success) return breakfast;
   if (!existing.success) return existing;
-  // A child already invoiced for this month (e.g. by the old solution, imported — BR-32) is not billed twice.
-  const billed = new Set(
-    existing.data.filter((i) => i.status === 'ISSUED' && i.kind !== 'CREDIT_NOTE' && i.childId).map((i) => `${i.entity}|${i.childId}`),
-  );
+  // A child already invoiced for this month (e.g. by the old solution, imported — BR-32) is not billed twice;
+  // a manual invoice for a service outside the price list does not count (specs/manual-invoice).
+  const billed = new Set(existing.data.filter(countsAsMonthlyBilled).map((i) => `${i.entity}|${i.childId}`));
   const idssContext = {
     priceItems: prices.data,
     rules: rules.data.find((r) => r.entity === 'IDSS') ?? null,
