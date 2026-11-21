@@ -13,6 +13,6 @@
 - [x] 7. PDF layout to the reference: C1–C10; slip in the bottom third.
 - [x] 8. Integration: render samples (one line, many lines, credit note, cancelled) and view them.
 - [x] 9. Self-review.
-- [x] 10. Tests (Director check pending): Vitest, cargo test (migration 012), visual check, then the Director in the running app (C-13).
+- [x] 10. Tests (the Director checked it in the running app, 2026-11-21): Vitest, cargo test (migration 012), visual check, then the Director in the running app (C-13).
 - [x] 11. Docs: DL-P012, SPRINT note, lessons.
 - [ ] 12. Commit; push and PR on the Director's approval.
