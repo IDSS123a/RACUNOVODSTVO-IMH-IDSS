@@ -221,4 +221,46 @@
 
 ---
 
+## DL-P012 — Accounting-complete invoice PDF in the layout of the institutions' document (F1)
+
+**Date:** 2026-11-21 · **Spec:** `specs/invoice-pdf-complete/` · **Source:** `IMH-IDSS-Fakturisanje.html` and its sample `Faktura_IMH_004_26.pdf` (Director: the document is used to the maximum); Director 2026-11-21 (logo, slip in the bottom third, QR)
+
+**Decision:**
+- The PDF follows the sample invoice:
+  - letterhead with logo, ID and transaction account;
+  - title and **Code 39 barcode of the whole number**;
+  - box with period, issue date, due date, place of issue (Sarajevo) and method of payment (Virman / Nalog za plaćanje);
+  - buyer box;
+  - **10-column table** (JM, Količina, Cijena, S rabatom, Rabat %, PDV %, PDV iznos, Iznos bez PDV);
+  - PDV note box;
+  - **recapitulation** (Prodajna vrijednost, Iznos odobrenog rabata, Vrijednost bez PDV, Iznos PDV 0 %, UKUPNO);
+  - amount in words;
+  - payment slip with QR;
+  - signatures (Fakturisao/la, M.P., Ovlašteno lice, Komitent).
+- **The payment slip and the signatures take the bottom third of the last page** (Director, 2026-11-21). The body flows above it and continues on further pages.
+- **Amount in words uses the document's wording** („šest stotina osamdeset i 00/100 KM“). It is identical to the document's `slova` for 100.000 random amounts; above one million the same style continues.
+- **Due date:** the 5th of the month; when the invoice is issued after it, the **issue date + 5 days** (document `dueFor`, sample 14.10 → 19.10). This replaces „due on the issue date“.
+- **PDV note:** IMH gets the document's sentence by default (seed, and migration 012 for empty notes; an entered note is never overwritten). Below it, always: „Dokument je izrađen na računaru, i punovažan je bez potpisa i pečata.“ and the TRN line (not on credit notes).
+- **Kept from later decisions, over the 19.10 document:**
+  - QR label „QR kod za plaćanje“ (DL-P008 addendum, 21.10);
+  - slip purpose = number, child, period (IDSS Pravilnik čl. 3);
+  - place and date of payment left blank for the parent (DL-P008);
+  - one buyer on the invoice (BR-24), so no „Majka:“ line.
+- **Corrected from the document:** its barcode encoder dropped every non-digit („IMH 004/26“ → 00426). The full Code 39 set is used and verified by decoding.
+
+**Verified:**
+- Vitest 205/205:
+  - recapitulation identities for 10.000 random invoices;
+  - barcode decoded back;
+  - month-end and leap-year due dates.
+- cargo test 49/49 (migration 012).
+- Rendered and viewed:
+  - one-line invoice (one page);
+  - 24-line IDSS invoice (two pages, slip on the last);
+  - credit note (no slip, the barcode does not overlap the long title);
+  - all against the sample invoice.
+- **Open:** the PDV sentence for IDSS (P.U., not PPU), for the accountant.
+
+---
+
 *Commander v1.8.1 — IDSS123a Organisation*

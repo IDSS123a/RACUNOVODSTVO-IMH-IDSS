@@ -1,4 +1,4 @@
-import { INSTALMENT_DUE_DAY } from '@/constants';
+import { DUE_DAYS_AFTER_ISSUE, INSTALMENT_DUE_DAY } from '@/constants';
 import { divideRounded, sum, type Fenings } from '@/features/billing/money';
 import { applyBoardDecision, assignSiblingTiers, findPrice, type BoardDecisionEffect } from '@/features/billing/pricing';
 import { ACTIVE_STATUSES, knownBirthDate } from '@/features/families/domain';
@@ -58,10 +58,16 @@ export function monthLabel(month: BillingMonth): string {
   return `${MONTH_NAME[(mon ?? 1) - 1]} ${year}`;
 }
 
-/** Due date: the 5th of the billing month, or the issue date if that is later (IMH/IDSS Pravilnik). */
+/**
+ * Due date: the 5th of the billing month; when the invoice is issued after it, the issue date + 5 days
+ * (the institutions' document, `dueFor`; sample invoice issued 14.10 → due 19.10 — F1 / SPEC C11).
+ */
 export function dueDateForMonth(month: BillingMonth, issueDate: string): string {
   const due = `${month}-${String(INSTALMENT_DUE_DAY).padStart(2, '0')}`;
-  return issueDate > due ? issueDate : due;
+  if (issueDate <= due) return due;
+  const [y, m, d] = issueDate.split('-').map(Number);
+  if (!y || !m || !d) throw new InvoiceError(`invalid issue date ${issueDate}`);
+  return new Date(Date.UTC(y, m - 1, d + DUE_DAYS_AFTER_ISSUE)).toISOString().slice(0, 10);
 }
 
 /** True when the enrolment covers at least one day of the month. */

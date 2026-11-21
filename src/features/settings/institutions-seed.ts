@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import { IMH_PDV_NOTE } from '@/constants';
 import type { InstitutionSchema } from '@/lib/validation/schemas';
 
 /**
@@ -25,7 +26,9 @@ export const INSTITUTIONS_SEED: ReadonlyArray<z.infer<typeof InstitutionSchema>>
     bankAccount: '1990 4900 5848 7943',
     iban: 'BA39 1990 4900 5848 7943',
     swift: 'ABSBBA22',
-    invoiceNote: '',
+    // F1 / SPEC C6: the PDV exemption sentence of the institutions' document (constant NOTE); migration 012 sets it
+    // for existing databases whose IMH note is still empty.
+    invoiceNote: IMH_PDV_NOTE,
   },
   {
     code: 'IDSS',
