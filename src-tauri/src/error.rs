@@ -22,6 +22,9 @@ pub enum AppError {
     Conflict(String),
     #[error("serialisation error: {0}")]
     Json(#[from] serde_json::Error),
+    /// Another instance of the application holds the database (DL-P010). The text is for the operator.
+    #[error("{0}")]
+    AlreadyRunning(String),
 }
 
 impl AppError {
@@ -36,6 +39,7 @@ impl AppError {
             AppError::NotFound(_) => "NOT_FOUND",
             AppError::Conflict(_) => "CONFLICT",
             AppError::Json(_) => "JSON",
+            AppError::AlreadyRunning(_) => "ALREADY_RUNNING",
         }
     }
 }

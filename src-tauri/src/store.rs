@@ -18,6 +18,36 @@ use crate::migrations;
 
 const DB_FILE: &str = "fakturisanje.db.enc";
 const KEY_FILE: &str = "database.key";
+const LOCK_FILE: &str = "fakturisanje.lock";
+
+/// Shown to the operator when a second copy of the application is started (DL-P010).
+pub const ALREADY_RUNNING_MESSAGE: &str =
+    "Aplikacija je već otvorena u drugom prozoru. Koristite taj prozor, a ovaj zatvorite — dvije otvorene aplikacije bi prepisivale jedna drugoj podatke.";
+
+/// Hold an exclusive lock on the data folder for the lifetime of the process (DL-P010).
+/// The database lives in memory and is written to disk as a whole snapshot, so two running
+/// instances would silently overwrite each other's invoices and could hand out the same number.
+/// Windows releases the lock when the process ends, also after a crash — there is no stale lock.
+fn acquire_instance_lock(data_dir: &Path) -> AppResult<fs::File> {
+    let path = data_dir.join(LOCK_FILE);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const ERROR_SHARING_VIOLATION: i32 = 32;
+        match fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).share_mode(0).open(&path) {
+            Ok(file) => Ok(file),
+            Err(error) if error.raw_os_error() == Some(ERROR_SHARING_VIOLATION) => {
+                Err(AppError::AlreadyRunning(ALREADY_RUNNING_MESSAGE.into()))
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        // The application targets Windows only (DL-P001); elsewhere the file exists without a lock.
+        Ok(fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path)?)
+    }
+}
 
 struct Inner {
     conn: Connection,
@@ -30,6 +60,8 @@ struct Inner {
 /// Thread-safe handle to the encrypted database, managed as Tauri state.
 pub struct Store {
     inner: Mutex<Inner>,
+    /// Exclusive lock on the data folder; released when the Store (the process) goes away.
+    _instance_lock: fs::File,
 }
 
 /// Status reported to the UI.
@@ -46,6 +78,8 @@ impl Store {
     /// Open (or create) the encrypted database in `data_dir` and apply migrations.
     pub fn open(data_dir: &Path) -> AppResult<Self> {
         fs::create_dir_all(data_dir)?;
+        // First, before the key or the database is touched: only one instance may own the data.
+        let instance_lock = acquire_instance_lock(data_dir)?;
         let key_path = data_dir.join(KEY_FILE);
         let db_path = data_dir.join(DB_FILE);
         let (key, key_created) = keystore::load_or_create(&key_path)?;
@@ -67,7 +101,7 @@ impl Store {
         let mut inner = Inner { conn, key, db_path, key_path, first_run: key_created };
         migrations::apply(&mut inner.conn)?;
         persist(&inner)?;
-        Ok(Self { inner: Mutex::new(inner) })
+        Ok(Self { inner: Mutex::new(inner), _instance_lock: instance_lock })
     }
 
     fn lock(&self) -> AppResult<std::sync::MutexGuard<'_, Inner>> {
@@ -207,6 +241,32 @@ mod tests {
     }
 
     #[test]
+    fn a_second_instance_is_refused_and_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = Store::open(dir.path()).unwrap();
+        first
+            .write(|tx| {
+                tx.execute("INSERT INTO families(id, display_name, created_at) VALUES ('f1','Prva','now')", [])?;
+                Ok(())
+            })
+            .unwrap();
+        let before = fs::read(dir.path().join(DB_FILE)).unwrap();
+        match Store::open(dir.path()) {
+            Err(AppError::AlreadyRunning(message)) => assert_eq!(message, ALREADY_RUNNING_MESSAGE),
+            Err(other) => panic!("expected AlreadyRunning, got {other}"),
+            Ok(_) => panic!("a second instance must not open the database"),
+        }
+        assert_eq!(fs::read(dir.path().join(DB_FILE)).unwrap(), before, "the refused instance wrote nothing");
+        // the wrapper keeps the kind of the error for the UI
+        let refused = AppStore::new(Store::open(dir.path()));
+        assert!(matches!(refused.get(), Err(AppError::AlreadyRunning(_))));
+        drop(first);
+        let reopened = Store::open(dir.path()).expect("the lock is released when the first instance ends");
+        let count: i64 = reopened.read(|c| Ok(c.query_row("SELECT count(*) FROM families", [], |r| r.get(0))?)).unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
     fn restore_with_recovery_key_on_new_machine() {
         let source = tempfile::tempdir().unwrap();
         let store = Store::open(source.path()).unwrap();
@@ -238,14 +298,21 @@ mod tests {
 
 /// Tauri state wrapper: the app starts even if the database cannot be opened, so the UI
 /// can show the reason (e.g. a missing key) instead of crashing (E-5).
-pub struct AppStore(Result<Store, String>);
+/// The kind of the startup error is kept, so a second instance is reported as such (DL-P010).
+pub struct AppStore(Result<Store, (bool, String)>);
 
 impl AppStore {
     pub fn new(result: AppResult<Store>) -> Self {
-        Self(result.map_err(|e| e.to_string()))
+        Self(result.map_err(|e| (matches!(e, AppError::AlreadyRunning(_)), e.to_string())))
     }
 
     pub fn get(&self) -> AppResult<&Store> {
-        self.0.as_ref().map_err(|reason| AppError::KeyStore(reason.clone()))
+        self.0.as_ref().map_err(|(already_running, reason)| {
+            if *already_running {
+                AppError::AlreadyRunning(reason.clone())
+            } else {
+                AppError::KeyStore(reason.clone())
+            }
+        })
     }
 }

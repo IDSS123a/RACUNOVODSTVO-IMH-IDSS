@@ -28,6 +28,7 @@ const FRIENDLY: Readonly<Record<string, string>> = {
   NOT_FOUND: 'Traženi podatak nije pronađen.',
   CONFLICT: 'Podatak je u međuvremenu promijenjen ili već postoji.',
   JSON: 'Neispravan format podataka.',
+  ALREADY_RUNNING: 'Aplikacija je već otvorena u drugom prozoru.',
   RESPONSE: 'Aplikacija je dobila neočekivan odgovor.',
   UNKNOWN: 'Neočekivana greška.',
 };
@@ -52,7 +53,7 @@ export async function call<T>(command: string, schema: ZodType<T>, args?: Record
     const detail = isBackendError(error) ? error.message : String(error);
     console.error(`[${new Date().toISOString()}] ${command} failed: ${code}`, detail);
     // Validation messages from the backend are written for the operator; others are generic.
-    const message = code === 'VALIDATION' || code === 'KEY_STORE' || code === 'NOT_FOUND' ? detail : FRIENDLY[code] ?? detail;
+    const message = code === 'VALIDATION' || code === 'KEY_STORE' || code === 'NOT_FOUND' || code === 'ALREADY_RUNNING' ? detail : FRIENDLY[code] ?? detail;
     return { success: false, error: message, code };
   }
 }
