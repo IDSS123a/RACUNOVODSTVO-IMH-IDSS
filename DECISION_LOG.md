@@ -163,4 +163,21 @@
 
 ---
 
+## DL-P010 — One running instance: exclusive lock on the data folder
+
+**Date:** 2026-11-21 · **Source:** forensic review 2026-11-21 (finding K3), approved by the Director („Da, kreni“)
+
+**Problem:** the database lives in memory and every write replaces the whole encrypted snapshot (DL-P004). Two running copies of the application each held their own copy and overwrote each other's file: invoices issued in one window disappeared, and both could hand out the same invoice number (numbering is unique only within one process).
+
+**Decision:**
+- `Store::open` first takes an exclusive lock on `fakturisanje.lock` in the data folder (Windows share mode 0), before the key or the database is touched. The lock is held for the lifetime of the process.
+- A second instance gets `ALREADY_RUNNING`. The startup screen says the application is already open and must be closed, with no retry button. It never reads or writes the database.
+- Windows releases the lock when the process ends, also after a crash, so there is never a stale lock to clean up.
+
+**Why not `tauri-plugin-single-instance`:** it would only focus the first window. It would be a new dependency (M-12), and it would not protect against a second process opening the same data folder in another way. The lock guards the data itself and uses only the standard library.
+
+**Verified:** `store::tests::a_second_instance_is_refused_and_writes_nothing` — the second open is refused, the database file is byte-for-byte unchanged, and the lock is released when the first instance ends. Live (`tauri dev` + a second start of the same executable): the second instance shows the message, and its log records the refusal.
+
+---
+
 *Commander v1.8.1 — IDSS123a Organisation*

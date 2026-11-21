@@ -11,7 +11,7 @@ import { AppShell } from './AppShell';
 
 type Gate =
   | { step: 'loading' }
-  | { step: 'error'; message: string }
+  | { step: 'error'; message: string; code?: string }
   | { step: 'recovery-key'; recoveryKey: string }
   | { step: 'operator' }
   | { step: 'ready'; settings: Settings };
@@ -25,7 +25,7 @@ export function StartupGate(): React.JSX.Element {
 
   const advance = useCallback(async (): Promise<void> => {
     const init = await initialiseApplication();
-    if (!init.success) return setGate({ step: 'error', message: init.error });
+    if (!init.success) return setGate({ step: 'error', message: init.error, code: init.code });
     const recovery = await getRecoveryKey();
     if (!recovery.success) return setGate({ step: 'error', message: recovery.error });
     if (recovery.data) return setGate({ step: 'recovery-key', recoveryKey: recovery.data });
@@ -57,6 +57,8 @@ export function StartupGate(): React.JSX.Element {
     case 'loading':
       return <LoadingBlock label="Otvaram šifrovanu bazu…" />;
     case 'error':
+      // DL-P010: a second copy of the application cannot become usable by retrying — it must be closed.
+      if (gate.code === 'ALREADY_RUNNING') return <ErrorBlock title="Aplikacija je već otvorena" message={gate.message} />;
       return (
         <ErrorBlock
           title="Baza podataka se ne može otvoriti"
