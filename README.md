@@ -8,7 +8,7 @@ separate legal entities:
 It covers payment plans, payments, reminders, the monthly ministry
 subsidy cycle and refunds.
 
-Governed by **Commander v1.6.2**. Start with:
+Governed by **Commander v1.8.1**. Start with:
 - `CLAUDE.md` — standing orders for AI coding assistants;
 - `CONSTITUTION.md` — project scope and binding business rules;
 - `DECISION_LOG.md` — stack and architecture decisions;

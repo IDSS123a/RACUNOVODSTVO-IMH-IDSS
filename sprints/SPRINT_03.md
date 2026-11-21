@@ -1,6 +1,6 @@
 # SPRINT 03 — Invoices, numbering, PDF, payments
 
-**Status:** IN PROGRESS · **Mode:** FULL · **Commander:** v1.6.2
+**Status:** IN PROGRESS · **Mode:** FULL · **Commander:** v1.8.1 (from 2026-11-21; started under v1.6.2)
 **Depends on:** Sprint 01 (pricing engine, price lists), Sprint 02 (families, enrolments)
 
 ---
@@ -99,6 +99,8 @@ Payments from any family member are booked against invoices, and the open balanc
 
 - ✅ Built (DL-P009): Postavke → „Uvoz iz starog rješenja (Excel)“ — choose file, preview (counts, totals, warnings, next numbers), import in one transaction; repeatable without duplicates. Monthly billing skips a child already invoiced for that month (e.g. imported). Imported credit notes print as „KNJIŽNO ODOBRENJE“ without a payment slip.
 - Verified on the example workbook: 1.569 invoices, 366 families, 481 children, 1.284 payments, 15 warnings (invalid due dates → invoice date); next numbers IMH-897/26, IDSS-569/26.
+- ⚠️ Fix (2026-11-21, L-S3-06): the same number reused for another invoice is no longer merged. Re-verified on the example workbook: 1.569 invoices imported, 2 isolated (IDSS 056/26, IDSS 363/26 — second invoices of 919,19 and 808,34 KM, shown in the preview for manual resolution), 17 warnings. An amount typed as text is parsed; an unreadable one stops the import.
+- ✅ Import diagnostics, phase A (2026-11-21, L-S3-07, `specs/legacy-import-diagnostics/`): 31 categories, severities and Q1–Q4 decided by the Director; preview grouped by severity and category; Excel report built. Example workbook: 251 findings in 16 categories. ⏳ Phase B (store findings, „Za provjeru“ view, save the report) waits for the Rust toolchain on the developer PC.
 
 ## Still open before Sprint 03 closes
 - ✅ Enrolment-fee invoice („Račun za upis“ on each enrolment): one invoice per child and school year (migration 007), separate lines.
