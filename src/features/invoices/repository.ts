@@ -7,6 +7,11 @@ import {
   PaymentPlanSchema,
   PaymentPlansSchema,
   PaymentSchema,
+  CreditMoveSchema,
+  CreditNoteDraftSchema,
+  FamilyCreditSchema,
+  IssuedCreditNoteSchema,
+  PaymentReversalSchema,
 } from '@/lib/validation/schemas';
 import type { LegalEntityCode, SchoolYear } from '@/features/price-lists/types';
 import type { PaymentPlan } from './plans';
@@ -42,4 +47,40 @@ export function savePaymentPlan(plan: PaymentPlan): Promise<Result<null>> {
 
 export function listPaymentPlans(schoolYear: SchoolYear): Promise<Result<PaymentPlan[]>> {
   return call('list_payment_plans', PaymentPlansSchema, { schoolYear });
+}
+
+// ---------- Storno, credit notes, payment correction (specs/storno-credit-notes) ----------
+
+export type CreditNoteDraftPayload = z.infer<typeof CreditNoteDraftSchema>;
+export type IssuedCreditNote = z.infer<typeof IssuedCreditNoteSchema>;
+export type FamilyCredit = z.infer<typeof FamilyCreditSchema>[number];
+
+/** Issue a credit note (S1, S2); the backend numbers it and cancels the invoice when its net reaches 0. */
+export function issueCreditNote(draft: CreditNoteDraftPayload): Promise<Result<IssuedCreditNote>> {
+  const parsed = CreditNoteDraftSchema.safeParse(draft);
+  if (!parsed.success) return Promise.resolve({ success: false, error: parsed.error.issues[0]?.message ?? 'neispravni podaci', code: 'VALIDATION' });
+  return call('issue_credit_note', IssuedCreditNoteSchema, { draft: parsed.data });
+}
+
+/** Reverse a wrongly booked payment by a counter-entry (S4). */
+export function reversePayment(input: z.input<typeof PaymentReversalSchema>): Promise<Result<null>> {
+  const parsed = PaymentReversalSchema.safeParse(input);
+  if (!parsed.success) return Promise.resolve({ success: false, error: parsed.error.issues[0]?.message ?? 'neispravni podaci', code: 'VALIDATION' });
+  return call('reverse_payment', z.null(), parsed.data);
+}
+
+/** Move family credit to an open invoice of the same family and institution, or record a refund (S3). */
+export function moveCredit(input: z.input<typeof CreditMoveSchema>): Promise<Result<null>> {
+  const parsed = CreditMoveSchema.safeParse(input);
+  if (!parsed.success) return Promise.resolve({ success: false, error: parsed.error.issues[0]?.message ?? 'neispravni podaci', code: 'VALIDATION' });
+  return call('move_credit', z.null(), parsed.data);
+}
+
+/** Link a credit note imported from the old workbook to the invoice it cancels (S5). */
+export function linkLegacyCreditNote(creditNoteId: string, invoiceId: string): Promise<Result<null>> {
+  return call('link_legacy_credit_note', z.null(), { creditNoteId, invoiceId });
+}
+
+export function listFamilyCredit(familyId: string): Promise<Result<FamilyCredit[]>> {
+  return call('list_family_credit', FamilyCreditSchema, { familyId });
 }

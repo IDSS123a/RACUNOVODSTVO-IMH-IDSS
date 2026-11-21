@@ -222,3 +222,10 @@ describe('legacy import integrity (forensic 2026-11-21)', () => {
     for (const [raw, expected] of cases) expect([raw, decimalOf(raw)]).toEqual([raw, expected]);
   });
 });
+
+describe('legacy credit notes continue the credit-note series (storno S1)', () => {
+  it('the plan carries the highest KO number per entity and year', () => {
+    const { plan } = buildImportPlan(workbook(), NONE, ids());
+    expect(plan.creditNoteSequences).toEqual([{ entity: 'IDSS', year: 2026, lastNumber: 35 }]);
+  });
+});

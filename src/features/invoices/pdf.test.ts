@@ -22,7 +22,7 @@ function data(lineCount: number): InvoicePdfData {
       invoice: {
         id: 'i', number: 'IMH-001/26', entity: 'IMH', kind: 'MONTHLY', familyId: 'f', familyName: 'Test', childId: 'c', childName: 'Đurđa Čolić-Šećić', source: 'APP',
         buyerName: 'Žana Test', buyerAddress: 'Buka 1, Sarajevo', issueDate: '2026-10-01', dueDate: '2026-10-05', periodFrom: '2026-10-01',
-        periodTo: '2026-10-31', total: 71000 * lineCount, paid: 0, status: 'ISSUED',
+        periodTo: '2026-10-31', total: 71000 * lineCount, paid: 0, status: 'ISSUED', credited: 0, creditsInvoiceId: null, reason: '',
       },
       lines: Array.from({ length: lineCount }, () => line),
     },

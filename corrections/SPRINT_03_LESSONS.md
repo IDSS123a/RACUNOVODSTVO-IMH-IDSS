@@ -57,3 +57,8 @@
 - **Fix:** the proof was redone without git. The file was copied to the scratch folder, the old order was applied, the tests were run and failed as expected, and the copy was put back. A hash check confirmed the restored file was identical.
 - **Lesson (M-23 spirit):** commands that change the working tree or git state (stash, checkout, reset) are never chained into test or inspection commands. A "run the new test against the old code" check uses a file copy plus a hash check, never git.
 - **Also:** `tauri dev` watches `src-tauri` and rebuilds and restarts the running app on every source change, including temporary ones. Stop it before experimenting with the Rust code.
+
+## L-S3-10 — E-17 again: a regex written through a shell heredoc lost its backslashes
+- **Trigger:** `/^KO-?(\d+)\/(\d{2})$/` became `/^KO-?(d+)/(d{2})$/` when a Node script in a bash heredoc inserted it. This is the third time escapes were corrupted in this sprint (L-S3-07: no-break space; the `dijete:` regex).
+- **Fix:** the line was corrected with the file-edit tool; tsc caught it at once.
+- **Lesson (E-17 recurrence):** code containing a regex or any backslash is inserted ONLY with the file-edit / file-write tools, never through a shell heredoc or a `node -e` string, even when the surrounding change is scripted.

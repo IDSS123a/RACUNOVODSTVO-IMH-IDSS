@@ -237,8 +237,13 @@ export const InvoiceSummarySchema = z.object({
   periodFrom: isoDate,
   periodTo: isoDate,
   total: fenings,
+  /** Effective paid: payments without a reversal, plus credit moved in, minus credit moved out (migration 010). */
   paid: fenings,
   status: z.enum(['ISSUED', 'CANCELLED']),
+  /** Sum of the credit notes that cancel this invoice (≤ 0). */
+  credited: fenings.max(0),
+  creditsInvoiceId: z.string().nullable(),
+  reason: z.string(),
 });
 
 export const PaymentSchema = z.object({
@@ -249,6 +254,9 @@ export const PaymentSchema = z.object({
   payerName: z.string().trim().min(1, 'unesite ko je uplatio'),
   reference: z.string().trim(),
   note: z.string().trim(),
+  /** Set by the backend when the payment was reversed (S4); never sent when booking a payment. */
+  reversedOn: isoDate.nullable().optional(),
+  reversalReason: z.string().nullable().optional(),
 });
 
 /** A stored line: imported lines (BR-32) have empty child/enrolment/program and free item codes. */
@@ -267,6 +275,8 @@ export const InvoiceDetailSchema = z.object({
   invoice: InvoiceSummarySchema,
   lines: z.array(InvoiceDetailLineSchema),
   payments: z.array(PaymentSchema),
+  creditNotes: z.array(z.object({ id: z.string(), number: z.string(), issueDate: isoDate, total: fenings.max(-1), reason: z.string() })),
+  creditedLines: z.array(z.object({ position: z.number().int().min(1), amount: fenings.max(0) })),
 });
 
 export const InvoiceSummariesSchema = z.array(InvoiceSummarySchema);
@@ -352,3 +362,41 @@ export const ImportFindingRowSchema = z.object({
 /** Resolution note entered by the operator (mirrors the backend limit). */
 export const ResolutionNoteSchema = z.string().trim().min(1, 'upišite kako je nalaz riješen').max(500, 'najviše 500 znakova');
 
+
+// ---------- Storno, credit notes, payment correction (specs/storno-credit-notes) ----------
+
+/** Reason or note entered by the operator (mirrors the backend limit of 500 characters). */
+const operatorText = (what: string) => z.string().trim().min(1, `upišite ${what}`).max(500, 'najviše 500 znakova');
+
+export const CreditNoteLineSchema = z.object({
+  position: z.number().int().min(1),
+  amount: fenings.max(-1, 'iznos knjižnog odobrenja mora biti negativan'),
+});
+
+export const CreditNoteDraftSchema = z.object({
+  id: uuid,
+  invoiceId: z.string().min(1),
+  issueDate: isoDate,
+  reason: operatorText('razlog knjižnog odobrenja'),
+  lines: z.array(CreditNoteLineSchema).min(1, 'odaberite barem jednu stavku'),
+});
+
+export const IssuedCreditNoteSchema = z.object({ number: z.string().min(1), cancelled: z.boolean() });
+
+export const PaymentReversalSchema = z.object({
+  paymentId: z.string().min(1),
+  reversedOn: isoDate,
+  reason: operatorText('razlog storna uplate'),
+});
+
+export const CreditMoveSchema = z.object({
+  fromInvoiceId: z.string().min(1),
+  toInvoiceId: z.string().min(1).nullable(),
+  amount: fenings.positive('iznos mora biti veći od nule'),
+  movedOn: isoDate,
+  note: operatorText('napomenu'),
+});
+
+export const FamilyCreditSchema = z.array(
+  z.object({ invoiceId: z.string(), number: z.string(), entity: LegalEntityCodeSchema, credit: fenings.positive() }),
+);

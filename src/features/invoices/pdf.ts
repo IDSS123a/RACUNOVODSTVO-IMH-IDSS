@@ -212,7 +212,7 @@ function drawTotals(w: Writer, data: InvoicePdfData): void {
   w.rightText(formatKM(invoice.total), PAGE.width - MARGIN - 4, { size: 12, bold: true });
   w.y -= 18;
   if (invoice.paid > 0) {
-    const open = Math.max(0, invoice.total - invoice.paid);
+    const open = Math.max(0, invoice.total + invoice.credited - invoice.paid);
     w.rightText(`Uplaćeno ${formatKM(invoice.paid)} · preostalo za uplatu ${formatKM(open)}`, PAGE.width - MARGIN - 4, { size: 9 });
     w.y -= 14;
   }
@@ -295,7 +295,7 @@ function drawPaymentSlip(w: Writer, data: InvoicePdfData): void {
   const payee = fit(`${data.institution.shortName}, ${data.institution.address}`, 3);
   box(w, MARGIN, y - 120, leftWidth, 52, 'Primalac / Primatelj (naziv, sjedište)', payee);
 
-  const open = Math.max(0, invoice.total - invoice.paid);
+  const open = Math.max(0, invoice.total + invoice.credited - invoice.paid);
   const rows: Array<[string, string[], boolean]> = [
     ['Mjesto i datum uplate', [], false],
     ['Račun pošiljaoca', [], false],

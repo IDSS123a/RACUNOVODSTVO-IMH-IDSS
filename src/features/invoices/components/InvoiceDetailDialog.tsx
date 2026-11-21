@@ -14,9 +14,8 @@ import { Field } from '@/features/settings/components/OperatorForm';
 import { formatDate } from '@/lib/format';
 import { useAsyncResult } from '@/lib/use-async-result';
 import { z } from 'zod';
-import { summarisePayments } from '../domain';
+import { BALANCE_LABEL, invoiceBalance } from '../credit-notes';
 import { getInvoice, recordPayment, type InvoiceDetail } from '../repository';
-import { PAYMENT_STATUS_LABEL } from '../types';
 
 const PaymentFormSchema = z.object({
   paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'unesite datum'),
@@ -73,7 +72,8 @@ function InvoiceBody({ invoiceId, onChanged, onShowPdf }: { invoiceId: string; o
 
 function InvoiceContent({ detail, onPaid, onShowPdf }: { detail: InvoiceDetail; onPaid: () => void; onShowPdf: () => void }): React.JSX.Element {
   const { invoice, lines, payments } = detail;
-  const summary = summarisePayments(invoice.total, payments.map((p) => p.amount));
+  // Effective balance from the backend: reversed payments and moved credit are already accounted for.
+  const summary = invoiceBalance(invoice);
   const form = useForm<PaymentForm>({
     resolver: zodResolver(PaymentFormSchema),
     defaultValues: {
@@ -114,7 +114,7 @@ function InvoiceContent({ detail, onPaid, onShowPdf }: { detail: InvoiceDetail; 
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={summary.status === 'PAID' ? 'default' : 'outline'}>{PAYMENT_STATUS_LABEL[summary.status]}</Badge>
+          <Badge variant={summary.status === 'PAID' ? 'default' : 'outline'}>{invoice.kind === 'CREDIT_NOTE' ? 'Knjižno odobrenje' : BALANCE_LABEL[summary.status]}</Badge>
           <Button variant="outline" onClick={onShowPdf}>
             <FileTextIcon aria-hidden /> PDF / štampa
           </Button>
@@ -153,7 +153,10 @@ function InvoiceContent({ detail, onPaid, onShowPdf }: { detail: InvoiceDetail; 
         {summary.credit > 0 && <p>Preplata (kredit): <strong className="tabular-nums">{formatKM(summary.credit)}</strong></p>}
         {payments.map((p) => (
           <p key={p.id} className="text-muted-foreground">
-            {formatDate(p.paidOn)} · {formatKM(p.amount)} · uplatio/la {p.payerName}{p.reference ? ` · ${p.reference}` : ''}
+            <span className={p.reversedOn ? 'line-through' : undefined}>
+              {formatDate(p.paidOn)} · {formatKM(p.amount)} · uplatio/la {p.payerName}{p.reference ? ` · ${p.reference}` : ''}
+            </span>
+            {p.reversedOn && ` · stornirano ${formatDate(p.reversedOn)}: ${p.reversalReason ?? ''}`}
           </p>
         ))}
       </div>

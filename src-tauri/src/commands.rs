@@ -300,6 +300,69 @@ pub fn record_payment(state: State<'_, AppStore>, payment: Payment) -> AppResult
     })
 }
 
+// ---------- Storno, credit notes, payment correction (specs/storno-credit-notes, migration 010) ----------
+
+use crate::credit_notes::{self, CreditNoteDraft, FamilyCredit, IssuedCreditNote};
+
+/// Issue a credit note for a whole invoice or part of it (S1, S2). Audited with numbers and amount only.
+#[tauri::command]
+pub fn issue_credit_note(state: State<'_, AppStore>, draft: CreditNoteDraft) -> AppResult<IssuedCreditNote> {
+    let store = state.get()?;
+    store.write(|tx| {
+        let issued = credit_notes::issue_credit_note(tx, &draft)?;
+        let total: i64 = draft.lines.iter().map(|l| l.amount).sum();
+        repo::audit(tx, "CREDIT_NOTE", "invoice", &draft.invoice_id, &format!("{} {}{}", issued.number, total, if issued.cancelled { " storniran" } else { "" }))?;
+        Ok(issued)
+    })
+}
+
+/// Reverse a wrongly booked payment by a counter-entry (S4). The reason stays in the database, not in the audit text.
+#[tauri::command]
+pub fn reverse_payment(state: State<'_, AppStore>, payment_id: String, reversed_on: String, reason: String) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        let invoice_id = credit_notes::reverse_payment(tx, &payment_id, &reversed_on, &reason)?;
+        repo::audit(tx, "PAYMENT_REVERSAL", "payment", &payment_id, &invoice_id)
+    })
+}
+
+/// Move family credit to an open invoice of the same family and institution, or record a refund (S3).
+#[tauri::command]
+pub fn move_credit(
+    state: State<'_, AppStore>,
+    from_invoice_id: String,
+    to_invoice_id: Option<String>,
+    amount: i64,
+    moved_on: String,
+    note: String,
+) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        credit_notes::move_credit(tx, &from_invoice_id, to_invoice_id.as_deref(), amount, &moved_on, &note)?;
+        match &to_invoice_id {
+            Some(to) => repo::audit(tx, "CREDIT_MOVE", "invoice", &from_invoice_id, &format!("{amount} → {to}")),
+            None => repo::audit(tx, "CREDIT_REFUND", "invoice", &from_invoice_id, &amount.to_string()),
+        }
+    })
+}
+
+/// Link a legacy credit note to the invoice it cancels and resolve its import finding (S5).
+#[tauri::command]
+pub fn link_legacy_credit_note(state: State<'_, AppStore>, credit_note_id: String, invoice_id: String) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        credit_notes::link_legacy_credit_note(tx, &credit_note_id, &invoice_id)?;
+        repo::audit(tx, "CREDIT_NOTE_LINK", "invoice", &credit_note_id, &invoice_id)
+    })
+}
+
+/// Invoices of a family that carry credit, per institution (S3).
+#[tauri::command]
+pub fn list_family_credit(state: State<'_, AppStore>, family_id: String) -> AppResult<Vec<FamilyCredit>> {
+    let store = state.get()?;
+    store.read(|c| credit_notes::family_credit(c, &family_id))
+}
+
 #[tauri::command]
 pub fn save_payment_plan(state: State<'_, AppStore>, plan: PaymentPlan) -> AppResult<()> {
     let store = state.get()?;

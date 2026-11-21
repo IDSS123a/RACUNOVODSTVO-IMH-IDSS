@@ -167,6 +167,13 @@ export function itemCodeOf(description: string): string {
   return 'OTHER';
 }
 
+/** Numeric part and year of an old credit-note number: "KO-35/26" → 35, 2026; anything else → null. */
+export function creditNoteSequenceOf(number: string): { sequence: number; year: number } | null {
+  const match = /^KO-?(\d+)\/(\d{2})$/i.exec(number.trim());
+  if (!match) return null;
+  return { sequence: Number(match[1]), year: 2000 + Number(match[2]) };
+}
+
 /** Numeric part and year of an old number: "754-B/26" → 754, 2026; credit notes "KO-…" → null. */
 export function sequenceOf(number: string): { sequence: number; year: number } | null {
   if (/^ko/i.test(number)) return null;
@@ -213,6 +220,8 @@ export interface ImportPlan {
   }>;
   readonly paymentsForExisting: Array<{ invoiceId: string; payment: PlanPayment }>;
   readonly sequences: Array<{ entity: LegalEntityCode; year: number; lastNumber: number }>;
+  /** Highest imported credit-note number per entity and year (KO-35/26 → 35), so IDSS-KO-036/26 follows (S1). */
+  readonly creditNoteSequences: Array<{ entity: LegalEntityCode; year: number; lastNumber: number }>;
   /** Findings stored with the import for later review (migration 009); BLOCK findings never reach a plan. */
   readonly findings: PlanFinding[];
 }
@@ -433,10 +442,11 @@ export function buildImportPlan(
     isolate(sameParty ? 'NUMBER_REUSED_SAME_PARTY' : 'NUMBER_REUSED_OTHER_PARTY', block.entity, block.number, block.rows);
   }
 
-  const plan: ImportPlan = { families: [], children: [], invoices: [], paymentsForExisting: [], sequences: [], findings: [] };
+  const plan: ImportPlan = { families: [], children: [], invoices: [], paymentsForExisting: [], sequences: [], creditNoteSequences: [], findings: [] };
   const familyIds = new Map<string, string>();
   const childIds = new Map<string, string>();
   const lastNumbers: Record<LegalEntityCode, Record<number, number>> = { IMH: {}, IDSS: {} };
+  const creditNoteLast: Record<LegalEntityCode, Record<number, number>> = { IMH: {}, IDSS: {} };
   const series: Record<LegalEntityCode, Map<number, Set<number>>> = { IMH: new Map(), IDSS: new Map() };
   const totals: Record<LegalEntityCode, { invoices: number; creditNotes: number; total: Fenings; paid: number }> = {
     IMH: { invoices: 0, creditNotes: 0, total: 0, paid: 0 },
@@ -457,6 +467,11 @@ export function buildImportPlan(
     const storedNumber = `${entity} ${number}`;
     const where = { entity, number, excelRows: rowsLabel(group.rows) };
     const isCreditNote = /^ko/i.test(number);
+    const koSeq = creditNoteSequenceOf(number);
+    if (koSeq) {
+      const years = creditNoteLast[entity];
+      years[koSeq.year] = Math.max(years[koSeq.year] ?? 0, koSeq.sequence);
+    }
     const seq = sequenceOf(number);
     if (seq) {
       const years = lastNumbers[entity];
@@ -681,6 +696,7 @@ export function buildImportPlan(
   }
   for (const entity of ['IMH', 'IDSS'] as const) {
     for (const [year, last] of Object.entries(lastNumbers[entity])) plan.sequences.push({ entity, year: Number(year), lastNumber: last });
+    for (const [year, last] of Object.entries(creditNoteLast[entity])) plan.creditNoteSequences.push({ entity, year: Number(year), lastNumber: last });
   }
 
   plan.findings.push(...toPlanFindings(findings.list()));

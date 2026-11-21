@@ -10,9 +10,8 @@ import { formatKM, sum } from '@/features/billing/money';
 import type { LegalEntityCode } from '@/features/price-lists/types';
 import { formatDate } from '@/lib/format';
 import { useAsyncResult } from '@/lib/use-async-result';
-import { summarisePayments } from '../domain';
+import { BALANCE_LABEL, invoiceBalance } from '../credit-notes';
 import { listInvoices } from '../repository';
-import { PAYMENT_STATUS_LABEL } from '../types';
 import { InvoiceDetailDialog } from './InvoiceDetailDialog';
 import { InvoicePdfDialog } from './InvoicePdfDialog';
 import { ExportDialog, type ExportRequest } from './ExportDialog';
@@ -40,10 +39,11 @@ export function InvoicesPage(): React.JSX.Element {
 
   const totals = useMemo(() => {
     if (invoices.state.status !== 'ready') return null;
-    const rows = invoices.state.data.filter((i) => i.status === 'ISSUED');
+    // Credit notes are documents, not debts; their effect is already in the net of the invoice they cancel.
+    const rows = invoices.state.data.filter((i) => i.status === 'ISSUED' && i.kind !== 'CREDIT_NOTE');
     return {
-      total: sum(rows.map((i) => i.total)),
-      open: sum(rows.map((i) => summarisePayments(i.total, [i.paid]).open)),
+      total: sum(rows.map((i) => invoiceBalance(i).net)),
+      open: sum(rows.map((i) => invoiceBalance(i).open)),
     };
   }, [invoices.state]);
 
@@ -114,7 +114,8 @@ export function InvoicesPage(): React.JSX.Element {
           </TableHeader>
           <TableBody>
             {invoices.state.data.map((invoice) => {
-              const status = summarisePayments(invoice.total, [invoice.paid]).status;
+              const status = invoiceBalance(invoice).status;
+              const label = invoice.kind === 'CREDIT_NOTE' ? 'Knjižno odobrenje' : BALANCE_LABEL[status];
               return (
                 <TableRow key={invoice.id} className="cursor-pointer" onClick={() => setOpenId(invoice.id)}>
                   <TableCell className="font-medium">
@@ -134,7 +135,7 @@ export function InvoicesPage(): React.JSX.Element {
                   <TableCell className="text-right tabular-nums">{formatKM(invoice.total)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatKM(invoice.paid)}</TableCell>
                   <TableCell>
-                    <Badge variant={status === 'PAID' ? 'default' : 'outline'}>{PAYMENT_STATUS_LABEL[status]}</Badge>
+                    <Badge variant={status === 'PAID' ? 'default' : status === 'CANCELLED' ? 'secondary' : 'outline'}>{label}</Badge>
                   </TableCell>
                 </TableRow>
               );
