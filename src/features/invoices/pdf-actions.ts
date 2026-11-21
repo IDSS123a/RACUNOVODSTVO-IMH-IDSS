@@ -62,8 +62,15 @@ export interface InvoicePdf {
 async function render(detail: InvoiceDetail, context: PdfContext): Promise<Result<InvoicePdf>> {
   const institution = context.institutions.find((i) => i.code === detail.invoice.entity);
   if (!institution) return fail(`podaci ustanove ${detail.invoice.entity} nisu uneseni`, 'NOT_FOUND');
+  // A credit note names the invoice it cancels (storno S1/S5).
+  let original: { number: string; issueDate: string } | null = null;
+  if (detail.invoice.kind === 'CREDIT_NOTE' && detail.invoice.creditsInvoiceId) {
+    const found = await getInvoice(detail.invoice.creditsInvoiceId);
+    if (!found.success) return found;
+    original = { number: found.data.invoice.number, issueDate: found.data.invoice.issueDate };
+  }
   try {
-    const bytes = await renderInvoicePdf({ detail, institution, operatorName: context.operatorName }, assetsFor(detail.invoice.entity));
+    const bytes = await renderInvoicePdf({ detail, institution, operatorName: context.operatorName, original }, assetsFor(detail.invoice.entity));
     return { success: true, data: { bytes, fileName: invoiceFileName(detail.invoice.number, detail.invoice.childName), number: detail.invoice.number, summary: detail.invoice } };
   } catch (error: unknown) {
     return fail(`PDF računa ${detail.invoice.number} nije napravljen: ${error instanceof Error ? error.message : String(error)}`, 'PDF');

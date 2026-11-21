@@ -11,6 +11,7 @@ import {
   type PriceListItem,
   type SchoolYear,
 } from '@/features/price-lists/types';
+import { invoiceBalance } from './credit-notes';
 import { MONTH_NAME, type BillingMonth, type InvoiceDraft, type InvoiceLine, type PaymentSummary, type PlanInstalment } from './types';
 
 /**
@@ -174,11 +175,10 @@ export function splitIntoInstalments(total: Fenings, count: number, firstMonth: 
 
 /** Payment status of an invoice from the booked payments (any family member may pay — BR-24). */
 export function summarisePayments(total: Fenings, payments: ReadonlyArray<Fenings>): PaymentSummary {
-  const paid = sum(payments);
-  const open = Math.max(0, total - paid);
-  const credit = Math.max(0, paid - total);
-  const status = paid === 0 ? 'OPEN' : paid < total ? 'PARTIALLY_PAID' : paid === total ? 'PAID' : 'OVERPAID';
-  return { total, paid, open, credit, status };
+  // One definition of the balance (M-7): delegate to the credit-note aware balance with nothing credited.
+  const balance = invoiceBalance({ total, credited: 0, paid: sum(payments) });
+  const status = balance.status === 'CANCELLED' ? 'PAID' : balance.status; // unreachable without credit notes
+  return { total, paid: balance.paid, open: balance.open, credit: balance.credit, status };
 }
 
 /** Entities in which a family has at least one active enrolment in the school year. */

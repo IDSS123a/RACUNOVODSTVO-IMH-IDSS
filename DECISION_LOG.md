@@ -189,4 +189,36 @@
 
 ---
 
+## DL-P011 — Storno: credit notes, payment reversal and family credit as appended records
+
+**Date:** 2026-11-21 · **Spec:** `specs/storno-credit-notes/` · **Decisions:** S1–S6 by the Director, asked one at a time (C-6)
+
+**Decision:**
+- **Credit notes are invoices** with `kind = 'CREDIT_NOTE'`, a negative total, `credits_invoice_id` pointing to the invoice they cancel and a required reason.
+  - Migration 010 rebuilds `invoices` with the 008 procedure.
+  - Each credit-note line names the original line it credits (`invoice_lines.credits_position`, migration 011), so a line is never credited above its amount.
+- **Numbering** is a separate series per institution and year: `IMH-KO-001/26`, `IDSS-KO-036/26` (S1).
+  - The series continues after the imported `KO-35/26`, seeded by migration 010 and by the legacy import.
+- **Full cancellation sets the original to `CANCELLED`**.
+  - The existing per-child monthly guard counts only `ISSUED`, so the month can be billed again (S6) without a new rule.
+- **Nothing is deleted or updated in place.** Payment reversals (S4) and credit movements or refunds (S3) are their own tables.
+  - The only in-place update is linking an imported credit note to its invoice (S5), which also resolves its import finding.
+- **One effective balance** (`credit_notes::NET_SQL` / `PAID_SQL`), used by every screen and the PDF; the TypeScript domain mirrors it:
+  - net = total + credit notes;
+  - paid = payments without reversal + credit in − credit out.
+- **Credit moves only within the same family and institution** (CONSTITUTION: the legal entities are never mixed).
+
+**Why:** an issued invoice is part of the books and cannot be changed or deleted, but mistakes must be correctable before go-live (forensic finding K4). Appended records keep the full history for the accountant and the audit log (BR-30).
+
+**Verified:**
+- cargo test 48/48:
+  - migration 010 under data of every kind (E-19);
+  - 7 credit-note tests for S1–S6;
+  - migration 011 on a database that applied the first 010 (L-S3-11).
+- Vitest 184/184.
+- Real-data end to end: 1.569 invoices, 251 findings, credit-note series IDSS 2026 = 35, 0 FK violations.
+- The Director issued a trial credit note in the running app (2026-11-21, C-13).
+
+---
+
 *Commander v1.8.1 — IDSS123a Organisation*

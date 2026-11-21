@@ -206,6 +206,9 @@ pub struct ImportPlan {
     pub invoices: Vec<PlanInvoice>,
     pub payments_for_existing: Vec<PlanExistingPayment>,
     pub sequences: Vec<PlanSequence>,
+    /// Highest imported credit-note number per entity and year (KO-35/26 → IDSS 2026 35), migration 010.
+    #[serde(default)]
+    pub credit_note_sequences: Vec<PlanSequence>,
     /// Findings of the import diagnostics (migration 009); stored by the command in the same transaction.
     #[serde(default)]
     pub findings: Vec<crate::findings::PlanFinding>,
@@ -292,6 +295,13 @@ pub fn import(tx: &Transaction, plan: &ImportPlan) -> AppResult<ImportResult> {
         insert_payment(tx, &existing.invoice_id, &existing.payment)?;
         payments += 1;
     }
+    for s in &plan.credit_note_sequences {
+        tx.execute(
+            "INSERT INTO credit_note_sequences(entity, year, last_number) VALUES (?1, ?2, ?3)
+             ON CONFLICT(entity, year) DO UPDATE SET last_number = max(last_number, excluded.last_number)",
+            params![s.entity, s.year, s.last_number],
+        )?;
+    }
     let mut next_numbers = Vec::new();
     for s in &plan.sequences {
         let last: i64 = tx.query_row(
@@ -358,6 +368,7 @@ mod tests {
             ],
             payments_for_existing: vec![],
             sequences: vec![PlanSequence { entity: "IMH".into(), year: 2026, last_number: 896 }],
+            credit_note_sequences: vec![PlanSequence { entity: "IDSS".into(), year: 2026, last_number: 35 }],
             findings: Vec::new(),
         }
     }
@@ -453,6 +464,14 @@ mod tests {
             "findings stored {stored}, linked to an invoice {linked}, open (ISOLATE+REVIEW) {}",
             crate::findings::open_count(&conn).unwrap()
         );
+        let ko: Vec<(String, i64, i64)> = conn
+            .prepare("SELECT entity, year, last_number FROM credit_note_sequences ORDER BY entity, year")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        println!("credit-note series after the import {ko:?}");
         let (invoices, lines, payments): (i64, i64, i64) = conn
             .query_row(
                 "SELECT (SELECT count(*) FROM invoices), (SELECT count(*) FROM invoice_lines), (SELECT count(*) FROM payments)",

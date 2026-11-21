@@ -4,6 +4,7 @@
 //! (`src/features/*/domain`), never here.
 
 mod commands;
+mod credit_notes;
 mod crypto;
 mod error;
 mod families;
@@ -64,6 +65,11 @@ pub fn run() {
             commands::list_invoices,
             commands::get_invoice,
             commands::record_payment,
+            commands::issue_credit_note,
+            commands::reverse_payment,
+            commands::move_credit,
+            commands::link_legacy_credit_note,
+            commands::list_family_credit,
             commands::save_payment_plan,
             commands::list_payment_plans,
             commands::list_board_rules,

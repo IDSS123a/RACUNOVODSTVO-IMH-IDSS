@@ -91,8 +91,15 @@ pub struct InvoiceSummary {
     pub period_from: String,
     pub period_to: String,
     pub total: i64,
+    /// Effective paid: payments without a reversal, plus credit moved in, minus credit moved out (migration 010).
     pub paid: i64,
     pub status: String,
+    /// Sum of the credit notes linked to this invoice (≤ 0); net total = total + credited.
+    pub credited: i64,
+    /// For a credit note: the invoice it cancels.
+    pub credits_invoice_id: Option<String>,
+    /// For a credit note: the reason.
+    pub reason: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -105,6 +112,11 @@ pub struct Payment {
     pub payer_name: String,
     pub reference: String,
     pub note: String,
+    /// Set when the payment was reversed by a counter-entry (S4); it then no longer counts.
+    #[serde(default)]
+    pub reversed_on: Option<String>,
+    #[serde(default)]
+    pub reversal_reason: Option<String>,
 }
 
 #[derive(Serialize, Debug, Clone, PartialEq)]
@@ -113,6 +125,20 @@ pub struct InvoiceDetail {
     pub invoice: InvoiceSummary,
     pub lines: Vec<InvoiceLine>,
     pub payments: Vec<Payment>,
+    /// Credit notes that cancel this invoice (migration 010), oldest first.
+    pub credit_notes: Vec<CreditNoteRef>,
+    /// Already credited per original line position (≤ 0), for the remaining creditable amount (S2).
+    pub credited_lines: Vec<crate::credit_notes::CreditNoteLine>,
+}
+
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CreditNoteRef {
+    pub id: String,
+    pub number: String,
+    pub issue_date: String,
+    pub total: i64,
+    pub reason: String,
 }
 
 fn entity_of_program(program: &str) -> &'static str {
@@ -295,9 +321,16 @@ pub fn list_payment_plans(conn: &Connection, school_year: &str) -> AppResult<Vec
 
 const SUMMARY_SELECT: &str = "SELECT i.id, i.number, i.entity, i.kind, i.family_id, f.display_name, i.buyer_name, i.buyer_address,
         i.issue_date, i.due_date, i.period_from, i.period_to, i.total_fenings,
-        COALESCE((SELECT sum(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0), i.status,
-        COALESCE(i.child_id, ''), COALESCE(c.first_name || ' ' || c.last_name, ''), i.source
+        __PAID__, i.status,
+        COALESCE(i.child_id, ''), COALESCE(c.first_name || ' ' || c.last_name, ''), i.source,
+        COALESCE((SELECT sum(cn.total_fenings) FROM invoices cn WHERE cn.credits_invoice_id = i.id), 0),
+        i.credits_invoice_id, i.reason
  FROM invoices i JOIN families f ON f.id = i.family_id LEFT JOIN children c ON c.id = i.child_id";
+
+/// The summary query with the single effective-paid definition (credit_notes::PAID_SQL, M-7).
+fn summary_select() -> String {
+    SUMMARY_SELECT.replace("__PAID__", crate::credit_notes::PAID_SQL)
+}
 
 fn map_summary(r: &rusqlite::Row<'_>) -> rusqlite::Result<InvoiceSummary> {
     Ok(InvoiceSummary {
@@ -319,14 +352,18 @@ fn map_summary(r: &rusqlite::Row<'_>) -> rusqlite::Result<InvoiceSummary> {
         total: r.get(12)?,
         paid: r.get(13)?,
         status: r.get(14)?,
+        credited: r.get(18)?,
+        credits_invoice_id: r.get(19)?,
+        reason: r.get(20)?,
     })
 }
 
 /// Invoices, optionally filtered by entity and by month ("YYYY-MM" of the period start), newest first.
 pub fn list_invoices(conn: &Connection, entity: Option<&str>, month: Option<&str>) -> AppResult<Vec<InvoiceSummary>> {
     let sql = format!(
-        "{SUMMARY_SELECT} WHERE (?1 IS NULL OR i.entity = ?1) AND (?2 IS NULL OR substr(i.period_from, 1, 7) = ?2)
-         ORDER BY i.issue_date DESC, i.number DESC"
+        "{} WHERE (?1 IS NULL OR i.entity = ?1) AND (?2 IS NULL OR substr(i.period_from, 1, 7) = ?2)
+         ORDER BY i.issue_date DESC, i.number DESC",
+        summary_select()
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params![entity, month], map_summary)?;
@@ -334,7 +371,7 @@ pub fn list_invoices(conn: &Connection, entity: Option<&str>, month: Option<&str
 }
 
 pub fn get_invoice(conn: &Connection, invoice_id: &str) -> AppResult<Option<InvoiceDetail>> {
-    let sql = format!("{SUMMARY_SELECT} WHERE i.id = ?1");
+    let sql = format!("{} WHERE i.id = ?1", summary_select());
     let Some(invoice) = conn.query_row(&sql, params![invoice_id], map_summary).optional()? else {
         return Ok(None);
     };
@@ -359,8 +396,9 @@ pub fn get_invoice(conn: &Connection, invoice_id: &str) -> AppResult<Option<Invo
         })?
         .collect::<Result<Vec<_>, _>>()?;
     let mut stmt = conn.prepare(
-        "SELECT id, invoice_id, paid_on, amount, payer_name, reference, note FROM payments
-         WHERE invoice_id = ?1 ORDER BY paid_on, created_at",
+        "SELECT p.id, p.invoice_id, p.paid_on, p.amount, p.payer_name, p.reference, p.note, r.reversed_on, r.reason
+         FROM payments p LEFT JOIN payment_reversals r ON r.payment_id = p.id
+         WHERE p.invoice_id = ?1 ORDER BY p.paid_on, p.created_at",
     )?;
     let payments = stmt
         .query_map(params![invoice_id], |r| {
@@ -372,20 +410,38 @@ pub fn get_invoice(conn: &Connection, invoice_id: &str) -> AppResult<Option<Invo
                 payer_name: r.get(4)?,
                 reference: r.get(5)?,
                 note: r.get(6)?,
+                reversed_on: r.get(7)?,
+                reversal_reason: r.get(8)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(Some(InvoiceDetail { invoice, lines, payments }))
+    let mut stmt = conn.prepare(
+        "SELECT id, number, issue_date, total_fenings, reason FROM invoices WHERE credits_invoice_id = ?1 ORDER BY issue_date, number",
+    )?;
+    let credit_notes = stmt
+        .query_map(params![invoice_id], |r| {
+            Ok(CreditNoteRef { id: r.get(0)?, number: r.get(1)?, issue_date: r.get(2)?, total: r.get(3)?, reason: r.get(4)? })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut stmt = conn.prepare(
+        "SELECT l.credits_position, sum(l.amount) FROM invoice_lines l JOIN invoices cn ON cn.id = l.invoice_id
+         WHERE cn.credits_invoice_id = ?1 AND l.credits_position IS NOT NULL GROUP BY l.credits_position ORDER BY l.credits_position",
+    )?;
+    let credited_lines = stmt
+        .query_map(params![invoice_id], |r| Ok(crate::credit_notes::CreditNoteLine { position: r.get(0)?, amount: r.get(1)? }))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Some(InvoiceDetail { invoice, lines, payments, credit_notes, credited_lines }))
 }
 
 /// Book a payment against an issued invoice. Overpayments are allowed and kept as credit.
 pub fn record_payment(tx: &Transaction, payment: &Payment) -> AppResult<()> {
-    let status: Option<String> = tx
-        .query_row("SELECT status FROM invoices WHERE id = ?1", params![payment.invoice_id], |r| r.get(0))
+    let found: Option<(String, String)> = tx
+        .query_row("SELECT status, kind FROM invoices WHERE id = ?1", params![payment.invoice_id], |r| Ok((r.get(0)?, r.get(1)?)))
         .optional()?;
-    match status.as_deref() {
+    match found.as_ref().map(|(status, kind)| (status.as_str(), kind.as_str())) {
         None => return Err(AppError::NotFound("račun ne postoji".into())),
-        Some("ISSUED") => {}
+        Some((_, "CREDIT_NOTE")) => return Err(AppError::Validation("uplata se knjiži na račun, ne na knjižno odobrenje".into())),
+        Some(("ISSUED", _)) => {}
         Some(_) => return Err(AppError::Conflict("uplata se ne može knjižiti na storniran račun".into())),
     }
     if payment.amount <= 0 {
@@ -624,6 +680,7 @@ mod tests {
         let payment = Payment {
             id: "p1".into(), invoice_id: "i1".into(), paid_on: "2026-10-04".into(), amount: 50000,
             payer_name: "Baka".into(), reference: "Sparkasse 123".into(), note: "".into(),
+            reversed_on: None, reversal_reason: None,
         };
         record_payment(&tx, &payment).unwrap();
         tx.commit().unwrap();

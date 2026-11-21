@@ -9,6 +9,8 @@ import { formatKM } from '@/features/billing/money';
 import { saveStoredFindingsReport } from '../actions';
 import { FINDING_CATEGORIES, SEVERITY_LABEL, type FindingCategory } from '../diagnostics';
 import { listImportFindings, resolveImportFinding, type ImportFindingRow } from '../repository';
+import { invoiceBalance } from '@/features/invoices/credit-notes';
+import { getInvoice, linkLegacyCreditNote, listInvoices, type InvoiceSummary } from '@/features/invoices/repository';
 
 const titleOf = (category: string): string => FINDING_CATEGORIES[category as FindingCategory]?.title ?? category;
 
@@ -118,6 +120,14 @@ export function ReviewFindingsPage({ onChanged }: { onChanged?: () => void }): R
                     <span className="text-sm">
                       <CheckIcon aria-hidden className="inline size-4" /> {row.resolvedAt.slice(0, 10)}: {row.resolutionNote}
                     </span>
+                  ) : row.category === 'CREDIT_NOTE_UNLINKED' && row.invoiceId ? (
+                    <LinkCreditNote
+                      creditNoteId={row.invoiceId}
+                      onLinked={() => {
+                        void load();
+                        onChanged?.();
+                      }}
+                    />
                   ) : (
                     <div className="flex gap-2">
                       <Input
@@ -138,6 +148,73 @@ export function ReviewFindingsPage({ onChanged }: { onChanged?: () => void }): R
           </TableBody>
         </Table>
       )}
+    </div>
+  );
+}
+
+/**
+ * „Poveži s računom“ (storno S5): link a credit note imported from the old workbook to the invoice it cancels.
+ * Candidates: issued invoices of the same family and institution with enough left to absorb the credit note.
+ * Linking resolves the finding in the backend, in the same transaction.
+ */
+function LinkCreditNote({ creditNoteId, onLinked }: { creditNoteId: string; onLinked: () => void }): React.JSX.Element {
+  const [candidates, setCandidates] = useState<InvoiceSummary[] | null>(null);
+  const [target, setTarget] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const cn = await getInvoice(creditNoteId);
+      if (!cn.success) return void (alive && toast.error(cn.error));
+      const all = await listInvoices({ entity: cn.data.invoice.entity, month: null });
+      if (!all.success) return void (alive && toast.error(all.error));
+      const needed = -cn.data.invoice.total;
+      if (alive) {
+        setCandidates(
+          all.data.filter(
+            (i) => i.familyId === cn.data.invoice.familyId && i.kind !== 'CREDIT_NOTE' && i.status === 'ISSUED' && invoiceBalance(i).net >= needed,
+          ),
+        );
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [creditNoteId]);
+
+  async function link(): Promise<void> {
+    setBusy(true);
+    try {
+      const result = await linkLegacyCreditNote(creditNoteId, target);
+      if (!result.success) return void toast.error(result.error);
+      toast.success('Knjižno odobrenje je povezano s računom; nalaz je riješen.');
+      onLinked();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (candidates === null) return <span className="text-sm text-muted-foreground">Tražim račune porodice…</span>;
+  if (candidates.length === 0) return <span className="text-sm">Porodica nema računa ove ustanove na koji se ovo knjižno odobrenje može povezati.</span>;
+  return (
+    <div className="flex gap-2">
+      <select
+        aria-label="Račun koji knjižno odobrenje poništava"
+        className="h-9 min-w-48 rounded-md border bg-background px-2 text-sm"
+        value={target}
+        onChange={(event) => setTarget(event.target.value)}
+      >
+        <option value="">Odaberite račun…</option>
+        {candidates.map((i) => (
+          <option key={i.id} value={i.id}>
+            {i.number} · {formatKM(invoiceBalance(i).net)}
+          </option>
+        ))}
+      </select>
+      <Button size="sm" disabled={busy || !target} onClick={() => void link()}>
+        Poveži s računom
+      </Button>
     </div>
   );
 }

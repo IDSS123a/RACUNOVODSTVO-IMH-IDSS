@@ -103,6 +103,9 @@ Payments from any family member are booked against invoices, and the open balanc
 - ✅ Import diagnostics, phase A (2026-11-21, L-S3-07, `specs/legacy-import-diagnostics/`): 31 categories, severities and Q1–Q4 decided by the Director; preview grouped by severity and category; Excel report built. Example workbook: 251 findings in 16 categories. ✅ Phase B (2026-11-21): findings stored with the import (migration 009), menu „Za provjeru“ with the open count, resolve with a note (audited), Excel report from the preview and from the stored findings. End to end on the example workbook: 251 findings stored, 91 open. Director checked it in the running app (2026-11-21): menu „Za provjeru“ shows 91 after the trial import (C-13).
 - ✅ One running instance (2026-11-21, DL-P010): a second copy of the application is refused before it touches the database (forensic finding K3). Director saw the message in the second window (2026-11-21, C-13).
 - ✅ Disk before memory (2026-11-21, DL-P004 amendment 1): a failed disk write rolls the change back; a failed restore never separates the database from its key (forensic finding V1).
+- ✅ Storno (2026-11-21, DL-P011, `specs/storno-credit-notes/`, Sprint 04 scope done early):
+  - credit notes, payment reversal, family credit and linking the legacy KO;
+  - the Director issued a trial credit note in the running app (C-13).
 
 ## Still open before Sprint 03 closes
 - ✅ Enrolment-fee invoice („Račun za upis“ on each enrolment): one invoice per child and school year (migration 007), separate lines.

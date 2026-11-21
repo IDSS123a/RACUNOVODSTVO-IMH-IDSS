@@ -6,6 +6,7 @@ import { FormDialog } from '@/components/form-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { FamilyCreditCard } from '@/features/invoices/components/FamilyCreditCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { EnrolmentFeeDialog } from '@/features/invoices/components/EnrolmentFeeDialog';
 import { PaymentPlanDialog } from '@/features/invoices/components/PaymentPlanDialog';
@@ -103,6 +104,8 @@ export function FamilyDetailView({
           </Button>
         </div>
       </header>
+
+      <FamilyCreditCard familyId={familyId} />
 
       <Card>
         <CardHeader>
