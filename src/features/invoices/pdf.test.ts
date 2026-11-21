@@ -57,6 +57,31 @@ describe('invoice PDF', () => {
     expect(doc.getPageCount()).toBe(1);
   });
 
+  it('renders a credit note issued in the app with its original invoice and reason (storno S1)', async () => {
+    const d = data(1);
+    const firstLine = d.detail.lines[0];
+    if (!firstLine) throw new Error('fixture');
+    const credit: InvoicePdfData = {
+      ...d,
+      original: { number: 'IMH-001/26', issueDate: '2026-10-01' },
+      detail: {
+        invoice: { ...d.detail.invoice, id: 'k', kind: 'CREDIT_NOTE', number: 'IMH-KO-001/26', total: -71000, creditsInvoiceId: 'i', reason: 'dijete ispisano od 15.10.' },
+        lines: [{ ...firstLine, description: 'Storno: Školarina za oktobar', listAmount: -71000, amount: -71000 }],
+      },
+    };
+    const doc = await PDFDocument.load(await renderInvoicePdf(credit, ASSETS));
+    expect(doc.getPageCount()).toBe(1);
+    expect(doc.getTitle()).toBe('Knjižno odobrenje IMH-KO-001/26');
+  });
+
+  it('renders an invoice reduced by a credit note (net amount, still one page)', async () => {
+    const d = data(1);
+    const reduced: InvoicePdfData = { ...d, detail: { ...d.detail, invoice: { ...d.detail.invoice, credited: -21000, paid: 20000 } } };
+    const doc = await PDFDocument.load(await renderInvoicePdf(reduced, ASSETS));
+    expect(doc.getPageCount()).toBe(1);
+    expect(doc.getTitle()).toBe('Račun IMH-001/26');
+  });
+
   it('refuses a letterhead of the other institution', async () => {
     const idss = INSTITUTIONS_SEED.find((i) => i.code === 'IDSS');
     if (!idss) throw new Error('seed missing');

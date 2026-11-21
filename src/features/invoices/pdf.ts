@@ -17,6 +17,8 @@ export interface InvoicePdfData {
   readonly institution: Institution;
   /** Printed as "Fakturisao/la" — the operator profile from Settings. */
   readonly operatorName: string;
+  /** For a credit note: the invoice it cancels (storno S1/S5); null when a legacy one is not linked yet. */
+  readonly original?: { readonly number: string; readonly issueDate: string } | null;
 }
 
 export interface PdfAssets {
@@ -163,11 +165,19 @@ function drawHeading(w: Writer, data: InvoicePdfData): void {
 
   const labelX = MARGIN + CONTENT_WIDTH / 2 + 20;
   const right = PAGE.width - MARGIN;
-  const facts: Array<[string, string]> = [
-    ['Datum izdavanja', formatDate(invoice.issueDate)],
-    ['Rok plaćanja', formatDate(invoice.dueDate)],
-    ['Obračunski period', `${formatDate(invoice.periodFrom)} – ${formatDate(invoice.periodTo)}`],
-  ];
+  const isCreditNote = invoice.kind === 'CREDIT_NOTE';
+  const facts: Array<[string, string]> = isCreditNote
+    ? [
+        ['Datum izdavanja', formatDate(invoice.issueDate)],
+        ['Po računu br.', data.original ? data.original.number : '—'],
+        ['Datum računa', data.original ? formatDate(data.original.issueDate) : '—'],
+        ['Obračunski period', `${formatDate(invoice.periodFrom)} – ${formatDate(invoice.periodTo)}`],
+      ]
+    : [
+        ['Datum izdavanja', formatDate(invoice.issueDate)],
+        ['Rok plaćanja', formatDate(invoice.dueDate)],
+        ['Obračunski period', `${formatDate(invoice.periodFrom)} – ${formatDate(invoice.periodTo)}`],
+      ];
   let y = top;
   for (const [label, value] of facts) {
     w.text(label, labelX, { y, color: MUTED });
@@ -175,6 +185,13 @@ function drawHeading(w: Writer, data: InvoicePdfData): void {
     y -= 14;
   }
   w.y = Math.min(leftBottom, y) - 16;
+  if (isCreditNote && invoice.reason) {
+    for (const line of wrapText(`Razlog: ${invoice.reason}`, w.regular, 9, CONTENT_WIDTH)) {
+      w.text(line, MARGIN, { size: 9 });
+      w.y -= 12;
+    }
+    w.y -= 8;
+  }
 }
 
 function drawTableHeader(w: Writer): void {
@@ -208,10 +225,19 @@ function drawTotals(w: Writer, data: InvoicePdfData): void {
   const { invoice } = data.detail;
   w.ensure(90);
   w.y -= 4;
-  w.text('UKUPNO ZA UPLATU', PAGE.width - MARGIN - 250, { size: 11, bold: true });
+  const isCreditNote = invoice.kind === 'CREDIT_NOTE';
+  w.text(isCreditNote ? 'UKUPNO ODOBRENO' : 'UKUPNO ZA UPLATU', PAGE.width - MARGIN - 250, { size: 11, bold: true });
   w.rightText(formatKM(invoice.total), PAGE.width - MARGIN - 4, { size: 12, bold: true });
   w.y -= 18;
-  if (invoice.paid > 0) {
+  if (!isCreditNote && invoice.credited < 0) {
+    w.rightText(
+      `Umanjeno knjižnim odobrenjima ${formatKM(invoice.credited)} · za uplatu ${formatKM(invoice.total + invoice.credited)}`,
+      PAGE.width - MARGIN - 4,
+      { size: 9 },
+    );
+    w.y -= 14;
+  }
+  if (!isCreditNote && invoice.paid > 0) {
     const open = Math.max(0, invoice.total + invoice.credited - invoice.paid);
     w.rightText(`Uplaćeno ${formatKM(invoice.paid)} · preostalo za uplatu ${formatKM(open)}`, PAGE.width - MARGIN - 4, { size: 9 });
     w.y -= 14;
@@ -357,7 +383,7 @@ export async function renderInvoicePdf(data: InvoicePdfData, assets: PdfAssets):
     doc.embedFont(assets.boldFont),
     doc.embedPng(assets.logoPng),
   ]);
-  doc.setTitle(`Račun ${data.detail.invoice.number}`);
+  doc.setTitle(`${data.detail.invoice.kind === 'CREDIT_NOTE' ? 'Knjižno odobrenje' : 'Račun'} ${data.detail.invoice.number}`);
   doc.setAuthor(data.institution.shortName);
   doc.setSubject(`${data.detail.invoice.buyerName} — ${data.detail.invoice.childName}`);
   doc.setCreator('Fakturisanje IMH & IDSS');

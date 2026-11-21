@@ -31,13 +31,20 @@
 - *Call sites already use the effective balance: invoice list, invoice detail, PDF open amount.*
 
 ## Phase 2 — screens and documents
-- [ ] 7. UI:
+- [x] 7. UI:
   - credit-note dialog;
   - payment reversal;
   - family credit (move / refund);
   - „Poveži s računom“ in „Za provjeru“;
   - credit-note PDF.
-- [ ] 8. Integration: invoice list and detail show net / effective paid / „STORNIRAN“; monthly billing re-offers fully cancelled months (S6).
+- [x] 8. Integration: invoice list and detail show net / effective paid / „STORNIRAN“; monthly billing re-offers fully cancelled months (S6).
+
+*Phase 2 built 2026-11-21:*
+- *invoice detail: credit-note dialog (whole / per line, reason, date), credit notes and net, payment reversal, credit move / refund;*
+- *family detail: „Kredit porodice“ per institution;*
+- *„Za provjeru“: „Poveži s računom“ for the legacy credit notes;*
+- *PDF: credit note shows the original invoice and the reason, plus „UKUPNO ODOBRENO“; an invoice with credit notes shows the reduced amount.*
+- *Vitest 184/184, tsc, ESLint, project-guard.*
 
 ## Phase 3 — close
 - [ ] 9. Self-review (Step 4).
