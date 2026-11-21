@@ -325,6 +325,30 @@ export const LegacyImportResultSchema = z.object({
   children: z.number().int(),
   invoices: z.number().int(),
   payments: z.number().int(),
+  findings: z.number().int(),
   nextNumbers: z.array(z.tuple([LegalEntityCodeSchema, z.number().int(), z.number().int()])),
 });
+
+/** One stored finding of the legacy import (migration 009, specs/legacy-import-diagnostics). */
+export const ImportFindingRowSchema = z.object({
+  id: z.string().min(1),
+  category: z.string().min(1),
+  severity: z.enum(['ISOLATE', 'REVIEW', 'INFO']),
+  entity: z.string(),
+  number: z.string(),
+  invoiceId: z.string().nullable(),
+  buyerName: z.string(),
+  childName: z.string(),
+  excelRows: z.string(),
+  reason: z.string(),
+  amount: z.number().int().nullable(),
+  firstSeenAt: z.string(),
+  lastSeenAt: z.string(),
+  lastSeenFile: z.string(),
+  resolvedAt: z.string().nullable(),
+  resolutionNote: z.string(),
+});
+
+/** Resolution note entered by the operator (mirrors the backend limit). */
+export const ResolutionNoteSchema = z.string().trim().min(1, 'upišite kako je nalaz riješen').max(500, 'najviše 500 znakova');
 

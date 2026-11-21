@@ -206,6 +206,9 @@ pub struct ImportPlan {
     pub invoices: Vec<PlanInvoice>,
     pub payments_for_existing: Vec<PlanExistingPayment>,
     pub sequences: Vec<PlanSequence>,
+    /// Findings of the import diagnostics (migration 009); stored by the command in the same transaction.
+    #[serde(default)]
+    pub findings: Vec<crate::findings::PlanFinding>,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -215,6 +218,8 @@ pub struct ImportResult {
     pub children: usize,
     pub invoices: usize,
     pub payments: usize,
+    /// findings stored (filled in by the command)
+    pub findings: usize,
     /// (entity, year, next number) after the import
     pub next_numbers: Vec<(String, i64, i64)>,
 }
@@ -303,6 +308,7 @@ pub fn import(tx: &Transaction, plan: &ImportPlan) -> AppResult<ImportResult> {
         children: plan.children.len(),
         invoices: plan.invoices.len(),
         payments,
+        findings: 0,
         next_numbers,
     })
 }
@@ -352,6 +358,7 @@ mod tests {
             ],
             payments_for_existing: vec![],
             sequences: vec![PlanSequence { entity: "IMH".into(), year: 2026, last_number: 896 }],
+            findings: Vec::new(),
         }
     }
 
@@ -437,7 +444,15 @@ mod tests {
         migrations::apply(&mut conn).unwrap();
         let tx = conn.transaction().unwrap();
         let result = import(&tx, &plan).unwrap();
+        let stored = crate::findings::store(&tx, &plan.findings, "real.xlsm").unwrap();
         tx.commit().unwrap();
+        let linked: i64 = conn
+            .query_row("SELECT count(*) FROM legacy_import_findings WHERE invoice_id IS NOT NULL", [], |r| r.get(0))
+            .unwrap();
+        println!(
+            "findings stored {stored}, linked to an invoice {linked}, open (ISOLATE+REVIEW) {}",
+            crate::findings::open_count(&conn).unwrap()
+        );
         let (invoices, lines, payments): (i64, i64, i64) = conn
             .query_row(
                 "SELECT (SELECT count(*) FROM invoices), (SELECT count(*) FROM invoice_lines), (SELECT count(*) FROM payments)",

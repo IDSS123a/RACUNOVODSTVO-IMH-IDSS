@@ -1,6 +1,6 @@
 import { kmToFenings, sum, type Fenings } from '@/features/billing/money';
 import type { LegalEntityCode } from '@/features/price-lists/types';
-import { FINDING_CATEGORIES, FindingCollector, formatRows, type Finding, type FindingCategory } from './diagnostics';
+import { FINDING_CATEGORIES, FindingCollector, formatRows, toPlanFindings, type Finding, type FindingCategory, type PlanFinding } from './diagnostics';
 
 /**
  * Import from the previous Excel solution (CONSTITUTION BR-32, SPRINT_03 "Legacy import").
@@ -213,6 +213,8 @@ export interface ImportPlan {
   }>;
   readonly paymentsForExisting: Array<{ invoiceId: string; payment: PlanPayment }>;
   readonly sequences: Array<{ entity: LegalEntityCode; year: number; lastNumber: number }>;
+  /** Findings stored with the import for later review (migration 009); BLOCK findings never reach a plan. */
+  readonly findings: PlanFinding[];
 }
 
 export interface PlanPayment {
@@ -431,7 +433,7 @@ export function buildImportPlan(
     isolate(sameParty ? 'NUMBER_REUSED_SAME_PARTY' : 'NUMBER_REUSED_OTHER_PARTY', block.entity, block.number, block.rows);
   }
 
-  const plan: ImportPlan = { families: [], children: [], invoices: [], paymentsForExisting: [], sequences: [] };
+  const plan: ImportPlan = { families: [], children: [], invoices: [], paymentsForExisting: [], sequences: [], findings: [] };
   const familyIds = new Map<string, string>();
   const childIds = new Map<string, string>();
   const lastNumbers: Record<LegalEntityCode, Record<number, number>> = { IMH: {}, IDSS: {} };
@@ -680,6 +682,8 @@ export function buildImportPlan(
   for (const entity of ['IMH', 'IDSS'] as const) {
     for (const [year, last] of Object.entries(lastNumbers[entity])) plan.sequences.push({ entity, year: Number(year), lastNumber: last });
   }
+
+  plan.findings.push(...toPlanFindings(findings.list()));
 
   const byEntity = Object.fromEntries(
     (['IMH', 'IDSS'] as const).map((entity) => [entity, { ...totals[entity], lastNumbers: lastNumbers[entity] }]),

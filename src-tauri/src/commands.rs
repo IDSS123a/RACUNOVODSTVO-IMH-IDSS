@@ -358,17 +358,17 @@ pub fn list_breakfast(state: State<'_, AppStore>, school_year: String) -> AppRes
 
 // ---------- Documents (PDF, later .zip) ----------
 
-const DOCUMENT_EXTENSIONS: [&str; 2] = ["pdf", "zip"];
+const DOCUMENT_EXTENSIONS: [&str; 3] = ["pdf", "zip", "xlsx"];
 
 /// Save a document produced by the frontend (invoice PDF, .zip export) to a path the operator chose
-/// in the save dialog. Only .pdf and .zip are allowed; the folder must exist. Audited (BR-30).
+/// in the save dialog. Only .pdf, .zip and .xlsx (the import report) are allowed; the folder must exist. Audited (BR-30).
 #[tauri::command]
 pub fn save_document(state: State<'_, AppStore>, path: String, bytes: Vec<u8>, reference: String) -> AppResult<()> {
     let store = state.get()?;
     let target = PathBuf::from(&path);
     let extension = target.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
     if !DOCUMENT_EXTENSIONS.contains(&extension.as_str()) {
-        return Err(AppError::Validation("dokument se sprema samo kao .pdf ili .zip".into()));
+        return Err(AppError::Validation("dokument se sprema samo kao .pdf, .zip ili .xlsx".into()));
     }
     if !target.parent().is_some_and(|dir| dir.is_dir()) {
         return Err(AppError::NotFound("odabrani folder ne postoji".into()));
@@ -432,14 +432,47 @@ pub fn legacy_import_keys(state: State<'_, AppStore>) -> AppResult<LegacyKeys> {
 pub fn import_legacy(state: State<'_, AppStore>, plan: ImportPlan, file_name: String) -> AppResult<ImportResult> {
     let store = state.get()?;
     store.write(|tx| {
-        let result = legacy::import(tx, &plan)?;
+        let mut result = legacy::import(tx, &plan)?;
+        // Findings are stored after the invoices, so REVIEW/INFO findings link to the imported invoice.
+        result.findings = findings::store(tx, &plan.findings, &file_name)?;
         repo::audit(
             tx,
             "IMPORT",
             "legacy",
             &file_name,
-            &format!("porodice {}, djeca {}, računi {}, uplate {}", result.families, result.children, result.invoices, result.payments),
+            &format!(
+                "porodice {}, djeca {}, računi {}, uplate {}, nalazi {}",
+                result.families, result.children, result.invoices, result.payments, result.findings
+            ),
         )?;
         Ok(result)
+    })
+}
+
+// ---------- Findings of the legacy import (specs/legacy-import-diagnostics, migration 009) ----------
+
+use crate::findings::{self, FindingRow};
+
+/// Findings for the "Za provjeru" view; `only_open` hides resolved ones.
+#[tauri::command]
+pub fn list_import_findings(state: State<'_, AppStore>, only_open: bool) -> AppResult<Vec<FindingRow>> {
+    let store = state.get()?;
+    store.read(|c| findings::list(c, only_open))
+}
+
+/// Open ISOLATE + REVIEW findings — the number kept visible in the menu (Q4).
+#[tauri::command]
+pub fn import_findings_open_count(state: State<'_, AppStore>) -> AppResult<i64> {
+    let store = state.get()?;
+    store.read(findings::open_count)
+}
+
+/// Mark a finding resolved with the operator's note; audited with the category only (the note may name people).
+#[tauri::command]
+pub fn resolve_import_finding(state: State<'_, AppStore>, finding_id: String, note: String) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        let category = findings::resolve(tx, &finding_id, &note)?;
+        repo::audit(tx, "RESOLVE", "import_finding", &finding_id, &category)
     })
 }

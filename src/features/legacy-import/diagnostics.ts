@@ -81,6 +81,45 @@ export interface Finding {
   readonly amount: Fenings | null;
 }
 
+/** A finding as stored with the import (migration 009). */
+export interface PlanFinding {
+  /** Stable across re-imports of a newer workbook: category, entity and number (+ an ordinal when repeated). */
+  readonly findingKey: string;
+  readonly category: FindingCategory;
+  readonly severity: Exclude<Severity, 'BLOCK'>;
+  readonly entity: string;
+  readonly number: string;
+  readonly excelRows: string;
+  readonly reason: string;
+  readonly amount: Fenings | null;
+}
+
+/**
+ * Findings to store with the import. The key deliberately excludes Excel rows (they shift between versions of the
+ * workbook) and names (BR-22); a category that repeats for the same invoice or register gets an ordinal.
+ */
+export function toPlanFindings(findings: ReadonlyArray<Finding>): PlanFinding[] {
+  const seen = new Map<string, number>();
+  const out: PlanFinding[] = [];
+  for (const f of findings) {
+    if (f.severity === 'BLOCK') continue;
+    const base = `${f.category}|${f.entity}|${f.number}`;
+    const ordinal = (seen.get(base) ?? 0) + 1;
+    seen.set(base, ordinal);
+    out.push({
+      findingKey: ordinal === 1 ? base : `${base}|${ordinal}`,
+      category: f.category,
+      severity: f.severity,
+      entity: f.entity,
+      number: f.number,
+      excelRows: f.excelRows,
+      reason: f.reason,
+      amount: f.amount,
+    });
+  }
+  return out;
+}
+
 /** Format a list of 1-based row numbers compactly: [4,5,6,9] → "4–6, 9". */
 export function formatRows(rows: ReadonlyArray<number>, limit = 30): string {
   const sorted = [...new Set(rows)].sort((a, b) => a - b);

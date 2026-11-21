@@ -21,21 +21,25 @@
   - one constructed-workbook test per category;
   - re-run on the example workbook (counts only) against SPEC.md
 - [x] 11. Documentation — JSDoc, SPRINT note, lessons
-- [ ] 12. Commit on branch `fix/legacy-import-integrity` (no push without the Director)
+- [x] 12. Commit on branch `fix/legacy-import-integrity` (no push without the Director)
 
 
 *Phase A verified 2026-11-21: 169/169 Vitest, tsc, ESLint, project-guard clean; on the example workbook: 1.569 invoices, 1.284 payments, 2 isolated, 251 findings in 16 categories; the generated report opens in SheetJS (18 sheets).*
 
 ## Phase B — persistence and review (Rust)
-- [ ] 1. Migration 009 `legacy_import_findings`
-- [ ] 2. Types — Rust structs
-- [ ] 3. Zod for the new commands
-- [ ] 4. Rust repository:
+- [x] 1. Migration 009 `legacy_import_findings`
+- [x] 2. Types — Rust structs
+- [x] 3. Zod for the new commands
+- [x] 4. Rust repository:
   - store findings in `legacy::import`;
   - `list_import_findings`;
   - `resolve_import_finding` (audited)
-- [ ] 5. Domain — upsert rules on re-import
-- [ ] 6. Commands, and `.xlsx` in `save_document`
-- [ ] 7. UI — „Za provjeru“ view with the unresolved count; resolve with a note; „Sačuvaj izvještaj (Excel)“
-- [ ] 8. Integration
-- [ ] 9.–12. Self-review, `cargo test` + Vitest, docs, commit
+- [x] 5. Domain — upsert rules on re-import
+- [x] 6. Commands, and `.xlsx` in `save_document`
+- [x] 7. UI — „Za provjeru“ view with the unresolved count; resolve with a note; „Sačuvaj izvještaj (Excel)“
+- [x] 8. Integration
+- [x] 9.–12. Self-review, `cargo test` + Vitest, docs, commit
+
+*Phase B verified 2026-11-21: cargo test 35/35 (2 ignored real-data tests run by hand), Vitest 172/172, tsc, ESLint, project-guard.
+End to end on the example workbook — Rust reader → TypeScript plan → Rust import in memory: 1.569 invoices, 1.284 payments,
+251 findings stored, 244 linked to their invoice, 91 open (2 ISOLATE + 89 REVIEW), 0 foreign-key violations.*

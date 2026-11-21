@@ -1,6 +1,7 @@
 import { strFromU8, unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { buildFindingsWorkbook, countByCategory, FINDING_CATEGORIES, formatRows, type FindingCategory } from './diagnostics';
+import { rowToFinding } from './actions';
+import { buildFindingsWorkbook, countByCategory, FINDING_CATEGORIES, formatRows, toPlanFindings, type FindingCategory } from './diagnostics';
 import { buildImportPlan, type Cell, type ExistingKeys, type LegacyWorkbook } from './domain';
 
 // Fictional data only (M-15). One constructed workbook holds one example of every category.
@@ -224,5 +225,36 @@ describe('formatRows', () => {
   it('compresses ranges', () => {
     expect(formatRows([9, 4, 5, 6, 6])).toBe('4–6, 9');
     expect(formatRows([1, 3, 5], 2)).toBe('1, 3 … (+1)');
+  });
+});
+
+describe('findings stored with the import (phase B)', () => {
+  const { plan, report } = buildImportPlan(workbook(), NONE, ids(), { today: TODAY });
+
+  it('every non-blocking finding is in the plan, with a unique key that holds no Excel rows and no names', () => {
+    expect(plan.findings).toHaveLength(report.findings.length);
+    const keys = plan.findings.map((f) => f.findingKey);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).toContain('DUE_DATE_INVALID|IMH|002/26');
+    for (const key of keys) expect(key).not.toMatch(/DB |Setting |Otac|Majka|Ana/);
+  });
+
+  it('a category repeated for the same subject gets an ordinal, stable across re-runs', () => {
+    const findings = toPlanFindings([
+      { category: 'NUMBER_REUSED_OTHER_PARTY', severity: 'ISOLATE', entity: 'IDSS', number: '363/26', excelRows: 'DB 9', reason: 'r', amount: 1 },
+      { category: 'NUMBER_REUSED_OTHER_PARTY', severity: 'ISOLATE', entity: 'IDSS', number: '363/26', excelRows: 'DB 20', reason: 'r', amount: 2 },
+      { category: 'AMOUNT_UNREADABLE', severity: 'BLOCK', entity: 'IMH', number: '1/26', excelRows: 'DB 3', reason: 'r', amount: null },
+    ]);
+    expect(findings.map((f) => f.findingKey)).toEqual(['NUMBER_REUSED_OTHER_PARTY|IDSS|363/26', 'NUMBER_REUSED_OTHER_PARTY|IDSS|363/26|2']);
+  });
+
+  it('a stored row converts back for the report, keeping its resolution', () => {
+    const finding = rowToFinding({
+      id: 'x', category: 'NO_CHILD', severity: 'REVIEW', entity: 'IMH', number: '011/26', invoiceId: 'i', buyerName: 'B', childName: '',
+      excelRows: 'DB 14', reason: 'Na računu nije upisano dijete.', amount: null, firstSeenAt: '2026-11-21', lastSeenAt: '2026-11-21',
+      lastSeenFile: 'a.xlsm', resolvedAt: '2026-11-22T10:00:00Z', resolutionNote: 'dopunjeno',
+    });
+    expect(finding).toMatchObject({ category: 'NO_CHILD', reason: 'Na računu nije upisano dijete. [riješeno 2026-11-22: dopunjeno]' });
+    expect(rowToFinding({ category: 'NEPOZNATO' } as unknown as Parameters<typeof rowToFinding>[0])).toBeNull();
   });
 });

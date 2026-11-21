@@ -6,7 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatKM } from '@/features/billing/money';
-import { prepareLegacyImport, runLegacyImport, type PreparedImport } from '../actions';
+import { prepareLegacyImport, runLegacyImport, saveFindingsReport, type PreparedImport } from '../actions';
 import type { LegacyImportResult } from '../repository';
 import { FindingsSummary } from './FindingsSummary';
 
@@ -59,6 +59,13 @@ export function LegacyImportPanel({ onImported }: { onImported?: () => void }): 
     } finally {
       setBusy(null);
     }
+  }
+
+  async function saveReport(): Promise<void> {
+    if (!prepared) return;
+    const outcome = await saveFindingsReport(prepared.report.findings, prepared.report.fileName);
+    if (!outcome.success) toast.error(outcome.error);
+    else if (outcome.data) toast.success(`Izvještaj je sačuvan: ${outcome.data}`);
   }
 
   const report = prepared?.report;
@@ -115,6 +122,13 @@ export function LegacyImportPanel({ onImported }: { onImported?: () => void }): 
             punom iznosu ako su označene sve stavke, inače u iznosu označenih stavki. Djeca se uvoze bez datuma rođenja i označena su „Dopuniti podatke“.
           </p>
           <FindingsSummary findings={report.findings} />
+          {report.findings.length > 0 && (
+            <div>
+              <Button variant="outline" disabled={busy !== null} onClick={() => void saveReport()}>
+                <FileSpreadsheetIcon aria-hidden /> Sačuvaj izvještaj za knjigovođu (Excel)
+              </Button>
+            </div>
+          )}
           {report.isolated.length > 0 && (
             <Alert variant="destructive">
               <AlertTitle>Računi koji se NEĆE uvesti ({report.isolated.length})</AlertTitle>
@@ -165,7 +179,7 @@ export function LegacyImportPanel({ onImported }: { onImported?: () => void }): 
         <Alert>
           <AlertTitle>Uvoz je završen</AlertTitle>
           <AlertDescription>
-            {result.invoices} računa, {result.families} porodica, {result.children} djece, {result.payments} uplata. Nova numeracija:{' '}
+            {result.invoices} računa, {result.families} porodica, {result.children} djece, {result.payments} uplata, {result.findings} nalaza za meni „Za provjeru“. Nova numeracija:{' '}
             {result.nextNumbers.map(([entity, year, next]) => `${entity}-${String(next).padStart(3, '0')}/${String(year).slice(2)}`).join(', ')}.
           </AlertDescription>
         </Alert>

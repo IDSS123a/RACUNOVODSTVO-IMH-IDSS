@@ -7,6 +7,7 @@ mod commands;
 mod crypto;
 mod error;
 mod families;
+mod findings;
 mod invoices;
 mod keystore;
 mod legacy;
@@ -74,6 +75,9 @@ pub fn run() {
             commands::read_legacy_workbook,
             commands::legacy_import_keys,
             commands::import_legacy,
+            commands::list_import_findings,
+            commands::import_findings_open_count,
+            commands::resolve_import_finding,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the Tauri application");

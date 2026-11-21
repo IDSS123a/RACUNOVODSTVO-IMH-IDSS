@@ -44,3 +44,10 @@
 - **Lesson:** a *default* is a decision. In an import of accounting data, every value the code fills in on its own must be reported like an error, or the books and the source silently diverge.
 - **Env gotcha:** the agent's file-writing tool turned `\uXXXX` escape sequences into the literal characters (a no-break space inside a regex, a control-character range). Avoid `\u` escapes in source written by the agent; compare character codes instead, and let ESLint (no-irregular-whitespace) catch what slips through.
 - **Commander candidate:** in the import checklist — "list every default the importer applies and report each one as a finding".
+
+## L-S3-08 — The real-data end-to-end check exists; extend it with every new import step
+- **Trigger:** phase B of the import diagnostics (2026-11-21).
+- **Finding:** the ignored Rust tests `reads_real_workbook_shape` and `imports_real_plan_in_memory` already give a full real-data path (Rust reader → TypeScript plan → Rust import), but the second one did not store findings, so phase B would not have been covered.
+- **Fix:** the test now stores the findings and prints stored / linked / open counts; run with `LEGACY_XLSM`, `LEGACY_JSON_OUT`, `LEGACY_PLAN` pointing into a scratch folder that is deleted afterwards (M-15).
+- **Env gotcha:** the frontend targets ES2020 — `Object.hasOwn` does not type-check; use `Object.prototype.hasOwnProperty.call`.
+- **Lesson:** a new persistence step of the import belongs in the real-data end-to-end test the same day, not only in unit tests.
