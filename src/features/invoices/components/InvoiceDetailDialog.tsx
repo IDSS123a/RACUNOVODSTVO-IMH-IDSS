@@ -14,6 +14,7 @@ import { Field } from '@/features/settings/components/OperatorForm';
 import { formatDate } from '@/lib/format';
 import { useAsyncResult } from '@/lib/use-async-result';
 import { z } from 'zod';
+import { FORMAT, fullNameField, isRealDate } from '@/lib/validation/formats';
 import { BALANCE_LABEL, invoiceBalance } from '../credit-notes';
 import { getInvoice, recordPayment, reversePayment, type InvoiceDetail, type Payment } from '../repository';
 import { CreditMovePanel } from './CreditMovePanel';
@@ -23,7 +24,7 @@ import { PAYMENT_PURPOSE_TEMPLATES, PAYMENT_REFERENCE_TEMPLATES, REVERSAL_REASON
 import { MONTH_NAME } from '../types';
 
 const PaymentFormSchema = z.object({
-  paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'unesite datum'),
+  paidOn: z.string().refine((d) => isRealDate(d) && d <= new Date().toISOString().slice(0, 10), 'unesite stvarni datum uplate (ne u budućnosti)'),
   amountKm: z.string().refine((value) => {
     try {
       return kmToFenings(value) > 0;
@@ -32,7 +33,7 @@ const PaymentFormSchema = z.object({
       throw error;
     }
   }, 'unesite iznos, npr. 710,00'),
-  payerName: z.string().trim().min(1, 'unesite ko je uplatio'),
+  payerName: fullNameField(),
   // both come from a template (identical syntax); empty = a template field is still missing
   reference: z.string().trim().min(1, 'popunite šablon reference'),
   note: z.string().trim().min(1, 'popunite šablon svrhe uplate'),
@@ -48,20 +49,23 @@ export function InvoiceDetailDialog({
   onClose,
   onChanged,
   onShowPdf,
+  readOnly = false,
 }: {
   invoiceId: string | null;
   onClose: () => void;
   onChanged: () => void;
   onShowPdf: (invoiceId: string) => void;
+  /** Reporting (DEFINICIJA §4, task 3): look only — no payment, no credit note, no reversal. */
+  readOnly?: boolean;
 }): React.JSX.Element {
   return (
-    <FormDialog open={invoiceId !== null} onOpenChange={(open) => !open && onClose()} title="Račun" wide>
-      {invoiceId && <InvoiceBody invoiceId={invoiceId} onChanged={onChanged} onShowPdf={onShowPdf} />}
+    <FormDialog open={invoiceId !== null} onOpenChange={(open) => !open && onClose()} title={readOnly ? 'Račun (pregled)' : 'Račun'} wide>
+      {invoiceId && <InvoiceBody invoiceId={invoiceId} onChanged={onChanged} onShowPdf={onShowPdf} readOnly={readOnly} />}
     </FormDialog>
   );
 }
 
-function InvoiceBody({ invoiceId, onChanged, onShowPdf }: { invoiceId: string; onChanged: () => void; onShowPdf: (invoiceId: string) => void }): React.JSX.Element {
+function InvoiceBody({ invoiceId, onChanged, onShowPdf, readOnly }: { invoiceId: string; onChanged: () => void; onShowPdf: (invoiceId: string) => void; readOnly: boolean }): React.JSX.Element {
   const load = useCallback(() => getInvoice(invoiceId), [invoiceId]);
   const detail = useAsyncResult(load);
   if (detail.state.status === 'loading') return <LoadingBlock />;
@@ -72,6 +76,7 @@ function InvoiceBody({ invoiceId, onChanged, onShowPdf }: { invoiceId: string; o
     <InvoiceContent
       key={`${data.payments.length}|${data.payments.filter((p) => p.reversedOn).length}|${data.creditNotes.length}|${data.invoice.paid}`}
       detail={data}
+      readOnly={readOnly}
       onShowPdf={() => onShowPdf(invoiceId)}
       onPaid={() => {
         detail.reload();
@@ -81,14 +86,14 @@ function InvoiceBody({ invoiceId, onChanged, onShowPdf }: { invoiceId: string; o
   );
 }
 
-function InvoiceContent({ detail, onPaid, onShowPdf }: { detail: InvoiceDetail; onPaid: () => void; onShowPdf: () => void }): React.JSX.Element {
+function InvoiceContent({ detail, onPaid, onShowPdf, readOnly }: { detail: InvoiceDetail; onPaid: () => void; onShowPdf: () => void; readOnly: boolean }): React.JSX.Element {
   const { invoice, lines, payments, creditNotes } = detail;
   // Effective balance from the backend: reversed payments and moved credit are already accounted for.
   const summary = invoiceBalance(invoice);
   const [showCreditNote, setShowCreditNote] = useState(false);
   const isCreditNote = invoice.kind === 'CREDIT_NOTE';
-  const canCredit = !isCreditNote && invoice.status === 'ISSUED' && summary.net > 0;
-  const canPay = !isCreditNote && invoice.status === 'ISSUED';
+  const canCredit = !readOnly && !isCreditNote && invoice.status === 'ISSUED' && summary.net > 0;
+  const canPay = !readOnly && !isCreditNote && invoice.status === 'ISSUED';
   const form = useForm<PaymentForm>({
     resolver: zodResolver(PaymentFormSchema),
     defaultValues: {
@@ -214,12 +219,12 @@ function InvoiceContent({ detail, onPaid, onShowPdf }: { detail: InvoiceDetail; 
           <p>Preostalo: <strong className="tabular-nums">{formatKM(summary.open)}</strong></p>
           {summary.credit > 0 && <p>Kredit (višak uplate): <strong className="tabular-nums">{formatKM(summary.credit)}</strong></p>}
           {payments.map((p) => (
-            <PaymentRow key={p.id} payment={p} onReversed={onPaid} />
+            <PaymentRow key={p.id} payment={p} onReversed={onPaid} readOnly={readOnly} />
           ))}
         </div>
       )}
 
-      {!isCreditNote && summary.credit > 0 && <CreditMovePanel invoice={invoice} credit={summary.credit} onMoved={onPaid} />}
+      {!readOnly && !isCreditNote && summary.credit > 0 && <CreditMovePanel invoice={invoice} credit={summary.credit} onMoved={onPaid} />}
 
       {canPay && (
         <form className="grid gap-4 rounded-lg border p-4 md:grid-cols-4" onSubmit={form.handleSubmit(submit)} noValidate>
@@ -230,7 +235,7 @@ function InvoiceContent({ detail, onPaid, onShowPdf }: { detail: InvoiceDetail; 
           <Field id="pay-amount" label="Iznos (KM)" error={errors.amountKm?.message}>
             <Input id="pay-amount" inputMode="decimal" {...form.register('amountKm')} aria-invalid={Boolean(errors.amountKm)} />
           </Field>
-          <Field id="pay-payer" label="Uplatio/la" error={errors.payerName?.message}>
+          <Field id="pay-payer" label="Uplatio/la" hint={FORMAT.fullName} error={errors.payerName?.message}>
             <Input id="pay-payer" {...form.register('payerName')} />
           </Field>
           <div className="grid gap-1 md:col-span-2">
@@ -253,7 +258,7 @@ function InvoiceContent({ detail, onPaid, onShowPdf }: { detail: InvoiceDetail; 
 }
 
 /** One payment, with „Storno uplate“ (S4): a counter-entry with a reason; the payment itself stays visible. */
-function PaymentRow({ payment, onReversed }: { payment: Payment; onReversed: () => void }): React.JSX.Element {
+function PaymentRow({ payment, onReversed, readOnly }: { payment: Payment; onReversed: () => void; readOnly: boolean }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -278,7 +283,7 @@ function PaymentRow({ payment, onReversed }: { payment: Payment; onReversed: () 
         {payment.reference ? ` · ${payment.reference}` : ''}
       </span>
       {payment.reversedOn && ` · stornirano ${formatDate(payment.reversedOn)}: ${payment.reversalReason ?? ''}`}
-      {!payment.reversedOn && !open && (
+      {!readOnly && !payment.reversedOn && !open && (
         <Button variant="link" size="sm" className="h-auto px-2 py-0" onClick={() => setOpen(true)}>
           Storno uplate…
         </Button>

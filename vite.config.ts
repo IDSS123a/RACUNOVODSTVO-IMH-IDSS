@@ -14,6 +14,8 @@ export default defineConfig({
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
+  // the institutions' Word letterheads, inlined with `?inline` (src/features/settings/letterheads.ts)
+  assetsInclude: ['**/*.dotx'],
   clearScreen: false,
   server: { port: 5173, strictPort: true },
   // Desktop app loads assets from disk, so one larger bundle is fine.

@@ -14,7 +14,7 @@ const ONE_TIME_ITEMS = new Set(['ENROLMENT_FEE', 'ENROLMENT_FEE_AFTER_IDSS_PRESC
 export interface RecapLine {
   readonly position: number;
   readonly description: string;
-  readonly unit: 'kom' | 'srv';
+  readonly unit: string;
   readonly quantity: number;
   /** Price by the price list. */
   readonly price: Fenings;
@@ -54,7 +54,7 @@ export function invoiceRecap(
     readonly listAmount: Fenings;
     readonly amount: Fenings;
     readonly quantity?: number;
-    readonly unit?: 'kom' | 'srv' | null;
+    readonly unit?: string | null;
   }>,
 ): InvoiceRecap {
   const rows: RecapLine[] = lines.map((line, index) => {

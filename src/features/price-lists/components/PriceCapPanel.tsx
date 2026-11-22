@@ -10,7 +10,7 @@ import { formatKM, formatPercent } from '@/features/billing/money';
 import { Field } from '@/features/settings/components/OperatorForm';
 import { saveMinistryApproval, type MinistryApproval } from '@/features/settings/repository';
 import { formatDate } from '@/lib/format';
-import { MinistryApprovalSchema } from '@/lib/validation/schemas';
+import { MinistryApprovalFormSchema } from '@/lib/validation/schemas';
 import type { PriceCapRow } from '../domain';
 import type { PriceCapStatus } from '../price-cap';
 import { PROGRAM_LABEL, TIER_LABEL, type SchoolYear } from '../types';
@@ -38,7 +38,7 @@ export function PriceCapPanel({
   onApprovalSaved: () => void;
 }): React.JSX.Element {
   const form = useForm<MinistryApproval>({
-    resolver: zodResolver(MinistryApprovalSchema),
+    resolver: zodResolver(MinistryApprovalFormSchema),
     defaultValues: approval ?? { schoolYear, documentNumber: '', documentDate: '', note: '' },
   });
   const { errors, isSubmitting } = form.formState;

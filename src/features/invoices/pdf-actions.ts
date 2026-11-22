@@ -11,7 +11,9 @@ import { getSettings, listInstitutions, type Institution } from '@/features/sett
 import { formatDate } from '@/lib/format';
 import { call, type Result } from '@/lib/tauri/invoke';
 import { buildEml, chunkBySize, zipFiles } from './bundle';
-import { amountDue, invoiceFileName, renderInvoicePdf, type PdfAssets } from './pdf';
+import { letterheadOf } from '@/features/settings/letterheads';
+import { renderInvoiceDocx } from './docx';
+import { amountDue, invoiceFileName, renderInvoicePdf, type InvoicePdfData, type PdfAssets } from './pdf';
 import { getInvoice, listInvoices, type InvoiceDetail, type InvoiceSummary } from './repository';
 
 /**
@@ -59,7 +61,8 @@ export interface InvoicePdf {
   readonly summary: InvoiceSummary;
 }
 
-async function render(detail: InvoiceDetail, context: PdfContext): Promise<Result<InvoicePdf>> {
+/** What both renderers need: the institution, the operator and, for a credit note, the invoice it cancels. */
+async function documentData(detail: InvoiceDetail, context: PdfContext): Promise<Result<InvoicePdfData>> {
   const institution = context.institutions.find((i) => i.code === detail.invoice.entity);
   if (!institution) return fail(`podaci ustanove ${detail.invoice.entity} nisu uneseni`, 'NOT_FOUND');
   // A credit note names the invoice it cancels (storno S1/S5).
@@ -69,11 +72,18 @@ async function render(detail: InvoiceDetail, context: PdfContext): Promise<Resul
     if (!found.success) return found;
     original = { number: found.data.invoice.number, issueDate: found.data.invoice.issueDate };
   }
+  return { success: true, data: { detail, institution, operatorName: context.operatorName, original } };
+}
+
+async function render(detail: InvoiceDetail, context: PdfContext, format: 'pdf' | 'docx' = 'pdf'): Promise<Result<InvoicePdf>> {
+  const data = await documentData(detail, context);
+  if (!data.success) return data;
   try {
-    const bytes = await renderInvoicePdf({ detail, institution, operatorName: context.operatorName, original }, assetsFor(detail.invoice.entity));
-    return { success: true, data: { bytes, fileName: invoiceFileName(detail.invoice.number, detail.invoice.childName), number: detail.invoice.number, summary: detail.invoice } };
+    const bytes = format === 'pdf' ? await renderInvoicePdf(data.data, assetsFor(detail.invoice.entity)) : renderInvoiceDocx(data.data, letterheadOf(detail.invoice.entity));
+    const fileName = invoiceFileName(detail.invoice.number, detail.invoice.childName).replace(/\.pdf$/, `.${format}`);
+    return { success: true, data: { bytes, fileName, number: detail.invoice.number, summary: detail.invoice } };
   } catch (error: unknown) {
-    return fail(`PDF računa ${detail.invoice.number} nije napravljen: ${error instanceof Error ? error.message : String(error)}`, 'PDF');
+    return fail(`${format.toUpperCase()} računa ${detail.invoice.number} nije napravljen: ${error instanceof Error ? error.message : String(error)}`, 'PDF');
   }
 }
 
@@ -90,6 +100,10 @@ export interface PeriodFilter {
   readonly from: string;
   readonly to: string;
   readonly entity: LegalEntityCode | null;
+  /** Guided flow: the invoices OF a billing month (`YYYY-MM`, by period) instead of those issued from–to. */
+  readonly billingMonth?: string;
+  /** Guided flow: only these kinds (e.g. the monthly ones, or OTHER for „ostalo fakturisanje“). */
+  readonly kinds?: ReadonlyArray<string>;
 }
 
 export function periodLabel(filter: PeriodFilter): string {
@@ -98,11 +112,12 @@ export function periodLabel(filter: PeriodFilter): string {
 
 /** Invoices of the period, oldest number first. */
 export async function invoicesInPeriod(filter: PeriodFilter): Promise<Result<InvoiceSummary[]>> {
-  if (!filter.from || !filter.to || filter.from > filter.to) return fail('odaberite ispravan period (od – do)');
-  const all = await listInvoices({ entity: filter.entity, month: null });
+  if (!filter.billingMonth && (!filter.from || !filter.to || filter.from > filter.to)) return fail('odaberite ispravan period (od – do)');
+  const all = await listInvoices({ entity: filter.entity, month: filter.billingMonth ?? null });
   if (!all.success) return all;
   const rows = all.data
-    .filter((i) => i.issueDate >= filter.from && i.issueDate <= filter.to)
+    .filter((i) => filter.billingMonth !== undefined || (i.issueDate >= filter.from && i.issueDate <= filter.to))
+    .filter((i) => i.status === 'ISSUED' && (filter.kinds === undefined || filter.kinds.includes(i.kind)))
     .sort((a, b) => a.entity.localeCompare(b.entity) || a.issueDate.localeCompare(b.issueDate) || a.number.localeCompare(b.number));
   return { success: true, data: rows };
 }
@@ -112,13 +127,14 @@ async function renderAll(
   invoices: ReadonlyArray<InvoiceSummary>,
   context: PdfContext,
   onProgress?: (done: number) => void,
+  format: 'pdf' | 'docx' = 'pdf',
 ): Promise<Result<InvoicePdf[]>> {
   if (invoices.length === 0) return fail('u odabranom periodu nema računa');
   const pdfs: InvoicePdf[] = [];
   for (const invoice of invoices) {
     const detail = await getInvoice(invoice.id);
     if (!detail.success) return detail;
-    const pdf = await render(detail.data, context);
+    const pdf = await render(detail.data, context, format);
     if (!pdf.success) return pdf;
     pdfs.push(pdf.data);
     onProgress?.(pdfs.length);
@@ -135,7 +151,7 @@ function zipName(filter: PeriodFilter, part?: { index: number; count: number }):
  * Ask where to save, then write the document. Returns the saved path, or null when the operator cancelled.
  */
 export async function saveDocument(bytes: Uint8Array, fileName: string, reference: string): Promise<Result<string | null>> {
-  const extension = fileName.endsWith('.zip') ? 'zip' : 'pdf';
+  const extension = (/\.([a-z]+)$/.exec(fileName)?.[1] ?? 'pdf').toLowerCase();
   let path: string | null;
   try {
     path = await save({ defaultPath: fileName, filters: [{ name: extension.toUpperCase(), extensions: [extension] }] });
@@ -156,6 +172,17 @@ export async function exportPeriodZip(filter: PeriodFilter, onProgress?: (done: 
   if (!pdfs.success) return pdfs;
   const zip = zipFiles(pdfs.data.map((p) => ({ name: p.fileName, bytes: p.bytes })));
   return saveDocument(zip, zipName(filter), `ZIP ${periodLabel(filter)} (${pdfs.data.length} računa)`);
+}
+
+/** DEFINICIJA M5: all invoices of the filter as Word documents in one .zip. */
+export async function exportPeriodDocxZip(filter: PeriodFilter, onProgress?: (done: number, total: number) => void): Promise<Result<string | null>> {
+  const [invoices, context] = await Promise.all([invoicesInPeriod(filter), loadContext()]);
+  if (!invoices.success) return invoices;
+  if (!context.success) return context;
+  const docs = await renderAll(invoices.data, context.data, (done) => onProgress?.(done, invoices.data.length), 'docx');
+  if (!docs.success) return docs;
+  const zip = zipFiles(docs.data.map((d) => ({ name: d.fileName, bytes: d.bytes })));
+  return saveDocument(zip, zipName(filter).replace(/\.zip$/, '_DOCX.zip'), `DOCX ${periodLabel(filter)} (${docs.data.length} računa)`);
 }
 
 function mailBody(pdfs: ReadonlyArray<InvoicePdf>, filter: PeriodFilter, zip: string, operatorName: string): string {

@@ -24,7 +24,7 @@ describe('text templates (Director, 2026-11-21: identical syntax for every entry
   it('assembles the same text for the same facts', () => {
     expect(renderTemplate(byId(PAYMENT_PURPOSE_TEMPLATES, 'tuition'), { mjesec: 'decembar', godina: '2026' })).toBe('Uplata školarine za decembar 2026');
     expect(renderTemplate(byId(PAYMENT_REFERENCE_TEMPLATES, 'statement'), { broj: '245', datum: '2026-12-03' })).toBe('Izvod br. 245 od 03.12.2026.');
-    expect(renderTemplate(byId(SERVICE_TEMPLATES, 'summer'), { godina: '2027', sedmica: '2' })).toBe('Ljetna škola 2027 — 2. sedmica');
+    expect(renderTemplate(byId(SERVICE_TEMPLATES, 'summer'), { godina: '2027', sedmice: '2. sedmica' })).toBe('Ljetna škola 2027 — 2. sedmica');
     expect(renderTemplate(byId(BASIS_TEMPLATES, 'uo'), { broj: '12/26', datum: '2026-06-01' })).toBe('Odluka UO IMH br. 12/26 od 01.06.2026.');
     expect(renderTemplate(byId(CREDIT_NOTE_REASON_TEMPLATES, 'withdrawal'), { datum: '2026-10-15' })).toBe('Ispis djeteta od 15.10.2026.');
     expect(renderTemplate(byId(CREDIT_NOTE_REASON_TEMPLATES, 'duplicate'), {})).toBe('Dupli račun za isti period');
@@ -63,5 +63,25 @@ describe('text templates (Director, 2026-11-21: identical syntax for every entry
       expect(new Set(list.map((t) => t.id)).size).toBe(list.length);
       for (const t of list) expect(renderTemplate(t, defaultValues(t, '2026-11-21', sample)), t.id).not.toBeNull();
     }
+  });
+});
+
+describe('every template field can also be written differently (Director, 2026-11-22)', () => {
+  it('summer school: both weeks is proposed, one week can be chosen, and another value can be typed', async () => {
+    const { defaultValues, renderTemplate, SERVICE_TEMPLATES } = await import('./text-templates');
+    const summer = SERVICE_TEMPLATES.find((t) => t.id === 'summer');
+    if (!summer) throw new Error('summer');
+    expect(renderTemplate(summer, defaultValues(summer, '2026-11-22'))).toBe('Ljetna škola 2026 — 1. i 2. sedmica');
+    expect(renderTemplate(summer, { godina: '2027', sedmice: '1. sedmica' })).toBe('Ljetna škola 2027 — 1. sedmica');
+    expect(renderTemplate(summer, { godina: '2027', sedmice: '3. sedmica (produžena)' })).toBe('Ljetna škola 2027 — 3. sedmica (produžena)');
+  });
+
+  it('free text: tidied (single spaces, capital initial), refused when empty, too long or with control characters', async () => {
+    const { formatFreeText, FREE_TEXT_MAX } = await import('./text-templates');
+    expect(formatFreeText('  ljetna   škola, samo   prva sedmica ')).toBe('Ljetna škola, samo prva sedmica');
+    expect(formatFreeText('đački izlet')).toBe('Đački izlet');
+    expect(formatFreeText(' ')).toBeNull();
+    expect(formatFreeText('x'.repeat(FREE_TEXT_MAX + 1))).toBeNull();
+    expect(formatFreeText(`a${String.fromCharCode(7)}b`)).toBeNull();
   });
 });

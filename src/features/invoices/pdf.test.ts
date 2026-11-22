@@ -180,3 +180,30 @@ describe('accounting-complete invoice (F1)', () => {
     expect(doc.getPageCount()).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe('one page with the payment slip (Director, 2026-11-22: „PDF računi na dvije stranice. Zašto?“)', () => {
+  const DESC = ['Školarina za decembar 2026', 'Upisnina za školsku 2026/2027', 'Depozit', 'Potrošni materijal za školsku 2026/2027', 'Doručak za decembar 2026', 'Produženi boravak za decembar 2026', 'Ljetna škola 2026 — 1. i 2. sedmica', 'Izlet — Vrelo Bosne (15.12.2026.)', 'Radionica — keramika (20.12.2026.)', 'Dodatni program — engleski (decembar 2026)', 'Ostala usluga — fotografisanje', 'Ostala usluga — majica'];
+  const invoiceWith = (n: number, credit: boolean): InvoicePdfData => {
+    const d = data(1);
+    const lines = DESC.slice(0, n).map((description) => ({ ...d.detail.lines[0]!, description, amount: 50000, listAmount: 50000 }));
+    return {
+      ...d,
+      institution: { ...d.institution, invoiceNote: IMH_PDV_NOTE },
+      detail: {
+        ...d.detail,
+        invoice: { ...d.detail.invoice, total: 50000 * n, credited: credit ? -10000 : 0 },
+        lines,
+        creditNotes: credit ? [{ id: 'k', number: 'IMH-KO-001/26', issueDate: '2026-11-25', total: -10000, reason: 'x' }] : [],
+      },
+    };
+  };
+
+  it('a new child (instalment, enrolment fee, deposit, materials, breakfast, extended stay) and extra services: up to 12 lines, with or without a credit note', async () => {
+    for (const credit of [false, true]) {
+      for (const n of [5, 6, 7, 8, 9, 10, 11, 12]) {
+        const doc = await PDFDocument.load(await renderInvoicePdf(invoiceWith(n, credit), ASSETS));
+        expect(doc.getPageCount(), `${n} lines, credit note: ${credit}`).toBe(1);
+      }
+    }
+  }, 60000);
+});

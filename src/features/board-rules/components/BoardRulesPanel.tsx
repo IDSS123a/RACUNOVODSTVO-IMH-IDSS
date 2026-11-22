@@ -4,6 +4,8 @@ import { ErrorBlock, LoadingBlock } from '@/components/feedback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { TemplateText } from '@/features/invoices/components/TemplateText';
+import { BASIS_TEMPLATES } from '@/features/invoices/text-templates';
 import { MONTH_NAME } from '@/features/invoices/types';
 import { listSchoolYears } from '@/features/price-lists/repository';
 import type { SchoolYear } from '@/features/price-lists/types';
@@ -16,6 +18,9 @@ import { SCHOOL_YEAR_MONTHS, type BoardBillingRules } from '../types';
  * Billing parameters decided by the ŠO IDSS for a school year: the latest due date of a plan's last
  * instalment and the months in which breakfast is billed. Entered with the decision reference; never assumed.
  */
+/** A ŠO IDSS decision: „Odluka ŠO IDSS br. 7/2026 od 19.02.2026.“ */
+const DECISION_TEMPLATES = BASIS_TEMPLATES.filter((t) => t.id === 'so');
+
 export function BoardRulesPanel({ defaultYear }: { defaultYear: SchoolYear }): React.JSX.Element {
   const loadYears = useCallback(() => listSchoolYears(), []);
   const years = useAsyncResult(loadYears);
@@ -55,7 +60,8 @@ export function BoardRulesPanel({ defaultYear }: { defaultYear: SchoolYear }): R
 }
 
 function RulesForm({ year, initial, onSaved }: { year: SchoolYear; initial: BoardBillingRules | null; onSaved: () => void }): React.JSX.Element {
-  const [decisionRef, setDecisionRef] = useState(initial?.decisionRef ?? '');
+  // assembled from the template (identical syntax, DL-P017); the saved text is shown below it
+  const [decisionRef, setDecisionRef] = useState('');
   const [lastInstalmentBy, setLastInstalmentBy] = useState(initial?.lastInstalmentBy ?? '');
   const [months, setMonths] = useState<number[]>(initial?.breakfastMonths ?? []);
   const [saving, setSaving] = useState(false);
@@ -66,7 +72,7 @@ function RulesForm({ year, initial, onSaved }: { year: SchoolYear; initial: Boar
 
   async function save(): Promise<void> {
     if (!decisionRef.trim()) {
-      toast.error('Unesite broj i datum odluke Školskog odbora.');
+      toast.error('Popunite broj i datum odluke Školskog odbora (šablon).');
       return;
     }
     setSaving(true);
@@ -90,9 +96,10 @@ function RulesForm({ year, initial, onSaved }: { year: SchoolYear; initial: Boar
   return (
     <div className="grid gap-4">
       <div className="grid gap-4 md:grid-cols-2">
-        <Field id="rules-ref" label="Odluka Školskog odbora (broj i datum)">
-          <Input id="rules-ref" value={decisionRef} placeholder="npr. ŠO 7/2026 od 19.02.2026" onChange={(e) => setDecisionRef(e.target.value)} />
-        </Field>
+        <div className="grid gap-1">
+          <TemplateText id="rules-ref" label="Odluka Školskog odbora (broj i datum)" templates={DECISION_TEMPLATES} onChange={(text) => setDecisionRef(text ?? '')} />
+          {initial?.decisionRef && <p className="text-xs text-muted-foreground">Sačuvano: „{initial.decisionRef}“</p>}
+        </div>
         <Field id="rules-deadline" label="Posljednja rata plana najkasnije (prazno = nije odlučeno)">
           <Input id="rules-deadline" type="date" value={lastInstalmentBy} onChange={(e) => setLastInstalmentBy(e.target.value)} />
         </Field>

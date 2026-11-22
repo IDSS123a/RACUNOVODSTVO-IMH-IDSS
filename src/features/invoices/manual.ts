@@ -1,18 +1,34 @@
+import { normalizeUnit } from '@/lib/validation/formats';
 import { kmToFenings, MoneyError, sum, type Fenings } from '@/features/billing/money';
 import type { FamilyDetail } from '@/features/families/types';
-import { PROGRAM_ENTITY, type LegalEntityCode } from '@/features/price-lists/types';
-import { monthBounds, schoolYearOfMonth } from './domain';
+import type { LegalEntityCode } from '@/features/price-lists/types';
+import { monthBounds } from './domain';
 import type { BillingMonth, InvoiceDraft, InvoiceLine } from './types';
 
 /**
- * Manual invoice „Novi račun“ (specs/manual-invoice, F2; document `vNew`, `saveNewInvoice`; Director 2026-11-21).
- * Only for services used temporarily by a child NOT regularly enrolled in the institution (e.g. summer school only):
- * lines of description, unit, whole quantity and unit price, a mandatory basis (M11), no discount (BR-7).
- * Everything else of a child — tuition, one-time items, extra services — goes on its one monthly invoice
- * (`monthly.ts`). Pure function; the backend checks the same rules again.
+ * Invoice for other services — anything not in the price list: summer school, section, trip … (DEFINICIJA-APLIKACIJE,
+ * Director 2026-11-21) — for any child, enrolled or not, on its own invoice: lines of description, unit, whole
+ * quantity and unit price, a mandatory basis, no discount (BR-7). The lines carry no enrolment. Price-list items are
+ * on the monthly invoice (`monthly.ts`). Pure function; the backend checks the same rules again.
  */
 
-export type ManualUnit = 'kom' | 'srv';
+/** Unit of measure of a line: one of the proposals or any other short unit (`normalizeUnit`). */
+export type ManualUnit = string;
+
+/** Text of a service for comparison — the same rule as the backend (`service_key`): lower case, single spaces. */
+export function serviceKey(description: string): string {
+  return description.trim().split(/\s+/).join(' ').toLowerCase();
+}
+
+/** Units proposed for a line; any other short unit may be typed (Director, 2026-11-22). */
+export const UNIT_PROPOSALS: ReadonlyArray<{ unit: string; label: string }> = [
+  { unit: 'srv', label: 'usluga' },
+  { unit: 'kom', label: 'komad' },
+  { unit: 'sedm.', label: 'sedmica' },
+  { unit: 'dan', label: 'dan' },
+  { unit: 'mj.', label: 'mjesec' },
+  { unit: 'čas', label: 'čas' },
+];
 
 /** One form row, as typed. */
 export interface ManualRowInput {
@@ -57,7 +73,10 @@ export function countsAsMonthlyBilled(invoice: {
   readonly childId: string;
 }): boolean {
   if (invoice.status !== 'ISSUED' || invoice.kind === 'CREDIT_NOTE' || !invoice.childId) return false;
-  return !(invoice.kind === 'OTHER' && invoice.source === 'APP');
+  // an imported invoice counts whatever it is; of the app's own only the monthly ones (an enrolment invoice has the
+  // school year as its period and must not stop the September invoice; a manual one is for children not enrolled)
+  if (invoice.source === 'LEGACY') return true;
+  return invoice.kind === 'MONTHLY' || invoice.kind === 'INSTALMENT';
 }
 
 /** Whole quantity 1–999, or null. */
@@ -105,23 +124,8 @@ export function buildManualInvoice(detail: FamilyDetail, input: ManualInvoiceInp
   if (input.issueDate && input.dueDate && input.dueDate < input.issueDate) errors.push('Rok plaćanja ne može biti prije datuma izdavanja.');
   if (!input.reason.trim()) errors.push('Unesite osnov računa (odluka, ugovor ili obavijest).');
 
-  // Director, 2026-11-21: only for a child NOT regularly enrolled in the institution that school year (e.g. it attends
-  // only the summer school). An enrolled child's extra services go on its monthly invoice (one invoice per child).
-  const enrolled =
-    child && input.month
-      ? detail.enrolments.some(
-          (e) =>
-            e.childId === child.id &&
-            e.schoolYear === schoolYearOfMonth(input.month as BillingMonth) &&
-            PROGRAM_ENTITY[e.program] === input.entity &&
-            e.status !== 'WITHDRAWN',
-        )
-      : false;
-  if (child && input.month && enrolled) {
-    errors.push(
-      `Dijete je redovno upisano u ${input.entity} (${schoolYearOfMonth(input.month)}) — dodatne usluge idu na njegov mjesečni račun („Mjesečni računi“ → „Dodaj uslugu van cjenovnika“).`,
-    );
-  }
+  // Director 2026-11-21 (DEFINICIJA): other services (summer school, section, trip …) may be invoiced to ANY child,
+  // enrolled or not, on their own invoice; the monthly invoice keeps the price-list items only.
 
   const lines: InvoiceLine[] = [];
   input.rows.forEach((row, index) => {
@@ -131,7 +135,9 @@ export function buildManualInvoice(detail: FamilyDetail, input: ManualInvoiceInp
     if (!row.description.trim()) errors.push(`Red ${n}: Unesite naziv usluge/stavke.`);
     if (quantity === null) errors.push(`Red ${n}: Količina mora biti cijeli broj od 1 do ${MAX_QUANTITY}.`);
     if (unitPrice === null) errors.push(`Red ${n}: Cijena mora biti iznos u KM (najviše dvije decimale) i ne može biti negativna.`);
-    if (child && !enrolled && row.description.trim() && quantity !== null && total !== null) {
+    const unit = normalizeUnit(row.unit);
+    if (unit === null) errors.push(`Red ${n}: Jedinica mjere je kratka riječ (npr. srv, kom, sedm.), najviše 10 slova.`);
+    if (child && row.description.trim() && quantity !== null && total !== null && unit !== null) {
       lines.push({
         itemCode: 'OTHER',
         description: row.description.trim(),
@@ -143,7 +149,7 @@ export function buildManualInvoice(detail: FamilyDetail, input: ManualInvoiceInp
         boardDecisionId: null,
         amount: total,
         quantity,
-        unit: row.unit,
+        unit,
       });
     }
   });

@@ -1,114 +1,113 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ClipboardCheckIcon, FileTextIcon, MenuIcon, MonitorIcon, MoonIcon, SettingsIcon, SunIcon, TableIcon, UsersIcon, XIcon } from 'lucide-react';
+import { ArrowLeftIcon, ClipboardCheckIcon, HistoryIcon, HomeIcon, MonitorIcon, MoonIcon, SettingsIcon, SunIcon, TableIcon, UsersIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
+import { AuditLogPage } from '@/features/dashboard/components/AuditLogPage';
 import { FamiliesPage } from '@/features/families/components/FamiliesPage';
-import { InvoicesPage } from '@/features/invoices/components/InvoicesPage';
 import { ReviewFindingsPage } from '@/features/legacy-import/components/ReviewFindingsPage';
 import { importFindingsOpenCount } from '@/features/legacy-import/repository';
 import { PriceListPage } from '@/features/price-lists/components/PriceListPage';
-import type { SchoolYear } from '@/features/price-lists/types';
+import type { LegalEntityCode, SchoolYear } from '@/features/price-lists/types';
 import { SettingsPage } from '@/features/settings/components/SettingsPage';
 import { ENTITY_LOGO } from '@/features/settings/logos';
 import type { Settings } from '@/features/settings/repository';
+import { BillingFlow } from '@/features/workflow/components/BillingFlow';
+import { OtherFlow } from '@/features/workflow/components/OtherFlow';
+import { EntityPicker, HomeScreen, ReportsFlow } from '@/features/workflow/components/Screens';
+import { ENTITY_STYLE, TASKS, type Task } from '@/features/workflow/style';
 
-type Page = 'invoices' | 'families' | 'price-lists' | 'settings' | 'review';
+type DataPage = 'families' | 'price-lists' | 'audit' | 'settings' | 'review';
+type Route = { kind: 'home' } | { kind: 'task'; task: Task; entity: LegalEntityCode | null } | { kind: 'data'; page: DataPage; back: Route };
 
-const NAV: ReadonlyArray<{ id: Page; label: string; icon: typeof TableIcon }> = [
-  { id: 'invoices', label: 'Računi', icon: FileTextIcon },
-  { id: 'families', label: 'Porodice', icon: UsersIcon },
+const DATA_PAGES: ReadonlyArray<{ id: DataPage; label: string; icon: typeof TableIcon }> = [
+  { id: 'families', label: 'Porodice i djeca', icon: UsersIcon },
   { id: 'price-lists', label: 'Cjenovnik', icon: TableIcon },
+  { id: 'audit', label: 'Dnevnik izmjena', icon: HistoryIcon },
   { id: 'settings', label: 'Postavke', icon: SettingsIcon },
 ];
 
 /**
- * Application shell: sidebar navigation + content. Only working screens are listed;
- * invoices and the ministry cycle are added in later sprints (no placeholder menus).
+ * The guided application (DEFINICIJA-APLIKACIJE §4, specs/guided-flow): home „Dobar dan … Šta ćemo danas raditi?“ →
+ * task → IMH or IDSS → big steps in the institution's colour. Master data (families, price list, settings) is one
+ * click away in the top bar, edited directly (DEFINICIJA M8). Edge to edge on every screen.
  */
 export function AppShell({ settings, onSettingsChanged }: { settings: Settings; onSettingsChanged: () => void }): React.JSX.Element {
-  const [page, setPage] = useState<Page>('families');
-  // Open findings of the legacy import stay visible in the menu until resolved (Director, Q4).
+  const [route, setRoute] = useState<Route>({ kind: 'home' });
   const [openFindings, setOpenFindings] = useState(0);
-  const [menuOpen, setMenuOpen] = useState(false);
   const refreshFindings = useCallback(async (): Promise<void> => {
     const result = await importFindingsOpenCount();
     if (result.success) setOpenFindings(result.data);
   }, []);
   useEffect(() => {
     void refreshFindings();
-  }, [page, refreshFindings]);
+  }, [route, refreshFindings]);
+
+  const firstName = settings.operator.fullName.trim().split(/\s+/)[0] ?? '';
+  const year = settings.activeSchoolYear as SchoolYear;
+  const openData = (page: DataPage) => setRoute((current) => ({ kind: 'data', page, back: current.kind === 'data' ? current.back : current }));
+  const flowEntity = route.kind === 'task' ? route.entity : null;
+  const style = flowEntity ? ENTITY_STYLE[flowEntity] : null;
 
   return (
-    // Edge to edge on every screen: a fixed sidebar from laptop width (lg), a top bar with a slide-in menu below it.
-    <div className="flex h-dvh flex-col lg:grid lg:grid-cols-[14rem_minmax(0,1fr)]">
-      <header className="flex items-center justify-between border-b bg-sidebar px-3 py-2 text-sidebar-foreground lg:hidden">
-        <p className="font-semibold tracking-tight">Fakturisanje</p>
-        <Button variant="ghost" size="icon" aria-label={menuOpen ? 'Zatvori meni' : 'Otvori meni'} aria-expanded={menuOpen} onClick={() => setMenuOpen((o) => !o)}>
-          {menuOpen ? <XIcon aria-hidden /> : <MenuIcon aria-hidden />}
+    <div className="flex h-dvh flex-col">
+      <header className="flex flex-wrap items-center gap-2 border-b bg-sidebar px-3 py-2 text-sidebar-foreground sm:px-4">
+        <Button variant={route.kind === 'home' ? 'secondary' : 'ghost'} onClick={() => setRoute({ kind: 'home' })}>
+          <HomeIcon aria-hidden /> Početna
         </Button>
-      </header>
-      {menuOpen && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" aria-hidden onClick={() => setMenuOpen(false)} />}
-      <aside
-        className={`${menuOpen ? 'fixed inset-y-0 left-0 z-40 flex w-64 shadow-xl' : 'hidden'} flex-col overflow-y-auto border-r bg-sidebar text-sidebar-foreground lg:static lg:flex lg:w-auto lg:shadow-none`}
-      >
-        <div className="grid gap-3 px-5 py-5">
-          <p className="text-lg font-semibold tracking-tight">Fakturisanje</p>
-          {/* Logos sit on a white plate so they stay legible in the dark theme. */}
-          <div className="grid gap-2 rounded-md bg-white p-2">
-            <img src={ENTITY_LOGO.IMH} alt="The Montessori House (IMH)" className="h-7 w-auto object-contain object-left" />
-            <img src={ENTITY_LOGO.IDSS} alt="Internationale Deutsche Schule Sarajevo (IDSS)" className="h-7 w-auto object-contain object-left" />
-          </div>
-        </div>
-        <Separator />
-        <nav aria-label="Glavni meni" className="grid gap-1 p-3">
-          {NAV.map((item) => {
-            const Icon = item.icon;
-            const active = page === item.id;
+        <span className="hidden font-semibold tracking-tight sm:inline">Fakturisanje IMH &amp; IDSS</span>
+        <nav aria-label="Podaci" className="ml-auto flex flex-wrap items-center gap-1">
+          {DATA_PAGES.map((p) => {
+            const Icon = p.icon;
             return (
-              <Button
-                key={item.id}
-                variant={active ? 'secondary' : 'ghost'}
-                className="justify-start"
-                aria-current={active ? 'page' : undefined}
-                onClick={() => {
-                  setPage(item.id);
-                  setMenuOpen(false);
-                }}
-              >
-                <Icon aria-hidden /> {item.label}
+              <Button key={p.id} variant={route.kind === 'data' && route.page === p.id ? 'secondary' : 'ghost'} size="sm" onClick={() => openData(p.id)}>
+                <Icon aria-hidden /> <span className="hidden lg:inline">{p.label}</span>
               </Button>
             );
           })}
-          {(openFindings > 0 || page === 'review') && (
-            <Button
-              variant={page === 'review' ? 'secondary' : 'ghost'}
-              className="justify-start"
-              aria-current={page === 'review' ? 'page' : undefined}
-              onClick={() => {
-                setPage('review');
-                setMenuOpen(false);
-              }}
-            >
-              <ClipboardCheckIcon aria-hidden /> Za provjeru
-              {openFindings > 0 && <span className="ml-auto rounded-full bg-amber-500 px-2 text-xs font-semibold text-white tabular-nums">{openFindings}</span>}
+          {openFindings > 0 && (
+            <Button variant="ghost" size="sm" onClick={() => openData('review')}>
+              <ClipboardCheckIcon aria-hidden /> <span className="hidden lg:inline">Za provjeru</span>
+              <span className="rounded-full bg-amber-500 px-2 text-xs font-semibold text-white tabular-nums">{openFindings}</span>
             </Button>
           )}
-        </nav>
-        <div className="mt-auto grid gap-3 p-4 text-xs">
           <ThemeSwitch />
-          <div>
-            <p className="font-medium">{settings.operator.fullName}</p>
-            {settings.operator.jobTitle && <p className="text-muted-foreground">{settings.operator.jobTitle}</p>}
-          </div>
+        </nav>
+      </header>
+
+      {route.kind === 'task' && route.entity && style && (
+        <div className={`flex flex-wrap items-center gap-3 border-b-4 ${style.border} ${style.soft} px-3 py-2 sm:px-4`}>
+          <Button variant="ghost" size="sm" onClick={() => setRoute({ ...route, entity: null })}>
+            <ArrowLeftIcon aria-hidden /> Druga ustanova
+          </Button>
+          <span className="rounded bg-white p-1">
+            <img src={ENTITY_LOGO[route.entity]} alt="" className="h-7 w-auto" />
+          </span>
+          <span className={`text-lg font-bold ${style.text}`}>
+            {TASKS.find((t) => t.id === route.task)?.number}. {TASKS.find((t) => t.id === route.task)?.title} — {route.entity}
+          </span>
         </div>
-      </aside>
+      )}
+
       <main className="min-h-0 min-w-0 flex-1 overflow-auto p-3 sm:p-4 lg:p-6">
-        {page === 'invoices' && <InvoicesPage />}
-        {page === 'families' && <FamiliesPage defaultYear={settings.activeSchoolYear as SchoolYear} />}
-        {page === 'price-lists' && <PriceListPage initialYear={settings.activeSchoolYear as SchoolYear} />}
-        {page === 'settings' && <SettingsPage settings={settings} onSettingsChanged={onSettingsChanged} />}
-        {page === 'review' && <ReviewFindingsPage onChanged={() => void refreshFindings()} />}
+        {route.kind === 'home' && <HomeScreen firstName={firstName} onTask={(task) => setRoute({ kind: 'task', task, entity: null })} />}
+        {route.kind === 'task' && !route.entity && <EntityPicker task={route.task} onPick={(entity) => setRoute({ ...route, entity })} />}
+        {route.kind === 'task' && route.entity && route.task === 'billing' && <BillingFlow key={route.entity} entity={route.entity} onOpenFamilies={() => openData('families')} />}
+        {route.kind === 'task' && route.entity && route.task === 'other' && <OtherFlow key={route.entity} entity={route.entity} />}
+        {route.kind === 'task' && route.entity && route.task === 'reports' && <ReportsFlow key={route.entity} entity={route.entity} />}
+        {route.kind === 'data' && (
+          <div className="grid gap-4">
+            <div>
+              <Button variant="outline" onClick={() => setRoute(route.back)}>
+                <ArrowLeftIcon aria-hidden /> Nazad
+              </Button>
+            </div>
+            {route.page === 'families' && <FamiliesPage defaultYear={year} />}
+            {route.page === 'price-lists' && <PriceListPage initialYear={year} />}
+            {route.page === 'audit' && <AuditLogPage />}
+            {route.page === 'settings' && <SettingsPage settings={settings} onSettingsChanged={onSettingsChanged} />}
+            {route.page === 'review' && <ReviewFindingsPage onChanged={() => void refreshFindings()} />}
+          </div>
+        )}
       </main>
     </div>
   );

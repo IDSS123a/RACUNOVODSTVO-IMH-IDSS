@@ -23,6 +23,8 @@ export function FamiliesPage({ defaultYear }: { defaultYear: SchoolYear }): Reac
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState<Family | null>(null);
+  // a family just created opens with the form for its first child (Director, 2026-11-21: fewest steps)
+  const [firstChildOf, setFirstChildOf] = useState<string | null>(null);
   const [bulk, setBulk] = useState(false);
 
   const visible = useMemo(() => {
@@ -38,8 +40,10 @@ export function FamiliesPage({ defaultYear }: { defaultYear: SchoolYear }): Reac
       <FamilyDetailView
         familyId={selected}
         defaultYear={defaultYear}
+        startWithNewChild={firstChildOf}
         onBack={() => {
           setSelected(null);
+          setFirstChildOf(null);
           families.reload();
         }}
       />
@@ -55,7 +59,7 @@ export function FamiliesPage({ defaultYear }: { defaultYear: SchoolYear }): Reac
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setBulk(true)}>
-            <ListChecksIcon aria-hidden /> Upis djece bez upisa
+            <ListChecksIcon aria-hidden /> Dopuna podataka o djeci
           </Button>
           <Button onClick={() => setCreating({ id: crypto.randomUUID(), displayName: '', address: '' })}>
             <PlusIcon aria-hidden /> Nova porodica
@@ -108,8 +112,9 @@ export function FamiliesPage({ defaultYear }: { defaultYear: SchoolYear }): Reac
             onSubmit={async (family, guardians) => {
               const result = await saveFamilyWithGuardians(family, guardians);
               if (!result.success) return void toast.error(result.error);
-              toast.success('Porodica je sačuvana. Dodajte djecu.');
+              toast.success('Porodica je sačuvana. Unesite dijete.');
               setCreating(null);
+              setFirstChildOf(family.displayName);
               setSelected(family.id);
             }}
           />

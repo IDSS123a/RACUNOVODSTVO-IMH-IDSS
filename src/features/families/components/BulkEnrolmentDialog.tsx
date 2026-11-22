@@ -33,23 +33,37 @@ async function loadRows(schoolYear: SchoolYear): Promise<Result<BulkRow[]>> {
 }
 
 /**
- * „Upis djece bez upisa“ (Director, 2026-11-21): one table for every child without an enrolment in the school year —
+ * „Dopuna podataka o djeci“ (Director, 2026-11-21; renamed from „Upis djece bez upisa“, which confused): one table for every child without an enrolment in the school year —
  * above all the children imported from the old workbook, which has no program and no date of birth. The institution
  * is suggested from the child's latest invoice; program and date of birth are entered by the operator. Ticked complete
  * rows are saved in one transaction.
  */
-export function BulkEnrolmentDialog({ open, onOpenChange, schoolYear, onSaved }: { open: boolean; onOpenChange: (open: boolean) => void; schoolYear: SchoolYear; onSaved: () => void }): React.JSX.Element {
+export function BulkEnrolmentDialog({
+  open,
+  onOpenChange,
+  schoolYear,
+  onSaved,
+  entity = null,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  schoolYear: SchoolYear;
+  onSaved: () => void;
+  /** Opened in one institution's flow: only its children and those whose institution is not known yet (Director, 2026-11-22). */
+  entity?: LegalEntityCode | null;
+}): React.JSX.Element {
   return (
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={`Upis djece bez upisa — ${schoolYear}`}
-      description="Mjesečni račun se predlaže samo za dijete s upisom. Ustanova je predložena iz posljednjeg računa djeteta; program i datum rođenja unosite vi (stari Excel ih nema). Sačuvaju se samo označeni, potpuni redovi — svi odjednom."
+      title={`Dopuna podataka o djeci — školska ${schoolYear}`}
+      description="Za ovu djecu sistem ne zna program (npr. Toddlers / Preschoolers, I–IV) ni datum rođenja, pa im ne može izračunati fakturu. Stari Excel te podatke nema. Dopunite ih ovdje, sve odjednom: ustanova je već predložena, vi birate program i unosite datum rođenja, pa označite dijete i sačuvajte."
       wide
     >
       {open && (
         <Body
           schoolYear={schoolYear}
+          entity={entity}
           onSaved={() => {
             onSaved();
             onOpenChange(false);
@@ -60,8 +74,14 @@ export function BulkEnrolmentDialog({ open, onOpenChange, schoolYear, onSaved }:
   );
 }
 
-function Body({ schoolYear, onSaved }: { schoolYear: SchoolYear; onSaved: () => void }): React.JSX.Element {
-  const load = useCallback(() => loadRows(schoolYear), [schoolYear]);
+function Body({ schoolYear, entity, onSaved }: { schoolYear: SchoolYear; entity: LegalEntityCode | null; onSaved: () => void }): React.JSX.Element {
+  const load = useCallback(
+    async () => {
+      const rows = await loadRows(schoolYear);
+      return rows.success && entity ? { ...rows, data: rows.data.filter((r) => r.entity === '' || r.entity === entity) } : rows;
+    },
+    [schoolYear, entity],
+  );
   const rows = useAsyncResult(load);
   if (rows.state.status === 'loading') return <LoadingBlock />;
   if (rows.state.status === 'error') return <ErrorBlock message={rows.state.error} onRetry={rows.reload} />;

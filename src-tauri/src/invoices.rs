@@ -193,10 +193,11 @@ pub fn issue_invoice(tx: &Transaction, draft: &InvoiceDraft) -> AppResult<String
         return Err(AppError::Validation("račun se izdaje za jedno dijete — sve stavke moraju biti za to dijete".into()));
     }
     validate_lines(draft)?;
-    if draft.kind == "OTHER" {
-        ensure_not_enrolled(tx, draft)?;
+    if draft.kind == "OTHER" && draft.lines.iter().any(|l| !l.enrolment_id.is_empty()) {
+        return Err(AppError::Validation("faktura za ostale usluge se ne veže za upis".into()));
     }
     ensure_one_time_not_billed(tx, draft)?;
+    ensure_not_billed_twice(tx, draft)?;
     let number = next_number(tx, &draft.entity, &draft.issue_date)?;
     tx.execute(
         "INSERT INTO invoices(id, number, entity, kind, family_id, child_id, buyer_name, buyer_address, issue_date, due_date,
@@ -268,8 +269,12 @@ fn validate_lines(draft: &InvoiceDraft) -> AppResult<()> {
         if line.amount % line.quantity != 0 || line.list_amount % line.quantity != 0 {
             return Err(AppError::Validation(format!("red {row}: iznos stavke mora biti količina × cijena")));
         }
-        if line.unit.as_deref().is_some_and(|u| u != "kom" && u != "srv") {
-            return Err(AppError::Validation(format!("red {row}: jedinica mjere je kom ili srv")));
+        // unit of measure: proposed (srv, kom, sedm. …) or any other short unit — letters and dots, up to 10 characters
+        if line.unit.as_deref().is_some_and(|u| {
+            let n = u.chars().count();
+            n == 0 || n > 10 || !u.chars().next().is_some_and(char::is_alphabetic) || !u.chars().all(|c| c.is_alphabetic() || c == '.' || c == ' ')
+        }) {
+            return Err(AppError::Validation(format!("red {row}: jedinica mjere je kratka riječ (npr. srv, kom, sedm.), najviše 10 slova")));
         }
         if line.program.is_empty() && (draft.kind != "OTHER" || line.item_code != "OTHER" || !line.enrolment_id.is_empty()) {
             return Err(AppError::Validation(format!("red {row}: stavka bez upisa postoji samo na ručnom računu")));
@@ -311,34 +316,6 @@ fn validate_lines(draft: &InvoiceDraft) -> AppResult<()> {
     Ok(())
 }
 
-/// School year (`2026/2027`) of a date: September starts a new year.
-fn school_year_of(date: &str) -> AppResult<String> {
-    let year: i64 = date.get(0..4).and_then(|y| y.parse().ok()).ok_or_else(|| AppError::Validation("neispravan datum".into()))?;
-    let month: i64 = date.get(5..7).and_then(|m| m.parse().ok()).ok_or_else(|| AppError::Validation("neispravan datum".into()))?;
-    Ok(if month >= 9 { format!("{year}/{}", year + 1) } else { format!("{}/{year}", year - 1) })
-}
-
-/// A manual invoice is only for a child not regularly enrolled in the institution in that school year (Director,
-/// 2026-11-21: e.g. a child who attends only the summer school). An enrolled child's extra services go on its
-/// monthly invoice.
-fn ensure_not_enrolled(tx: &Transaction, draft: &InvoiceDraft) -> AppResult<()> {
-    let school_year = school_year_of(&draft.period_from)?;
-    let programs: Vec<String> = tx
-        .prepare("SELECT program FROM enrolments WHERE child_id = ?1 AND school_year = ?2 AND status <> 'WITHDRAWN'")?
-        .query_map(params![draft.child_id, school_year], |r| r.get(0))?
-        .collect::<Result<_, _>>()?;
-    if programs.iter().any(|p| entity_of_program(p) == draft.entity) {
-        return Err(AppError::Validation(format!(
-            "dijete je redovno upisano u {} ({school_year}) — dodatne usluge idu na njegov mjesečni račun",
-            draft.entity
-        )));
-    }
-    if draft.lines.iter().any(|l| !l.enrolment_id.is_empty()) {
-        return Err(AppError::Validation("ručni račun se ne veže za upis".into()));
-    }
-    Ok(())
-}
-
 /// Enrolment fee, materials and deposit are billed at most once per enrolment, also across invoices
 /// (one invoice per child carries them when they fall due — Director, 2026-11-21).
 fn ensure_one_time_not_billed(tx: &Transaction, draft: &InvoiceDraft) -> AppResult<()> {
@@ -361,6 +338,73 @@ fn ensure_one_time_not_billed(tx: &Transaction, draft: &InvoiceDraft) -> AppResu
         }
     }
     Ok(())
+}
+
+/// Nothing is invoiced twice to the same child for the same period (Director, 2026-11-22: „isto dijete, ista usluga,
+/// isti period — sistem to dozvoljava. Fundamentalna greška.“). Checked here, in the issuing transaction, so no
+/// screen can bypass it:
+/// - one monthly invoice per child, institution and month — IMH `MONTHLY` and IDSS `INSTALMENT` alike (the unique
+///   index covered only `MONTHLY`);
+/// - a service outside the price list (`OTHER` line) is not billed again to the child for the same month when an
+///   issued invoice already has a line with the same text (case and spacing ignored) — on a manual or a monthly invoice.
+/// A credited invoice (status `CANCELLED`) no longer counts, so a corrected invoice can be issued.
+fn ensure_not_billed_twice(tx: &Transaction, draft: &InvoiceDraft) -> AppResult<()> {
+    if matches!(draft.kind.as_str(), "MONTHLY" | "INSTALMENT") {
+        let existing: Option<String> = tx
+            .query_row(
+                "SELECT number FROM invoices WHERE child_id = ?1 AND entity = ?2 AND period_from = ?3
+                   AND kind IN ('MONTHLY', 'INSTALMENT') AND status = 'ISSUED' LIMIT 1",
+                params![draft.child_id, draft.entity, draft.period_from],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(number) = existing {
+            return Err(AppError::Conflict(format!("za ovo dijete je mjesečni račun za taj mjesec već izdat ({number})")));
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    let billed = billed_services(tx, &draft.entity, &draft.period_from)?;
+    for line in draft.lines.iter().filter(|l| l.item_code == "OTHER") {
+        let key = service_key(&line.description);
+        if !seen.insert(key.clone()) {
+            return Err(AppError::Validation(format!("„{}“ je dva puta na istom računu", line.description.trim())));
+        }
+        if let Some(found) = billed.iter().find(|b| b.child_id == draft.child_id && service_key(&b.description) == key) {
+            return Err(AppError::Conflict(format!(
+                "„{}“ je ovom djetetu za taj mjesec već fakturisano ({})",
+                line.description.trim(),
+                found.invoice_number
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Text of a service for comparison: lower case, single spaces.
+pub fn service_key(description: &str) -> String {
+    description.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+}
+
+/// A service outside the price list already on an issued invoice of the month.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BilledService {
+    pub child_id: String,
+    pub description: String,
+    pub invoice_number: String,
+}
+
+/// Services outside the price list (`OTHER` lines) on issued invoices of an institution and month (`period_from`),
+/// so the screens can say before creating that a child already has it.
+pub fn billed_services(conn: &Connection, entity: &str, period_from: &str) -> AppResult<Vec<BilledService>> {
+    let mut stmt = conn.prepare(
+        "SELECT i.child_id, l.description, i.number FROM invoice_lines l JOIN invoices i ON i.id = l.invoice_id
+         WHERE i.entity = ?1 AND i.period_from = ?2 AND i.status = 'ISSUED' AND i.kind <> 'CREDIT_NOTE'
+           AND l.item_code = 'OTHER' AND i.child_id IS NOT NULL
+         ORDER BY i.number",
+    )?;
+    let rows = stmt.query_map(params![entity, period_from], |r| Ok(BilledService { child_id: r.get(0)?, description: r.get(1)?, invoice_number: r.get(2)? }))?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
 /// A one-time item already on an issued invoice (specs/one-invoice-per-child), so the monthly preview does not
@@ -719,6 +763,69 @@ mod tests {
         d
     }
 
+    /// Director, 2026-11-22: the same service is never billed twice to the same child for the same month — whatever
+    /// the case or spacing of its text, on a manual or a monthly invoice; another service, another month or a credited
+    /// invoice is fine. A second monthly invoice (IMH MONTHLY or IDSS INSTALMENT) for the same month is refused.
+    #[test]
+    fn nothing_is_billed_twice_to_the_same_child_for_the_same_month() {
+        let mut conn = db_with_family();
+        let tx = conn.transaction().unwrap();
+        let first = issue_invoice(&tx, &manual("m1")).unwrap();
+        tx.commit().unwrap();
+
+        let same = |id: &str, text: &str| {
+            let mut d = manual(id);
+            d.lines[0].description = text.into();
+            d
+        };
+        for text in ["Ljetna škola — sedmica", "  ljetna   ŠKOLA — sedmica "] {
+            let tx = conn.transaction().unwrap();
+            let err = issue_invoice(&tx, &same("dup", text)).unwrap_err();
+            assert!(matches!(err, AppError::Conflict(ref m) if m.contains(&first)), "{text:?}: {err:?}");
+        }
+        // two equal lines on one invoice
+        let tx = conn.transaction().unwrap();
+        let mut twice = manual("m-twice");
+        twice.lines.push(twice.lines[0].clone());
+        twice.total *= 2;
+        assert!(issue_invoice(&tx, &twice).is_err());
+        drop(tx);
+
+        // another service, or the same service in another month, is fine
+        let tx = conn.transaction().unwrap();
+        assert!(issue_invoice(&tx, &same("m2", "Ljetna škola 2027 — 2. sedmica")).is_ok());
+        let mut august = manual("m3");
+        august.period_from = "2027-08-01".into();
+        august.period_to = "2027-08-31".into();
+        assert!(issue_invoice(&tx, &august).is_ok());
+        tx.commit().unwrap();
+
+        // the same service on the child's monthly invoice of that month is a duplicate too
+        let tx = conn.transaction().unwrap();
+        let mut monthly = draft("i-sep", "2027-09", "2027-09-01", "MONTHLY");
+        monthly.lines.push(InvoiceLine {
+            item_code: "OTHER".into(), description: "Ljetna škola — sedmica".into(), child_id: "c1".into(), enrolment_id: "e1".into(),
+            program: "TODDLERS".into(), list_amount: 2000, board_decision_id: None, amount: 2000, quantity: 1, unit: Some("srv".into()),
+        });
+        monthly.total += 2000;
+        monthly.reason = "Obavijest".into();
+        assert!(issue_invoice(&tx, &monthly).is_err());
+        drop(tx);
+
+        // a credited (cancelled) invoice no longer counts: the corrected one can be issued
+        conn.execute("UPDATE invoices SET status = 'CANCELLED' WHERE id = 'm1'", []).unwrap();
+        let tx = conn.transaction().unwrap();
+        assert!(issue_invoice(&tx, &manual("m4")).is_ok());
+        tx.commit().unwrap();
+
+        // one monthly invoice per child and month, IMH MONTHLY and IDSS INSTALMENT alike
+        let tx = conn.transaction().unwrap();
+        assert!(issue_invoice(&tx, &draft("i-oct", "2026-10", "2026-10-01", "MONTHLY")).is_ok());
+        let mut second = draft("i-oct-2", "2026-10", "2026-10-01", "INSTALMENT");
+        second.lines[0].item_code = "BREAKFAST".into();
+        assert!(matches!(issue_invoice(&tx, &second), Err(AppError::Conflict(_))));
+    }
+
     /// specs/manual-invoice: a manual invoice is numbered in its institution's series, keeps quantity, unit and basis.
     #[test]
     fn manual_invoice_round_trips_quantity_unit_and_basis() {
@@ -746,8 +853,8 @@ mod tests {
         enrolled.period_to = "2027-07-31".into();
         enrolled.issue_date = "2027-07-01".into();
         enrolled.due_date = "2027-07-05".into();
-        let error = issue_invoice(&tx, &enrolled).unwrap_err();
-        assert!(error.to_string().contains("redovno upisano"), "{error}");
+        // Director 2026-11-21 (guided flow): other services may be invoiced to an enrolled child too, on their own invoice
+        assert!(issue_invoice(&tx, &enrolled).is_ok());
 
         let extra = InvoiceLine {
             item_code: "OTHER".into(), description: "Izlet".into(), child_id: "c1".into(), enrolment_id: "e1".into(),
@@ -824,7 +931,9 @@ mod tests {
         assert!(rejected(&|d| d.lines[0].quantity = 1000), "quantity ≤ 999");
         assert!(rejected(&|d| d.lines[0].quantity = 4), "amount = quantity × unit price");
         assert!(rejected(&|d| d.lines[0].unit = None), "unit required");
-        assert!(rejected(&|d| d.lines[0].unit = Some("kg".into())), "unit kom/srv");
+        assert!(rejected(&|d| d.lines[0].unit = Some(String::new())), "unit not empty");
+        assert!(rejected(&|d| d.lines[0].unit = Some("12".into())), "unit is a word");
+        assert!(rejected(&|d| d.lines[0].unit = Some("sedmicaaaaa".into())), "unit up to 10 characters");
         assert!(rejected(&|d| d.lines[0].description = " ".into()), "description required");
         assert!(rejected(&|d| { d.lines[0].amount = 30000; d.total = 30000; }), "no discount without a board decision");
         assert!(rejected(&|d| d.lines[0].board_decision_id = Some("x".into())), "no board decision on a manual line");
@@ -856,7 +965,10 @@ mod tests {
         let mut conn = db_with_family();
         let tx = conn.transaction().unwrap();
         for n in 1..=150 {
-            let number = issue_invoice(&tx, &manual(&format!("x{n}"))).unwrap();
+            // 150 different services (the same service twice for the same child and month is refused)
+            let mut invoice = manual(&format!("x{n}"));
+            invoice.lines[0].description = format!("Radionica {n}");
+            let number = issue_invoice(&tx, &invoice).unwrap();
             assert_eq!(number, format!("IMH-{n:03}/27"));
         }
     }

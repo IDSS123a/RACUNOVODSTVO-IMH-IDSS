@@ -91,6 +91,15 @@ pub fn save_institution(state: State<'_, AppStore>, institution: Institution) ->
     if institution.code != "IMH" && institution.code != "IDSS" {
         return Err(AppError::Validation("unknown legal entity".into()));
     }
+    // canonical formats, checked again on save (DL-P017)
+    crate::formats::check_phone(&institution.phone, "telefon")?;
+    crate::formats::check_phone(&institution.fax, "fax")?;
+    crate::formats::check_phone(&institution.mobile, "mobitel")?;
+    crate::formats::check_email(&institution.email, "e-mail")?;
+    if institution.iban.is_empty() {
+        return Err(AppError::Validation("IBAN ustanove je obavezan".into()));
+    }
+    crate::formats::check_iban(&institution.iban, "IBAN")?;
     store.write(|tx| {
         repo::upsert_institution(tx, &institution)?;
         repo::audit(tx, "UPDATE", "legal_entity", &institution.code, "")
@@ -205,6 +214,13 @@ pub fn list_enrolment_overview(state: State<'_, AppStore>, school_year: String) 
 pub fn list_audit_log(state: State<'_, AppStore>, filter: crate::audit::AuditFilter) -> AppResult<crate::audit::AuditPage> {
     let store = state.get()?;
     store.read(|c| crate::audit::list_audit(c, &filter))
+}
+
+/// Services outside the price list already on issued invoices of an institution and month (no double billing).
+#[tauri::command]
+pub fn list_billed_services(state: State<'_, AppStore>, entity: String, period_from: String) -> AppResult<Vec<crate::invoices::BilledService>> {
+    let store = state.get()?;
+    store.read(|c| crate::invoices::billed_services(c, &entity, &period_from))
 }
 
 /// One-time items already billed for a school year (one invoice per child: the monthly preview adds the rest).
@@ -464,7 +480,7 @@ pub fn list_breakfast(state: State<'_, AppStore>, school_year: String) -> AppRes
 
 // ---------- Documents (PDF, later .zip) ----------
 
-const DOCUMENT_EXTENSIONS: [&str; 3] = ["pdf", "zip", "xlsx"];
+const DOCUMENT_EXTENSIONS: [&str; 5] = ["pdf", "zip", "xlsx", "docx", "csv"];
 
 /// Save a document produced by the frontend (invoice PDF, .zip export) to a path the operator chose
 /// in the save dialog. Only .pdf, .zip and .xlsx (the import report) are allowed; the folder must exist. Audited (BR-30).
@@ -474,7 +490,7 @@ pub fn save_document(state: State<'_, AppStore>, path: String, bytes: Vec<u8>, r
     let target = PathBuf::from(&path);
     let extension = target.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
     if !DOCUMENT_EXTENSIONS.contains(&extension.as_str()) {
-        return Err(AppError::Validation("dokument se sprema samo kao .pdf, .zip ili .xlsx".into()));
+        return Err(AppError::Validation("dokument se sprema samo kao .pdf, .zip, .xlsx, .docx ili .csv".into()));
     }
     if !target.parent().is_some_and(|dir| dir.is_dir()) {
         return Err(AppError::NotFound("odabrani folder ne postoji".into()));

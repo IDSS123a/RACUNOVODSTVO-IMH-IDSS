@@ -4,7 +4,7 @@ import type { BoardBillingRules } from '@/features/board-rules/types';
 import type { FamilyDetail } from '@/features/families/types';
 import { PRICE_LIST_SEED } from '@/features/price-lists/seed';
 import { InvoiceError } from './domain';
-import { buildIdssMonthlyInvoices, proposeIdssPlan, type IdssBillingContext, type PaymentPlan } from './plans';
+import { buildIdssMonthlyInvoices, defaultIdssPlan, proposeIdssPlan, type IdssBillingContext, type PaymentPlan } from './plans';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const FAMILY = id(1);
@@ -71,6 +71,24 @@ describe('IDSS payment plan proposal', () => {
     expect(stay.total).toBe(250000);
     expect(() => proposeIdssPlan(family(), PRICE_LIST_SEED, id(21), 'EXTENDED_STAY', 11, null)).toThrow(InvoiceError);
     expect(() => proposeIdssPlan(family(), PRICE_LIST_SEED, id(22), 'TUITION', 10, null)).toThrow(InvoiceError);
+  });
+});
+
+describe('proposed plan (Director, 2026-11-21: the system suggests, the operator approves)', () => {
+  it('10 monthly instalments September–June by default, with the sibling price', () => {
+    const plan = defaultIdssPlan(family(), PRICE_LIST_SEED, id(21), 'TUITION', null);
+    expect(plan.instalments).toBe(10);
+    expect(plan.total).toBe(873000);
+    expect(plan.items.map((i) => i.dueDate.slice(0, 7))).toEqual(['2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03', '2027-04', '2027-05', '2027-06']);
+  });
+
+  it('fewer instalments when the board deadline allows fewer from the start month', () => {
+    const late = family({ enrolments: [{ id: id(20), childId: id(10), program: 'PRIMARY_1_4', schoolYear: '2026/2027', startsOn: '2027-01-11', endsOn: null, status: 'ACTIVE' }] });
+    expect(defaultIdssPlan(late, PRICE_LIST_SEED, id(20), 'TUITION', '2027-05-05').instalments).toBe(5);
+  });
+
+  it('no plan for a kindergarten enrolment: the error is not hidden', () => {
+    expect(() => defaultIdssPlan(family(), PRICE_LIST_SEED, id(22), 'TUITION', null)).toThrow(InvoiceError);
   });
 });
 

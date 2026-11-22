@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { ArrowLeftIcon, CalendarRangeIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import { ErrorBlock, LoadingBlock } from '@/components/feedback';
+import { useConfirm } from '@/components/confirm-dialog';
 import { FormDialog } from '@/components/form-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,10 +36,13 @@ export function FamilyDetailView({
   familyId,
   defaultYear,
   onBack,
+  startWithNewChild = null,
 }: {
   familyId: string;
   defaultYear: SchoolYear;
   onBack: () => void;
+  /** The display name of a family just created: its first-child form opens at once. */
+  startWithNewChild?: string | null;
 }): React.JSX.Element {
   const loadFamily = useCallback(() => getFamily(familyId), [familyId]);
   const loadYears = useCallback(() => listSchoolYears(), []);
@@ -47,7 +51,10 @@ export function FamilyDetailView({
   const years = useAsyncResult(loadYears);
   const prices = useAsyncResult(loadPrices);
   const [year, setYear] = useState<SchoolYear>(defaultYear);
-  const [dialog, setDialog] = useState<DialogState>({ kind: 'none' });
+  const [dialog, setDialog] = useState<DialogState>(() =>
+    startWithNewChild !== null ? { kind: 'child', child: newChild(familyId, startWithNewChild) } : { kind: 'none' },
+  );
+  const [confirmDialog, confirm] = useConfirm();
 
   const pricing = useMemo(() => {
     if (detail.state.status !== 'ready' || prices.state.status !== 'ready') return [];
@@ -77,12 +84,42 @@ export function FamilyDetailView({
     await run(changeEnrolmentStatus(enrolment, to, others, endsOn), `Status: ${STATUS_LABEL[to]}.`);
   }
 
+  // Director 2026-11-21: deleting what was entered by mistake must work — always after a confirmation; whatever was
+  // already invoiced is refused by the backend with the invoice number (accounting records are never deleted).
   async function removeFamily(): Promise<void> {
-    if (await run(deleteFamily(family.id), 'Porodica je obrisana.')) onBack();
+    const ok = await confirm({
+      title: `Obrisati porodicu „${family.displayName}“?`,
+      message: `Briše se porodica s roditeljima${children.length > 0 ? `, ${children.length} djece i njihovim upisima` : ''}. Ovo se ne može poništiti. Ako je nešto već fakturisano, brisanje se odbija.`,
+      confirmLabel: 'Obriši porodicu',
+      destructive: true,
+    });
+    if (ok && (await run(deleteFamily(family.id), 'Porodica je obrisana.'))) onBack();
+  }
+
+  async function removeChild(child: Child): Promise<void> {
+    const count = enrolments.filter((e) => e.childId === child.id).length;
+    const ok = await confirm({
+      title: `Obrisati dijete ${child.firstName} ${child.lastName}?`,
+      message: `${count > 0 ? `Briše se i ${count} upis(a) djeteta. ` : ''}Ovo se ne može poništiti. Ako dijete ima račun, brisanje se odbija — tada koristite ispis.`,
+      confirmLabel: 'Obriši dijete',
+      destructive: true,
+    });
+    if (ok) await run(deleteChild(child.id), 'Dijete je obrisano.');
+  }
+
+  async function removeEnrolment(enrolment: Enrolment): Promise<void> {
+    const ok = await confirm({
+      title: 'Obrisati upis?',
+      message: `${PROGRAM_LABEL[enrolment.program]}, ${enrolment.schoolYear}. Briše se i nefakturisani plan plaćanja. Ovo se ne može poništiti. Ako je upis već fakturisan, brisanje se odbija — tada koristite ispis.`,
+      confirmLabel: 'Obriši upis',
+      destructive: true,
+    });
+    if (ok) await run(deleteEnrolment(enrolment.id), 'Upis je obrisan.');
   }
 
   return (
     <div className="grid gap-6">
+      {confirmDialog}
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" aria-label="Nazad na listu porodica" onClick={onBack}>
@@ -97,7 +134,7 @@ export function FamilyDetailView({
           <Button variant="outline" onClick={() => setDialog({ kind: 'family' })}>
             <PencilIcon aria-hidden /> Uredi porodicu
           </Button>
-          <Button variant="ghost" disabled={children.length > 0} title={children.length > 0 ? 'Prvo obrišite djecu' : undefined} onClick={() => void removeFamily()}>
+          <Button variant="ghost" onClick={() => void removeFamily()}>
             <Trash2Icon aria-hidden /> Obriši
           </Button>
         </div>
@@ -162,7 +199,7 @@ export function FamilyDetailView({
                     <Button size="sm" variant="ghost" aria-label="Uredi dijete" onClick={() => setDialog({ kind: 'child', child })}>
                       <PencilIcon aria-hidden />
                     </Button>
-                    <Button size="sm" variant="ghost" aria-label="Obriši dijete" disabled={own.length > 0} onClick={() => void run(deleteChild(child.id), 'Dijete je obrisano.')}>
+                    <Button size="sm" variant="ghost" aria-label="Obriši dijete" onClick={() => void removeChild(child)}>
                       <Trash2Icon aria-hidden />
                     </Button>
                   </div>
@@ -187,11 +224,9 @@ export function FamilyDetailView({
                           → {STATUS_LABEL[to]}
                         </Button>
                       ))}
-                      {enrolment.status === 'AWAITING_ENROLMENT_PAYMENT' && (
-                        <Button size="sm" variant="ghost" aria-label="Obriši upis" onClick={() => void run(deleteEnrolment(enrolment.id), 'Upis je obrisan.')}>
-                          <Trash2Icon aria-hidden />
-                        </Button>
-                      )}
+                      <Button size="sm" variant="ghost" aria-label="Obriši upis" onClick={() => void removeEnrolment(enrolment)}>
+                        <Trash2Icon aria-hidden />
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -240,7 +275,11 @@ export function FamilyDetailView({
           <ChildForm
             child={dialog.child}
             onSubmit={async (child) => {
-              if (await run(saveChild(child), 'Dijete je sačuvano.')) close();
+              const isNew = !children.some((c) => c.id === child.id);
+              if (!(await run(saveChild(child), 'Dijete je sačuvano.'))) return;
+              // a new child is enrolled next, without searching for the button (Director, 2026-11-21)
+              if (isNew) setDialog({ kind: 'enrolment', enrolment: newEnrolment(child.id, year) });
+              else close();
             }}
           />
         )}
@@ -252,12 +291,24 @@ export function FamilyDetailView({
             schoolYears={schoolYears}
             onSubmit={async (enrolment) => {
               const others = enrolments.filter((e) => e.childId === enrolment.childId);
-              if (await run(saveValidatedEnrolment(enrolment, others), 'Dijete je upisano.')) close();
+              if (!(await run(saveValidatedEnrolment(enrolment, others), 'Dijete je upisano.'))) return;
+              // an IDSS pupil needs a payment plan: the proposed one opens at once, the operator only confirms it
+              if (PROGRAM_ENTITY[enrolment.program] === 'IDSS') setDialog({ kind: 'plan', enrolment });
+              else close();
             }}
           />
         )}
       </FormDialog>
-      <PaymentPlanDialog detail={detail.state.data} enrolment={dialog.kind === 'plan' ? dialog.enrolment : null} onClose={close} />
+      <PaymentPlanDialog
+        // a just-saved enrolment may not be in the reloaded family yet: it is added so the proposal can be computed
+        detail={
+          dialog.kind === 'plan' && !enrolments.some((e) => e.id === dialog.enrolment.id)
+            ? { ...detail.state.data, enrolments: [...enrolments, dialog.enrolment] }
+            : detail.state.data
+        }
+        enrolment={dialog.kind === 'plan' ? dialog.enrolment : null}
+        onClose={close}
+      />
     </div>
   );
 }

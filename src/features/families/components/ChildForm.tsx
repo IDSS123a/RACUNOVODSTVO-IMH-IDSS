@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Field } from '@/features/settings/components/OperatorForm';
 import type { Residency } from '@/features/price-lists/types';
-import { ChildFormSchema } from '@/lib/validation/schemas';
+import { FORMAT } from '@/lib/validation/formats';
+import { ChildInputSchema } from '@/lib/validation/schemas';
 import type { Child } from '../types';
 
 /**
@@ -13,16 +14,16 @@ import type { Child } from '../types';
  * Residency selects the price column; citizenship and KS residence decide ministry-subsidy eligibility.
  */
 export function ChildForm({ child, onSubmit }: { child: Child; onSubmit: (child: Child) => Promise<void> }): React.JSX.Element {
-  const form = useForm<Child>({ resolver: zodResolver(ChildFormSchema), defaultValues: child });
+  const form = useForm<Child>({ resolver: zodResolver(ChildInputSchema), defaultValues: child });
   const { errors, isSubmitting } = form.formState;
   const residency = form.watch('residency');
 
   return (
     <form className="grid gap-4 sm:grid-cols-2" onSubmit={form.handleSubmit(onSubmit)} noValidate>
-      <Field id="child-first" label="Ime" error={errors.firstName?.message}>
+      <Field id="child-first" label="Ime" hint={FORMAT.name} error={errors.firstName?.message}>
         <Input id="child-first" {...form.register('firstName')} aria-invalid={Boolean(errors.firstName)} />
       </Field>
-      <Field id="child-last" label="Prezime" error={errors.lastName?.message}>
+      <Field id="child-last" label="Prezime" hint={FORMAT.name} error={errors.lastName?.message}>
         <Input id="child-last" {...form.register('lastName')} aria-invalid={Boolean(errors.lastName)} />
       </Field>
       <Field id="child-dob" label="Datum rođenja" error={errors.dateOfBirth?.message}>
