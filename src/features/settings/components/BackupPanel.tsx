@@ -21,10 +21,14 @@ import { Field } from './OperatorForm';
  * Encrypted backups (DL-P004): choose a folder, create a backup, restore one.
  * Restore replaces all data, so it requires an explicit confirmation dialog.
  */
+/** The recovery key as printed: Base64 of 32 bytes (keystore.rs `to_recovery_string`). */
+const RECOVERY_KEY = /^[A-Za-z0-9+/]{43}=$/;
+
 export function BackupPanel({ settings, onSettingsSaved }: { settings: Settings; onSettingsSaved: () => void }): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [restoreFile, setRestoreFile] = useState<string | null>(null);
   const [recoveryKey, setRecoveryKey] = useState('');
+  const keyInvalid = recoveryKey.trim() !== '' && !RECOVERY_KEY.test(recoveryKey.replace(/\s/g, ''));
 
   async function chooseFolder(): Promise<void> {
     const folder = await open({ directory: true, multiple: false, title: 'Folder za rezervne kopije' });
@@ -107,14 +111,19 @@ export function BackupPanel({ settings, onSettingsSaved }: { settings: Settings;
             </DialogDescription>
           </DialogHeader>
           <p className="break-all text-sm">{restoreFile}</p>
-          <Field id="restore-key" label="Ključ za oporavak (samo za kopiju s drugog računara)">
+          <Field
+            id="restore-key"
+            label="Ključ za oporavak (samo za kopiju s drugog računara)"
+            hint="44 znaka, kako je odštampan (razmaci i novi redovi se zanemaruju)"
+            error={keyInvalid ? 'Ključ nije u ispravnom obliku: 44 znaka (slova, cifre, +, /), na kraju „=“.' : undefined}
+          >
             <Input id="restore-key" value={recoveryKey} onChange={(event) => setRecoveryKey(event.target.value)} autoComplete="off" />
           </Field>
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline">Odustani</Button>
             </DialogClose>
-            <Button variant="destructive" disabled={busy} onClick={() => void confirmRestore()}>
+            <Button variant="destructive" disabled={busy || keyInvalid} onClick={() => void confirmRestore()}>
               {busy ? 'Vraćam…' : 'Zamijeni podatke'}
             </Button>
           </DialogFooter>

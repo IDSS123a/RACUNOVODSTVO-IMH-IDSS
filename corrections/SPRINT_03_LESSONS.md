@@ -107,3 +107,29 @@
   - the preview lists every child without an enrolment (and how many were imported);
   - „Upis djece bez upisa“ enrols them in one transaction, never guessing the program or the date of birth.
 - **Lesson (E-5 again):** a bulk action must explain every record it does not act on, never only „nothing to do“. Test every bulk flow on data in the shape the legacy import produces, not only on data the app creates.
+
+## L-S3-15 — An invoice could be issued twice for the same child, service and period
+- **Trigger:** the Director, 2026-11-22: the same child, the same service and the same period could be invoiced twice. „Nevjerovatna fundamentalna greška.“
+- **Cause:**
+  - The rule „one invoice per child and month“ was enforced only where a unique index happened to exist (IMH monthly invoices and enrolment fees).
+  - When other services (`OTHER`) and IDSS monthly invoices (`INSTALMENT`) were added, nobody asked „what if the operator does this twice?“.
+  - A test even issued the same manual invoice 150 times and counted it as correct numbering.
+- **Fix (DL-P023):**
+  - one backend check in the issuing transaction for every kind;
+  - the screens say it before creating;
+  - the numbering test issues different services.
+- **Lesson:**
+  - Every new way of issuing a document needs an explicit duplicate rule — what makes two documents „the same“ — enforced in the backend and tested by trying to issue it twice.
+  - A test that issues identical documents in a loop must be read as a bug report, not as a passing test.
+  - Audit all kinds whenever one kind gets a guard.
+
+## L-S3-16 — The invoice PDF was tested with one or two lines only
+- **Trigger:** the Director, 2026-11-22: „PDF računi na dvije stranice. Zašto?“
+- **Cause:**
+  - DL-P014 put all of a child's costs on one invoice, so a new child has 5–7 lines.
+  - The PDF layout (F1) had room for 4 lines above the payment slip.
+  - The one-page tests rendered invoices of 1–2 lines; only a 40-line test checked page breaks.
+- **Fix:** DL-P024 makes the layout compact, adds a denser layout above 8 lines, and adds a test of 5–12 lines with and without credit notes.
+- **Lesson:**
+  - When a rule changes the shape of documents (here: more lines per invoice), test the document at the new realistic maximum, not at the old typical size.
+  - A layout with a fixed bottom block needs a test at its capacity limit.

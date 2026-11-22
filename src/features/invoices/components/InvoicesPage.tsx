@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { FilePlusIcon, FileTextIcon, SendIcon } from 'lucide-react';
+import { FilePlusIcon, FileTextIcon, SearchIcon, SendIcon } from 'lucide-react';
 import { EmptyBlock, ErrorBlock, LoadingBlock } from '@/components/feedback';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,9 +12,10 @@ import { formatDate } from '@/lib/format';
 import { useAsyncResult } from '@/lib/use-async-result';
 import { BALANCE_LABEL, invoiceBalance } from '../credit-notes';
 import { listInvoices } from '../repository';
+import { searchInvoices, STATUS_FILTER_LABEL, type StatusFilter } from '../search';
 import { InvoiceDetailDialog } from './InvoiceDetailDialog';
 import { InvoicePdfDialog } from './InvoicePdfDialog';
-import { ManualInvoiceDialog } from './ManualInvoiceDialog';
+import { NewInvoiceDialog } from './NewInvoiceDialog';
 import { ExportDialog, type ExportRequest } from './ExportDialog';
 
 function currentMonthRange(): ExportRequest {
@@ -28,8 +29,8 @@ import { IssueMonthDialog } from './IssueMonthDialog';
 type EntityFilter = LegalEntityCode | 'ALL';
 
 /** Invoice register with filters, totals and the monthly billing action (IMH and IDSS). */
-export function InvoicesPage(): React.JSX.Element {
-  const [entity, setEntity] = useState<EntityFilter>('ALL');
+export function InvoicesPage({ initialEntity = 'ALL', readOnly = false }: { initialEntity?: EntityFilter; readOnly?: boolean } = {}): React.JSX.Element {
+  const [entity, setEntity] = useState<EntityFilter>(initialEntity);
   const [month, setMonth] = useState<string>('');
   const [issuing, setIssuing] = useState(false);
   const [manual, setManual] = useState(false);
@@ -38,19 +39,28 @@ export function InvoicesPage(): React.JSX.Element {
   const [exportRequest, setExportRequest] = useState<ExportRequest | null>(null);
   const load = useCallback(() => listInvoices({ entity: entity === 'ALL' ? null : entity, month: month || null }), [entity, month]);
   const invoices = useAsyncResult(load);
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState<StatusFilter>('ALL');
+
+  // search and status filter run on the loaded register (Director, 2026-11-21: no scrolling to find an invoice)
+  const visible = useMemo(
+    () => (invoices.state.status === 'ready' ? searchInvoices(invoices.state.data, query, status, new Date().toISOString().slice(0, 10)) : []),
+    [invoices.state, query, status],
+  );
 
   const totals = useMemo(() => {
     if (invoices.state.status !== 'ready') return null;
     // Credit notes are documents, not debts; their effect is already in the net of the invoice they cancel.
-    const rows = invoices.state.data.filter((i) => i.status === 'ISSUED' && i.kind !== 'CREDIT_NOTE');
+    const rows = visible.filter((i) => i.status === 'ISSUED' && i.kind !== 'CREDIT_NOTE');
     return {
       total: sum(rows.map((i) => invoiceBalance(i).net)),
       open: sum(rows.map((i) => invoiceBalance(i).open)),
     };
-  }, [invoices.state]);
+  }, [invoices.state, visible]);
 
   return (
     <div className="grid gap-6">
+      {!readOnly && (
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Računi</h1>
@@ -68,8 +78,34 @@ export function InvoicesPage(): React.JSX.Element {
           </Button>
         </div>
       </header>
+      )}
 
       <div className="flex flex-wrap items-end gap-4">
+        <div className="grid min-w-64 flex-1 gap-1.5">
+          <label htmlFor="filter-search" className="text-sm font-medium">Traži</label>
+          <div className="relative">
+            <SearchIcon className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" aria-hidden />
+            <Input
+              id="filter-search"
+              className="pl-8"
+              placeholder="broj (npr. 12/26), dijete, kupac ili porodica…"
+              value={query}
+              autoFocus
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="grid gap-1.5">
+          <label htmlFor="filter-status" className="text-sm font-medium">Status</label>
+          <select id="filter-status" className="h-9 rounded-md border bg-transparent px-2 text-sm" value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)}>
+            {(Object.keys(STATUS_FILTER_LABEL) as StatusFilter[]).map((s) => (
+              <option key={s} value={s}>
+                {STATUS_FILTER_LABEL[s]}
+              </option>
+            ))}
+          </select>
+        </div>
+        {!readOnly && (
         <div className="grid gap-1.5">
           <label htmlFor="filter-entity" className="text-sm font-medium">Ustanova</label>
           <Select value={entity} onValueChange={(value) => setEntity(value as EntityFilter)}>
@@ -83,6 +119,7 @@ export function InvoicesPage(): React.JSX.Element {
             </SelectContent>
           </Select>
         </div>
+        )}
         <div className="grid gap-1.5">
           <label htmlFor="filter-month" className="text-sm font-medium">Mjesec</label>
           <Input id="filter-month" type="month" className="w-44" value={month} onChange={(e) => setMonth(e.target.value)} />
@@ -94,7 +131,8 @@ export function InvoicesPage(): React.JSX.Element {
         )}
         {totals && (
           <p className="ml-auto text-sm">
-            Fakturisano: <strong className="tabular-nums">{formatKM(totals.total)}</strong> · Otvoreno:{' '}
+            Prikazano <strong className="tabular-nums">{visible.length}</strong>
+            {invoices.state.status === 'ready' && ` od ${invoices.state.data.length}`} · Fakturisano: <strong className="tabular-nums">{formatKM(totals.total)}</strong> · Otvoreno:{' '}
             <strong className="tabular-nums text-destructive">{formatKM(totals.open)}</strong>
           </p>
         )}
@@ -102,8 +140,8 @@ export function InvoicesPage(): React.JSX.Element {
 
       {invoices.state.status === 'loading' && <LoadingBlock />}
       {invoices.state.status === 'error' && <ErrorBlock message={invoices.state.error} onRetry={invoices.reload} />}
-      {invoices.state.status === 'ready' && invoices.state.data.length === 0 && <EmptyBlock message="Nema računa za odabrane filtere." />}
-      {invoices.state.status === 'ready' && invoices.state.data.length > 0 && (
+      {invoices.state.status === 'ready' && visible.length === 0 && <EmptyBlock message="Nema računa za odabrane filtere i pretragu." />}
+      {invoices.state.status === 'ready' && visible.length > 0 && (
         <Table>
           <TableHeader>
             <TableRow>
@@ -118,7 +156,7 @@ export function InvoicesPage(): React.JSX.Element {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {invoices.state.data.map((invoice) => {
+            {visible.map((invoice) => {
               const status = invoiceBalance(invoice).status;
               const label = invoice.kind === 'CREDIT_NOTE' ? 'Knjižno odobrenje' : BALANCE_LABEL[status];
               return (
@@ -157,9 +195,9 @@ export function InvoicesPage(): React.JSX.Element {
           setExportRequest({ from: issueDate, to: issueDate });
         }}
       />
-      <ManualInvoiceDialog open={manual} onOpenChange={setManual} onCreated={invoices.reload} />
+      <NewInvoiceDialog open={manual} onOpenChange={setManual} onCreated={invoices.reload} />
       <ExportDialog request={exportRequest} onClose={() => setExportRequest(null)} />
-      <InvoiceDetailDialog invoiceId={openId} onClose={() => setOpenId(null)} onChanged={invoices.reload} onShowPdf={(id) => { setOpenId(null); setPdfId(id); }} />
+      <InvoiceDetailDialog invoiceId={openId} readOnly={readOnly} onClose={() => setOpenId(null)} onChanged={invoices.reload} onShowPdf={(id) => { setOpenId(null); setPdfId(id); }} />
       <InvoicePdfDialog invoiceId={pdfId} onClose={() => setPdfId(null)} />
     </div>
   );

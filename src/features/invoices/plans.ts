@@ -115,6 +115,36 @@ export function proposeIdssPlan(
   return { total, items };
 }
 
+/** Monthly instalments September–June, the school months of IDSS tuition (BR-5). */
+export const DEFAULT_INSTALMENTS = 10;
+
+/**
+ * The plan the system proposes for an IDSS enrolment (Director, 2026-11-21: the system suggests, the operator
+ * approves): the most instalments allowed — 10 for tuition, fewer when the board's deadline for the last instalment
+ * allows fewer from the start month. Throws (InvoiceError / PricingError) when no plan is possible, e.g. no price.
+ */
+export function defaultIdssPlan(
+  detail: FamilyDetail,
+  priceItems: ReadonlyArray<PriceListItem>,
+  enrolmentId: string,
+  itemCode: PlanItemCode,
+  lastInstalmentBy: string | null,
+): { instalments: number; total: number; items: PlanInstalment[] } {
+  let lastError: unknown = null;
+  // one instalment per school month September–June (BR-5); never more than the maximum for the item
+  for (let count = Math.min(DEFAULT_INSTALMENTS, MAX_INSTALMENTS[itemCode]); count >= 1; count -= 1) {
+    try {
+      const plan = proposeIdssPlan(detail, priceItems, enrolmentId, itemCode, count, lastInstalmentBy);
+      return { instalments: count, ...plan };
+    } catch (error: unknown) {
+      // only the board deadline is worth retrying with fewer instalments; anything else fails at once
+      if (!(error instanceof InvoiceError) || !error.message.includes('Školskog odbora')) throw error;
+      lastError = error;
+    }
+  }
+  throw lastError ?? new InvoiceError('plan nije moguć');
+}
+
 /** What IDSS monthly billing needs besides the family and its plans. */
 export interface IdssBillingContext {
   readonly priceItems: ReadonlyArray<PriceListItem>;

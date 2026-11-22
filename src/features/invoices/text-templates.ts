@@ -6,14 +6,22 @@ import { MONTH_NAME } from './types';
  * šablone … presretanje greške, svi unosi moraju biti identične sintakse“). The operator picks a template and fills
  * typed fields (month, year, date, number, name); the text is always assembled here, so the same fact is always
  * written the same way — in the register, on the PDF, in exports and in the audit trail.
+ *
+ * Every template field also lets the operator write it differently (Director, 2026-11-22: „za svako polje mora
+ * postojati šablon ali i mogućnost da se drugačije unese — to vrijedi za cijelu aplikaciju“):
+ * - a field with proposed values (`options`) offers them, but any other value can be typed;
+ * - every template list ends with „Drugačije — upišite sami“, a free text that is only tidied (spaces, capital
+ *   initial) and checked (length, no control characters).
  */
 
-export type ParamKind = 'month' | 'year' | 'schoolYear' | 'date' | 'number' | 'count' | 'text';
+export type ParamKind = 'month' | 'year' | 'schoolYear' | 'date' | 'number' | 'count' | 'text' | 'choice';
 
 export interface TemplateParam {
   readonly key: string;
   readonly label: string;
   readonly kind: ParamKind;
+  /** Proposed values (the first is the default); any other value may still be typed. */
+  readonly options?: ReadonlyArray<string>;
 }
 
 export interface TextTemplate {
@@ -26,7 +34,7 @@ export interface TextTemplate {
 
 export type TemplateValues = Readonly<Record<string, string>>;
 
-const p = (key: string, label: string, kind: ParamKind): TemplateParam => ({ key, label, kind });
+const p = (key: string, label: string, kind: ParamKind, options?: ReadonlyArray<string>): TemplateParam => (options ? { key, label, kind, options } : { key, label, kind });
 const MONTH = p('mjesec', 'Mjesec', 'month');
 const YEAR = p('godina', 'Godina', 'year');
 const SCHOOL_YEAR = p('skolska', 'Školska godina', 'schoolYear');
@@ -36,7 +44,13 @@ const NAME = p('naziv', 'Naziv', 'text');
 
 /** Line description of a service outside the price list (manual invoice, extra service on a monthly invoice). */
 export const SERVICE_TEMPLATES: ReadonlyArray<TextTemplate> = [
-  { id: 'summer', label: 'Ljetna škola — sedmica', params: [YEAR, p('sedmica', 'Sedmica', 'count')], pattern: 'Ljetna škola {godina} — {sedmica}. sedmica' },
+  // the summer school lasts two weeks; a child may attend one of them or both (Director, 2026-11-22)
+  {
+    id: 'summer',
+    label: 'Ljetna škola',
+    params: [YEAR, p('sedmice', 'Sedmice', 'choice', ['1. i 2. sedmica', '1. sedmica', '2. sedmica'])],
+    pattern: 'Ljetna škola {godina} — {sedmice}',
+  },
   { id: 'trip', label: 'Izlet', params: [NAME, DATE], pattern: 'Izlet — {naziv} ({datum})' },
   { id: 'program', label: 'Dodatni program', params: [NAME, MONTH, YEAR], pattern: 'Dodatni program — {naziv} ({mjesec} {godina})' },
   { id: 'workshop', label: 'Radionica', params: [NAME, DATE], pattern: 'Radionica — {naziv} ({datum})' },
@@ -112,9 +126,23 @@ export function formatParam(kind: ParamKind, raw: string): string | null {
       // invoice, decision and statement numbers: digits, letters, „-“ and „/“ (e.g. 12/26, IMH-004/26)
       return /^[0-9A-Za-zČĆŠŽĐčćšžđ][0-9A-Za-zČĆŠŽĐčćšžđ\-/.]{0,29}$/.test(value) ? value : null;
     case 'text':
+    case 'choice':
       // a name, never a sentence: the template carries the syntax
-      return value.length <= 60 && !/[{}]/.test(value) ? value : null;
+      return value.length <= 60 && !/[{}\p{Cc}]/u.test(value) ? value : null;
   }
+}
+
+/** The template id of „Drugačije — upišite sami“, added to every template list by the template field. */
+export const FREE_TEXT_ID = 'free';
+export const FREE_TEXT_LABEL = 'Drugačije — upišite sami';
+export const FREE_TEXT_MAX = 120;
+
+/** A text written differently from the templates: single spaces, capital initial; null when empty, too long or with control characters. */
+export function formatFreeText(raw: string): string | null {
+  if (/[{}\p{Cc}]/u.test(raw.replace(/[\t\n\r]/g, ' '))) return null;
+  const value = raw.replace(/\s+/g, ' ').trim();
+  if (value.length < 2 || value.length > FREE_TEXT_MAX) return null;
+  return value.charAt(0).toLocaleUpperCase('bs') + value.slice(1);
 }
 
 /** The assembled text, or null while a field is missing or malformed. */
@@ -137,7 +165,15 @@ export function defaultValues(template: TextTemplate, today: string, known: Temp
   for (const param of template.params) {
     values[param.key] =
       known[param.key] ??
-      (param.kind === 'month' ? month : param.kind === 'year' ? year : param.kind === 'schoolYear' ? `${start}/${start + 1}` : param.kind === 'date' ? today : '');
+      (param.kind === 'month'
+        ? month
+        : param.kind === 'year'
+          ? year
+          : param.kind === 'schoolYear'
+            ? `${start}/${start + 1}`
+            : param.kind === 'date'
+              ? today
+              : (param.options?.[0] ?? ''));
   }
   return values;
 }

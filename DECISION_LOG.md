@@ -405,6 +405,321 @@
 
 ---
 
+## DL-P016 — Dashboard and audit-log viewer (F3)
+
+**Date:** 2026-11-21 · **Spec:** `specs/dashboard-audit/` · **Source:** CONSTITUTION BR-29, BR-30; the HTML document `vDash` (it records changes but has no screen to view them)
+
+**Decision:**
+- **„Kontrolni panel“** is the first menu item and the start page, as in the document. It has:
+  - a filter Sve / IMH / IDSS and a month;
+  - the cards Aktivni upisi (IMH · IDSS · families), Neplaćeni računi (count, open, of which overdue), Djelimično plaćeni (paid, rest) and Fakturisano u mjesecu;
+  - a stacked bar of how the month's invoices are paid;
+  - the 8 latest invoices, which open the invoice detail and the PDF.
+- **Shared rules for every figure:**
+  - one balance definition (`invoiceBalance`, M-7);
+  - credit-note documents and cancelled invoices are left out;
+  - overpaid counts as paid;
+  - amounts are after credit notes, as on the invoice.
+- The bar is plain DOM; no chart library (M-12).
+- **„Dnevnik izmjena“** is read-only and newest first, paged by 200. It filters by period, kind of change and text.
+  - Each object is named: invoice number, invoice of a payment, family, child, enrolment. A deleted record reads „(obrisano)“.
+  - Names are resolved at display time, so the log itself still holds no personal data (BR-22). There is no command to change it.
+- Every backend action and entity has a Bosnian label. A test reads the Rust sources and fails when a new code has none; an unknown code is still shown.
+
+**Verified:**
+- Vitest 243/243, including:
+  - every card for both institutions;
+  - the bar segments equal the invoiced amount and Σ open equals „Otvoreno“ on Računi, for 2.000 random registers;
+  - IMH and IDSS are never mixed;
+  - label coverage.
+- cargo test 57/57, including name resolution, deleted records, filters, paging and 10.000 entries.
+- **Open:** the Director's check in the running app (C-13).
+
+---
+
+## DL-P017 — One canonical format for every entered value; search in the invoice register
+
+**Date:** 2026-11-21 · **Source:** Director, 2026-11-21: „svako polje za unos mora imati presretanje greške i dozvoljene formate … ne može broj telefona jednom biti 033562114 a drugi put +387/33 561-226 … odnosi se na sva polja“; „na Računi mora biti efikasno pretraživanje“.
+
+**Decision — formats (`src/lib/validation/formats.ts`, form schemas in `schemas.ts`):**
+- Every field accepts the usual ways of typing a value and saves its ONE canonical form; anything else is refused with the allowed format in the message.
+- Under each field „Format: …“ shows what is expected.
+
+| Value | Canonical form |
+|---|---|
+| Telephone, fax, mobile | `+387 33 562 114` · `+387 60 345 1275` · foreign E.164 `+4917612345678` |
+| E-mail | lower case, `ime@domena.ba` |
+| IBAN | `BA39 1990 4900 5848 7943`, check digits verified |
+| Transaction account | `1990 4900 5848 7943`, control digits verified |
+| SWIFT / JIB / web | `ABSBBA22` · 13 digits · `www.domena.ba` |
+| Address | `Ulica i broj, 71000 Sarajevo`; house number or „bb“ required |
+| Names | capital initial, single spaces, hyphen without spaces; no digits; full name = at least two words |
+| Document numbers | `12/26`, `02-1-123/26` |
+| Board decision | template „Odluka ŠO IDSS br. … od …“ |
+| Dates | real calendar date; dates of birth, payments and acts not in the future; dates of birth not before 1990 |
+| Recovery key | 44 characters as printed |
+
+- **Covered forms:**
+  - family and guardians;
+  - child;
+  - operator;
+  - institution;
+  - ministry approval;
+  - board rules;
+  - payment (payer, date);
+  - bulk enrolment;
+  - backup restore.
+- Invoice texts already use templates (DL-P015).
+- Stored data is **read** with the lenient schemas, so imported records still load. A record gets its canonical form when it is next saved.
+- The institutions' master data passes unchanged, except the postal code, which is written `71000`.
+- **Rust checks again on save:** telephone, e-mail and IBAN of guardians and institutions, in `formats.rs`, without a new dependency (M-12).
+
+**Decision — search („Računi“):**
+- One field finds an invoice by number, child, buyer or family.
+  - Case and diacritics are ignored; „đ“ may be typed „dj“ or „d“.
+  - The number is found however it is typed: „12/26“, „imh 12 26“, „IMH-012/26“.
+  - Several words must all match.
+- A status filter (incl. „Dospjelo, a neplaćeno“ and „Knjižno odobrenje“) sits beside the institution and month filters.
+- „Prikazano N od M“; the totals follow what is shown.
+
+**Verified:**
+- Vitest 256/256, including every format with its loose spellings, the institutions seed, the form schemas and the search.
+- cargo test 60/60, including the canonical checks.
+- **Open:** the Director's check in the running app (C-13), together with F3 (DL-P016).
+
+---
+
+## DL-P018 — Deleting what was entered by mistake; the system proposes, the operator approves
+
+**Date:** 2026-11-21 · **Review:** `docs/ux/TOKOVI-OPERATERA.md` · **Source:** Director, 2026-11-21: „brisanje unesene stavke nije u funkciji … revizija logike kretanja operatera … gdje god je moguć automatski unos … iznos mjesečne rate treba da sistem sugeriše, a operater da odobri“.
+
+**Decision — deleting:**
+- A family, child or enrolment entered by mistake is deleted **whatever its status**, as long as nothing of it was ever invoiced. Before, an enrolment could be deleted only while „Čeka upisne uplate“, a child only without enrolments, and a family only without children.
+- Deleting the family takes its children, enrolments and guardians with it. Deleting a child takes its enrolments. Deleting an enrolment takes its never-invoiced payment plan and its breakfast. All of it happens in one transaction.
+- Every delete asks for **confirmation**, naming what will be deleted (`useConfirm`).
+- Anything on an issued invoice is refused, and the message names the invoice. Accounting records are never deleted; the child is withdrawn instead.
+- **Deviation:** this is an explicit, guarded removal of unbilled dependents, not a database cascade (A-10).
+
+**Decision — the system proposes:**
+- **Payment plan:** `defaultIdssPlan` proposes 10 instalments September–June (BR-5) at the price-list amount with the sibling tier, or fewer when the board's last-instalment deadline requires it.
+  - The plan dialog opens with this proposal;
+  - after an IDSS enrolment is saved, the dialog opens by itself;
+  - in the monthly preview every IDSS pupil without a plan is listed with the proposed plan and „Prihvati predložene planove“.
+- **Flow without searching:** a new family opens with its first-child form; a new child opens its enrolment; an IDSS enrolment opens its plan.
+- Further proposals (automatic activation, next-year enrolments, bank-statement matching, reminders) are listed in the review and wait for the Director.
+
+**Verified:**
+- Vitest 259/259, including the proposed plan (10 instalments, sibling price, board deadline).
+- cargo test 60/60: an active unbilled enrolment, child and family are deleted; anything invoiced is refused with the invoice number.
+- **Open:** the Director's check in the running app (C-13).
+
+---
+
+## DL-P019 — Guided flow for the FAS: home screen, institution, steps in the institution's colours
+
+**Date:** 2026-11-21 · **Spec:** `specs/guided-flow/SPEC.md` · **Definition:** `docs/DEFINICIJA-APLIKACIJE.md` §4 · **Source:** Director, 2026-11-21 (product definition, „STOP. Imamo generalni problem u razumijevanju …“); the layout of the steps was approved with the clarifications for B and E.
+
+**Decision:**
+- **Home screen:** „Dobar dan, <ime>. Šta ćemo danas raditi?“, with three cards: 1. Fakturisanje, 2. Ostalo fakturisanje, 3. Izvještavanje. The name comes from the operator profile at runtime; it is never in the code (BR-22).
+- **Institution first:** after choosing the job the FAS picks IMH or IDSS. From then on the screen carries the institution's colour, and the header shows the job and the institution with „← Nazad“ and „Početna“.
+- **One institution per flow** (Director, 2026-11-21: „u IDSS samo IDSS, u IMH samo IMH“). Every list, problem, child without an enrolment and invoice in a flow belongs to that institution only. A child whose institution is not known yet (no enrolment, no invoice) appears in both.
+- **Fakturisanje, steps A–E** (next month by default):
+  - A. Provjeri spisak djece;
+  - B. Kreiraj fakture, bulk or for one child;
+  - C. Štampaj, as PDF or DOCX;
+  - D. Pošalji Office Manageru, as an Outlook draft;
+  - E. Prati naplatu.
+  Finished steps get ✓ and the next one is highlighted.
+- **B. Kreiraj fakture:** the system recognises earlier billing. A continuing child gets only the tuition instalment (plus breakfast or extended stay). A newly enrolled child gets the instalment, enrolment fee, deposit and materials.
+- **E. Prati naplatu:** a partial payment leaves the invoice „Djelimično plaćena“ with its remainder, and the next payment proposes the remainder. A surplus becomes family credit (DL-P011).
+- **Ostalo fakturisanje, steps A–C:**
+  - A. unesi fakturu/e: a service from the templates, for one or more children (bulk), one invoice per child;
+  - B. štampaj;
+  - C. pošalji.
+- **Amendment to DL-P014:** an „other service“ (ljetna škola, sekcija, izlet …) can be billed for any child, enrolled or not. It always goes on its own invoice; the monthly invoice holds only price-list items.
+- **„Dopuna podataka o djeci — školska X“** replaces the confusing name „Upis djece bez upisa“ (Director, 2026-11-21).
+- **Data and settings** (families and children, price list, audit log, settings, review findings) stay in the top bar, outside the flows.
+
+**Verified:**
+- Vitest: the problems and children without an enrolment are attributed to their institution, and each flow filters them.
+- The flows were built from the Director's corrections in the running app (screenshots of 2026-11-21).
+- **Open:** the Director's final check of the flows in the running app (C-13).
+
+**Amendment 1 (2026-11-22) — lists split exactly by institution.** Source: Director, 2026-11-22: „Ovaj dječak je isključivo pohađao IDSS … spiskovi moraju biti hirurški precizno podijeljeni na IMH i na IDSS“ (an IDSS-only family appeared in IMH „Pojedinačno — jedno dijete“).
+- **Cause:**
+  - the family list of „Novi račun“ was not filtered at all;
+  - children were filtered by enrolment only;
+  - a child with no data was shown in both institutions.
+- **One rule for every list of a flow** (`src/features/families/membership.ts`):
+  1. an active enrolment in this or a later school year;
+  2. otherwise the latest invoice;
+  3. otherwise the latest enrolment of any year.
+  A child with none of these is in **no** list. Its institution is set in „Dopuna podataka o djeci“ by choosing the program.
+  A family is shown when at least one of its children belongs to the institution, and only those children are offered.
+- **Applied in:**
+  - „Pojedinačno — jedno dijete“ (families and children);
+  - „Ostalo fakturisanje“;
+  - „Djeca bez upisa“ in step A (children of unknown institution are only counted);
+  - „Dopuna podataka o djeci“ opened from a flow.
+- **Real data** (the legacy workbook, counts only):
+  - children: 124 IMH, 113 IDSS, **0 in both**, 244 of unknown institution;
+  - families: 94 IMH, 79 IDSS, 8 in both (siblings in both institutions, each child only in its own), 185 none.
+- **The 244 children of unknown institution** are only in the old Excel register („Setting“, which has no institution column), with no invoice and no enrolment. The Director, 2026-11-22: „Bivša djeca, ostavi“. They stay in no list; a child who returns gets its institution in „Dopuna podataka o djeci“.
+- **Verified:** Vitest 279/279, including:
+  - an IDSS-only pupil (by enrolment, by invoice, by an old enrolment) never in IMH;
+  - IMH Preschoolers moved to IDSS shown in IDSS;
+  - siblings in both institutions;
+  - a child of unknown institution in neither list.
+
+---
+
+## DL-P020 — Reporting is read-only; register exports in XLSX, CSV and DOCX
+
+**Date:** 2026-11-21 · **Source:** Director, 2026-11-21: „Izvještavanje je operacija nad postojećim podacima … zašto se ovdje dozvoljava unos faktura?“; „u IDSS se mogu pozvati IMH informacije i obratno — nelogično“; DEFINICIJA M5, M7.
+
+**Decision:**
+- **„3. Izvještavanje“ only reads.** It has no entry, no payment, no storno and no new invoice. The register and the invoice detail open with `readOnly`.
+- **One institution only:** reporting for IMH shows only IMH and reporting for IDSS only IDSS. There is no institution selector inside it.
+- **Tabs:**
+  - Kontrolni panel (compact);
+  - Registar faktura (search and status filter);
+  - Izvoz (XLSX, CSV, DOCX).
+  The audit log covers the whole application and stays in the top bar.
+- **Exports** of the invoice register for a period (from the start of the school year to today by default):
+  - **XLSX** with four sheets: Sažetak, Fakture, Po mjesecima, Otvoreno po porodicama. Written with fflate; `src/lib/export/xlsx.ts` is shared with the import report.
+  - **CSV:** UTF-8 with BOM, `;` as separator and decimal commas, so Excel opens it with Bosnian letters. Formula characters are neutralised.
+  - **DOCX report** on the letterhead (DL-P021).
+- **Invoice DOCX** (M5) carries the same figures as the PDF. The payment slip stays in the PDF.
+- **Shared rules:** every figure uses the register's balance definition (M-7), and no new dependency is added (M-12).
+
+**Verified:**
+- Vitest, including totals with a partial payment, credit-note documents and cancelled invoices left out, the BOM bytes, formula neutralisation, the four XLSX sheets, and DOCX invoice figures equal to the PDF.
+- **Open:** the Director's check of read-only reporting in the running app (C-13).
+
+---
+
+## DL-P021 — Official documents on the institution's letterhead, A4
+
+**Date:** 2026-11-21, amended 2026-11-22 · **Source:** Director, 2026-11-21: „Izvještaji su zvanični dokumenti i moraju biti na pripadajućim memorandumima“ (MEMORANDUM_IMH.dotx, MEMORANDUM_IDSS_OD_20042026.dotx); 2026-11-22: „Izvještaji moraju biti na A4 formatu“.
+
+**Decision:**
+- **Letterheads:** the institutions' Word templates are bundled as `src/assets/letterheads/imh.dotx` and `idss.dotx`, inlined at build time (`?inline`, `assetsInclude`). There is no network access and no CSP change. The author's name is removed from their metadata (BR-22).
+- **How a document is built** (`onLetterhead`):
+  - the template's sample body is replaced by the document;
+  - header (logo), footer (institution data), styles, images and margins stay as they are;
+  - the content type becomes a document, so Word opens it as a finished file.
+- **Which documents:**
+  - the DOCX report: place and date „Sarajevo, <datum> godine“, summary, months, largest open amounts, and „Izvještaj sastavio/la: ____“;
+  - the DOCX invoice of that institution. On the letterhead the institution data is in the footer, so it is not repeated in the body.
+- **A4:** every letterhead document is A4 portrait (210 × 297 mm), whatever paper size the template was saved with. The IMH template is US Letter.
+- **Tables:** a table wider than the letterhead's text area is scaled down to it.
+
+**Verified:**
+- Vitest 275/275, including: the letterhead package, the template body replaced, the section kept, tables fitted, and A4 for both real templates.
+- Word opened all four samples (an invoice and a report for each institution), reported 210 × 297 mm and one page each, and exported them to PDF.
+- Build: both letterheads are in the bundle.
+- **The Director checked the samples (2026-11-22, C-13).**
+
+---
+
+## DL-P022 — Every field: a template, and the possibility to write it differently
+
+**Date:** 2026-11-22 · **Source:** Director, 2026-11-22: „Ljetna škola traje dvije sedmice, ali može se dijete upisati i samo jednu sedmicu. Za svako polje mora postojati šablon, ali i mogućnost da se drugačije unese. To vrijedi za cijelu aplikaciju.“ · **Amends:** DL-P015, DL-P017.
+
+**Decision:**
+- **Template fields** (`TemplateText`): every invoice service, basis, payment purpose and reference, storno and reversal reason, credit movement, and board decision.
+  - A field with proposed values offers them in a list, but any other value can be typed.
+  - Every template list ends with **„Drugačije — upišite sami“**. It opens with the text the template gave, so a small change needs no retyping.
+  - The free text is only tidied (single spaces, capital initial) and checked: 2–120 characters, no control characters.
+- **Summer school:** one template, „Ljetna škola {godina} — {sedmice}“. „1. i 2. sedmica“ is proposed; „1. sedmica“ and „2. sedmica“ can be chosen, and any other value typed. The quantity stays the operator's, e.g. 2 × the weekly price for both weeks.
+- **Unit of measure (JM):**
+  - srv, kom, sedm., dan, mj. and čas are proposed, and any other short unit can be typed (`normalizeUnit`: letters and dots, up to 10, lower case).
+  - The backend checks the same.
+  - **Migration 014** rebuilds `invoice_lines` with a relaxed unit check. Every row and column is copied unchanged, as in 008.
+- **Fields with a fixed format stay checked:** telephone, e-mail, IBAN, account, JIB, address, names, document numbers.
+  - They accept many ways of typing and save one form (DL-P017).
+  - A value that cannot be right (for example an IBAN with a wrong check digit) is still refused, because it protects the invoice and the payment slip.
+- **Unchanged:** fixed choices that define the accounting (institution, program, enrolment status, kind of invoice) have no free entry.
+
+**Verified:**
+- Vitest 282/282:
+  - summer school with both weeks, one week, or another value;
+  - free text tidied and refused when empty, too long or with control characters;
+  - units.
+- cargo test 61/61: migration 014 keeps every line unchanged, accepts „sedm.“, and refuses an empty, padded, numeric or too long unit; the backend line check too.
+- The running app applied migration 014 to the trial database.
+- **Open:** the Director's check in the running app (C-13).
+
+---
+
+## DL-P023 — Nothing is invoiced twice to the same child for the same period
+
+**Date:** 2026-11-22 · **Source:** Director, 2026-11-22: „Probao sam da kreiram fakturu za istu osobu, za istu uslugu, za isti period i sistem to dozvoljava. Nevjerovatna fundamentalna greška.“ · **Lesson:** L-S3-15.
+
+**Audit of every kind of invoice:**
+
+| Kind | Guard before | Guard now |
+|---|---|---|
+| IMH monthly (`MONTHLY`) | unique index per child, institution, month | unchanged, plus the same check in code with the existing number in the message |
+| IDSS monthly (`INSTALMENT`) | only each plan instalment once; **no guard for a second invoice of the month** | one monthly invoice per child, institution and month — `MONTHLY` and `INSTALMENT` together |
+| Enrolment fees (`ENROLMENT_FEES`) | unique index; each one-time item once per enrolment | unchanged |
+| Other services (`OTHER`) | **none** | the same service, with the text compared without case and spacing, is not billed again to the child for the same month. This holds on a manual or a monthly invoice, and twice on one invoice. |
+| Credit note | linked to its invoice, never above the remainder (DL-P011) | unchanged |
+
+**Decision:**
+- **Checked in the backend** (`ensure_not_billed_twice`), in the issuing transaction, so no screen, bulk action or later change can bypass it.
+  - The refusal names the existing invoice, e.g. „„Ljetna škola 2026 — 1. sedmica“ je ovom djetetu za taj mjesec već fakturisano (IDSS-012/26)“.
+  - In a bulk action nothing is issued until it is fixed.
+- **Said before creating:**
+  - **„Ostalo fakturisanje“:** a child who already has the service in that month shows „već fakturisano za ovaj mjesec (broj)“. The child cannot be ticked, and „Označi sve“ skips them.
+  - **„Novi račun“:** a manual line that repeats a billed service is listed, and „Kreiraj račun“ stays disabled.
+  - The screens read the billed services with the read-only command `list_billed_services` and compare with the backend's rule (`serviceKey` = `service_key`).
+- **Still allowed:**
+  - a different service (another week, another trip);
+  - the same service in another month;
+  - a new invoice after the earlier one was credited (`CANCELLED`).
+  A correction is made by storno, or later by „Ispravi fakturu“ (M8).
+- **The duplicate the Director created** in the trial database stays as issued. It is corrected by a credit note (storno) of one of the two invoices.
+
+**Verified:**
+- cargo test 62/62. A new test covers:
+  - the same text in another case and spacing;
+  - the same line twice on one invoice;
+  - the same service on the monthly invoice;
+  - another service, another month and a credited invoice are allowed;
+  - a second monthly invoice, IMH `MONTHLY` or IDSS `INSTALMENT`, is refused.
+  The numbering test now issues 150 different services instead of 150 identical ones.
+- Vitest 283/283.
+- **The Director checked it in the running app (2026-11-22, C-13): „Da, odbija“.**
+
+---
+
+## DL-P024 — The invoice PDF fits on one page with the payment slip, up to 12 lines
+
+**Date:** 2026-11-22 · **Source:** Director, 2026-11-22: „PDF računi na dvije stranice. Zašto?“ · **Amends:** DL-P012 (F1 layout) · **Lesson:** L-S3-16.
+
+**Cause:**
+- The payment slip and the signatures have a fixed place in the bottom third of the last page.
+- Above them the layout (letterhead, facts box, rows of 22 pt, notes and recapitulation) had room for only **4 lines**.
+- Since all of a child's costs go on one invoice (DL-P014), a new child has 5–7 lines (instalment, enrolment fee, deposit, materials, breakfast, extended stay, extra services). The body then crossed the slip by a few millimetres, and the whole slip went to page 2.
+
+**Decision:**
+- **Compact layout:**
+  - logo 48 pt, letterhead text 7.5 pt;
+  - tighter gaps;
+  - facts and buyer box 12.5 pt per row;
+  - table header 17 pt, rows 16 pt;
+  - recapitulation rows 16 pt (14 pt with credit notes);
+  - notes 7.5 pt.
+  The amounts, the title and the slip keep their sizes.
+- **More than 8 lines:** denser rows of 12 pt with 7.5 pt text.
+- **Result:** up to 12 lines fit on one A4 page with the slip and the signatures, with or without credit-note rows. Before, the limit was 4. Only a larger invoice continues on a second page, as before, with the slip on the last page.
+
+**Verified:**
+- Vitest 284/284. A new test renders 5–12 lines, with and without a credit note, and expects one page.
+- Samples looked at: 7 lines with a credit note (IMH), 12 lines (IDSS).
+- **The Director checked the samples (2026-11-22, C-13): „Da, ispravno“.**
+
 ---
 
 *Commander v1.8.1 — IDSS123a Organisation*

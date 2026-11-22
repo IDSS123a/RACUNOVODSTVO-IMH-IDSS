@@ -114,7 +114,19 @@ Payments from any family member are booked against invoices, and the open balanc
   - „Upis djece bez upisa“ enrols imported children at once.
   - Toddlers / Preschoolers is one choice.
 - ✅ Edge-to-edge responsive layout and text templates for every free-text entry (2026-11-21, DL-P015). The Director checked it in the running app (C-13).
-- ⏳ F3 dashboard and audit-log viewer: the backend is done (`audit.rs`, `list_enrolment_overview`); the screens are next.
+- ⏳ F3 dashboard and audit-log viewer (DL-P016, `specs/dashboard-audit/`): done; waiting for the Director's check in the running app (C-13).
+- ⏳ One canonical format for every field and search on Računi (DL-P017); deleting what was entered by mistake, and the system proposes the IDSS plan (DL-P018): done; waiting for the Director's check (C-13).
+- ⏳ Guided flow for the FAS (2026-11-21, DL-P019, `specs/guided-flow/`, `docs/DEFINICIJA-APLIKACIJE.md`):
+  - „Dobar dan“ → job → IMH / IDSS → steps A–E in the institution's colours;
+  - one institution per flow;
+  - amendment 1 (2026-11-22): lists split exactly by institution, with one rule for every list. On the real data no child is in both institutions. 244 former children from the old register are in no list (Director: „Bivša djeca, ostavi“);
+  - waiting for the Director's final check (C-13).
+- ⏳ Read-only reporting with XLSX, CSV and DOCX exports (DL-P020): waiting for the Director's check (C-13).
+- ✅ Official documents on the institution's letterhead, A4 (2026-11-22, DL-P021). The Director checked the samples (C-13).
+- ⏳ Every field: a template and the possibility to write it differently (2026-11-22, DL-P022, migration 014). Summer school covers one week or both, and the unit of measure is free. Waiting for the Director's check (C-13).
+- ✅ Fix (2026-11-22, L-S3-15, DL-P023): nothing is invoiced twice to the same child for the same period. This now covers other services and IDSS monthly invoices, which had no guard; the backend refuses it and the screens say it before creating. The Director checked it in the running app (C-13).
+- ✅ Fix (2026-11-22, L-S3-16, DL-P024): the invoice PDF fits on one page with the payment slip up to 12 lines (before: 4). The Director checked the samples (C-13).
+- Next from the definition: „Ispravi fakturu“ in one step (M8); GDPR compliance review (M4).
 
 ## Still open before Sprint 03 closes
 - ✅ Enrolment-fee invoice („Račun za upis“ on each enrolment): one invoice per child and school year (migration 007), separate lines.

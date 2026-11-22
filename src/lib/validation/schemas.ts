@@ -1,4 +1,26 @@
 import { z } from 'zod';
+import {
+  addressField,
+  emailField,
+  FORMAT,
+  fullNameField,
+  ibanField,
+  isRealDate,
+  nameField,
+  normalizeBankAccount,
+  normalizeDocumentNumber,
+  normalizeIban,
+  normalizeJib,
+  normalizeName,
+  normalizeRegistration,
+  normalizeSwift,
+  normalizeWebsite,
+  optionalField,
+  optionalTextField,
+  phoneField,
+  requiredField,
+  textField,
+} from './formats';
 
 /**
  * All Zod schemas of the application (Commander E-2: one file, imported everywhere).
@@ -154,10 +176,6 @@ export const ChildSchema = z.object({
 });
 
 /** The child form: the operator always enters the date of birth (also when completing an imported child). */
-export const ChildFormSchema = ChildSchema.refine((child) => child.dateOfBirth !== null, {
-  path: ['dateOfBirth'],
-  message: 'unesite datum rođenja',
-});
 
 export const EnrolmentSchema = z.object({
   id: uuid,
@@ -189,8 +207,8 @@ export const FamilySummariesSchema = z.array(FamilySummarySchema);
 
 export const InvoiceKindSchema = z.enum(['MONTHLY', 'ENROLMENT_FEES', 'INSTALMENT', 'OTHER', 'CREDIT_NOTE']);
 
-/** Unit of measure of a line (document `vNew`: JM). */
-export const LineUnitSchema = z.enum(['kom', 'srv']);
+/** Unit of measure of a line (document `vNew`: JM): proposed units or any other short unit (Director, 2026-11-22). */
+export const LineUnitSchema = z.string().min(1).max(10);
 
 export const InvoiceLineSchema = z
   .object({
@@ -417,3 +435,62 @@ export const CreditMoveSchema = z.object({
 export const FamilyCreditSchema = z.array(
   z.object({ invoiceId: z.string(), number: z.string(), entity: LegalEntityCodeSchema, credit: fenings.positive() }),
 );
+
+// ---------- Form input schemas: canonical formats (Director, 2026-11-21; DL-P017) ----------
+// Stored data is read with the lenient schemas above; everything the operator types is validated and normalized here,
+// so every saved value has exactly one format.
+
+const today = (): string => new Date().toISOString().slice(0, 10);
+const pastDate = (message: string) => isoDate.refine((d) => isRealDate(d) && d <= today(), message);
+
+export const InstitutionFormSchema = InstitutionSchema.extend({
+  fullName: textField(200, 'puni naziv'),
+  shortName: textField(120, 'skraćeni naziv'),
+  address: addressField(),
+  phone: phoneField(),
+  fax: phoneField(),
+  mobile: phoneField(),
+  email: emailField(),
+  website: optionalField(normalizeWebsite, `Neispravna web adresa. Format: ${FORMAT.website}.`),
+  taxId: requiredField(normalizeJib, `Neispravan ID broj. Format: ${FORMAT.jib}.`),
+  registrationNumber: requiredField(normalizeRegistration, `Neispravan registarski broj. Format: ${FORMAT.registration}.`),
+  bankName: textField(120, 'naziv banke'),
+  bankAccount: requiredField(normalizeBankAccount, `Neispravan broj računa (kontrolni broj). Format: ${FORMAT.bankAccount}.`),
+  iban: requiredField(normalizeIban, `Neispravan IBAN. Format: ${FORMAT.iban}.`),
+  swift: requiredField(normalizeSwift, `Neispravan SWIFT. Format: ${FORMAT.swift}.`),
+  invoiceNote: optionalTextField(500),
+});
+
+export const OperatorFormSchema = OperatorSchema.extend({
+  fullName: fullNameField(),
+  jobTitle: optionalTextField(60),
+  email: emailField(),
+  phone: phoneField(),
+});
+
+export const GuardianFormSchema = GuardianSchema.extend({
+  fullName: fullNameField(),
+  email: emailField(),
+  phone: phoneField(),
+  iban: ibanField(),
+});
+
+export const FamilyFormSchema = FamilySchema.extend({
+  displayName: requiredField(normalizeName, `Neispravan naziv porodice. Dozvoljeno: ${FORMAT.name} (npr. Begić).`),
+  address: addressField(),
+});
+
+export const ChildInputSchema = ChildSchema.extend({
+  firstName: nameField(),
+  lastName: nameField(),
+  dateOfBirth: pastDate('unesite stvarni datum rođenja (ne u budućnosti)')
+    .refine((d) => d >= '1990-01-01', 'datum rođenja je prije 1990. — provjerite')
+    .nullable()
+    .refine((d) => d !== null, 'unesite datum rođenja'),
+});
+
+export const MinistryApprovalFormSchema = MinistryApprovalSchema.extend({
+  documentNumber: requiredField(normalizeDocumentNumber, `Neispravan broj akta. Format: ${FORMAT.documentNumber}.`),
+  documentDate: pastDate('unesite stvarni datum akta (ne u budućnosti)'),
+  note: optionalTextField(200),
+});

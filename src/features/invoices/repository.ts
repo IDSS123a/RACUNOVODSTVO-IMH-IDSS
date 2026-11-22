@@ -44,6 +44,15 @@ export function listBilledOneTime(schoolYear: SchoolYear): Promise<Result<Billed
   return call('list_billed_one_time', z.array(BilledOneTimeSchema), { schoolYear });
 }
 
+/** A service outside the price list already on an issued invoice of the month (no double billing, 2026-11-22). */
+export const BilledServiceSchema = z.object({ childId: z.string(), description: z.string(), invoiceNumber: z.string() });
+export type BilledService = z.infer<typeof BilledServiceSchema>;
+
+/** Services outside the price list on issued invoices of an institution and month (`periodFrom` = first day). */
+export function listBilledServices(entity: LegalEntityCode, periodFrom: string): Promise<Result<BilledService[]>> {
+  return call('list_billed_services', z.array(BilledServiceSchema), { entity, periodFrom });
+}
+
 export function listInvoices(filter: { entity: LegalEntityCode | null; month: string | null }): Promise<Result<InvoiceSummary[]>> {
   return call('list_invoices', InvoiceSummariesSchema, { entity: filter.entity, month: filter.month });
 }

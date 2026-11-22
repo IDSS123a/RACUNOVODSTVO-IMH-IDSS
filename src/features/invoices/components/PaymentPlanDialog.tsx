@@ -20,7 +20,7 @@ import { formatDate } from '@/lib/format';
 import { MONTH_NAME } from '../types';
 import { useAsyncResult } from '@/lib/use-async-result';
 import { InvoiceError } from '../domain';
-import { MAX_INSTALMENTS, proposeIdssPlan, type PaymentPlan, type PlanItemCode } from '../plans';
+import { MAX_INSTALMENTS, DEFAULT_INSTALMENTS, defaultIdssPlan, proposeIdssPlan, type PaymentPlan, type PlanItemCode } from '../plans';
 import { listPaymentPlans, savePaymentPlan } from '../repository';
 
 const PLAN_ITEMS: ReadonlyArray<PlanItemCode> = ['TUITION', 'EXTENDED_STAY'];
@@ -125,7 +125,15 @@ function PlanEditor({
   onSaved: () => void;
 }): React.JSX.Element {
   const [itemCode, setItemCode] = useState<PlanItemCode>('TUITION');
-  const [count, setCount] = useState<string>(String(plans.find((p) => p.itemCode === 'TUITION')?.instalments ?? 10));
+  // an existing plan keeps its count; otherwise the system proposes the most instalments allowed (Director, 2026-11-21)
+  const proposedCount = (code: PlanItemCode): number => {
+    try {
+      return defaultIdssPlan(detail, priceItems, enrolment.id, code, rules?.lastInstalmentBy ?? null).instalments;
+    } catch {
+      return DEFAULT_INSTALMENTS;
+    }
+  };
+  const [count, setCount] = useState<string>(String(plans.find((p) => p.itemCode === 'TUITION')?.instalments ?? proposedCount('TUITION')));
   const [saving, setSaving] = useState(false);
   const existing = plans.find((p) => p.itemCode === itemCode);
   const locked = existing?.items.some((i) => i.invoiceId !== null) ?? false;
@@ -194,7 +202,7 @@ function PlanEditor({
             onValueChange={(value) => {
               const code = value as PlanItemCode;
               setItemCode(code);
-              setCount(String(plans.find((p) => p.itemCode === code)?.instalments ?? MAX_INSTALMENTS[code]));
+              setCount(String(plans.find((p) => p.itemCode === code)?.instalments ?? proposedCount(code)));
             }}
           >
             <SelectTrigger id="plan-item" className="w-52">

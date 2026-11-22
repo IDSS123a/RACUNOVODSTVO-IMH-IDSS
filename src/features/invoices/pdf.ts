@@ -128,7 +128,7 @@ class Writer {
 
 /** Letterhead (F1 / SPEC C1): logo of the issuing institution left; name, contacts, ID, transaction account right. */
 function drawLetterhead(w: Writer, institution: Institution, logo: PDFImage): void {
-  const logoHeight = 56;
+  const logoHeight = 48;
   const scale = Math.min(logoHeight / logo.height, 170 / logo.width);
   const logoWidth = logo.width * scale;
   w.page.drawImage(logo, { x: MARGIN, y: w.y - logo.height * scale, width: logoWidth, height: logo.height * scale });
@@ -138,7 +138,7 @@ function drawLetterhead(w: Writer, institution: Institution, logo: PDFImage): vo
   let y = w.y - 9;
   for (const line of wrapText(institution.fullName, w.bold, 10, width)) {
     w.rightText(line, right, { y, size: 10, bold: true });
-    y -= 12.5;
+    y -= 11.5;
   }
   const contact = [
     institution.phone && `Tel: ${institution.phone}`,
@@ -154,14 +154,14 @@ function drawLetterhead(w: Writer, institution: Institution, logo: PDFImage): vo
     `Transakcijski račun: ${institution.bankAccount} (${institution.bankName})`,
   ].filter(Boolean) as string[];
   for (const line of details) {
-    for (const part of wrapText(line, w.regular, 8, width)) {
-      w.rightText(part, right, { y, size: 8, color: MUTED });
-      y -= 10.5;
+    for (const part of wrapText(line, w.regular, 7.5, width)) {
+      w.rightText(part, right, { y, size: 7.5, color: MUTED });
+      y -= 9.5;
     }
   }
-  w.y = Math.min(y, w.y - logo.height * scale) - 8;
+  w.y = Math.min(y, w.y - logo.height * scale) - 6;
   w.page.drawLine({ start: { x: MARGIN, y: w.y }, end: { x: right, y: w.y }, thickness: 1.6, color: DARK });
-  w.y -= 30;
+  w.y -= 24;
 }
 
 /** Narrowest module (narrow bar) in points that still scans reliably when printed (≈ 0,26 mm). */
@@ -195,12 +195,12 @@ function drawHeading(w: Writer, data: InvoicePdfData): void {
   const title = `${isCreditNote ? 'KNJIŽNO ODOBRENJE br.' : 'RAČUN br.'} ${invoice.number}`;
   w.text(title, MARGIN, { size: 17, bold: true });
   const below = drawBarcode(w, invoice.number, MARGIN + w.bold.widthOfTextAtSize(title, 17));
-  w.y -= 18 + below;
+  w.y -= 14 + below;
   if (invoice.status === 'CANCELLED') {
     w.text('STORNIRAN', MARGIN, { size: 12, bold: true, color: ALERT });
     w.y -= 14;
   }
-  w.y -= 8;
+  w.y -= 4;
 
   const facts: Array<[string, string, boolean]> = isCreditNote
     ? [
@@ -226,17 +226,17 @@ function drawHeading(w: Writer, data: InvoicePdfData): void {
     ...(invoice.childName ? wrapText(`Dijete: ${invoice.childName}`, w.bold, 9.5, buyerWidth).map((l): [string, boolean, number] => [l, true, 9.5]) : []),
     ...wrapText(`Adresa: ${invoice.buyerAddress || '—'}`, w.regular, 8.5, buyerWidth).map((l): [string, boolean, number] => [l, false, 8.5]),
   ];
-  const height = Math.max(facts.length * 14.5, buyerLines.length * 13) + 18;
+  const height = Math.max(facts.length * 12.5, buyerLines.length * 12) + 12;
   const top = w.y;
   w.page.drawRectangle({ x: MARGIN, y: top - height, width: CONTENT_WIDTH, height, color: rgb(0.97, 0.98, 0.99), borderColor: RULE, borderWidth: 0.7 });
   w.page.drawLine({ start: { x: MARGIN + half, y: top - 8 }, end: { x: MARGIN + half, y: top - height + 8 }, thickness: 0.6, color: RULE });
   facts.forEach(([label, value, bold], i) => {
-    const y = top - 16 - i * 14.5;
+    const y = top - 13 - i * 12.5;
     w.text(label, MARGIN + 10, { y, size: 9, color: MUTED });
     w.text(value, MARGIN + 108, { y, size: 9.5, bold });
   });
-  buyerLines.forEach(([text, bold, size], i) => w.text(text, buyerX, { y: top - 16 - i * 13, size, bold, color: i === 0 ? MUTED : INK }));
-  w.y = top - height - 14;
+  buyerLines.forEach(([text, bold, size], i) => w.text(text, buyerX, { y: top - 13 - i * 12, size, bold, color: i === 0 ? MUTED : INK }));
+  w.y = top - height - 10;
 
   if (isCreditNote && invoice.reason) {
     for (const line of wrapText(`Razlog: ${invoice.reason}`, w.regular, 9, CONTENT_WIDTH)) {
@@ -263,9 +263,9 @@ function cellText(w: Writer, index: number, text: string, y: number, options: { 
 }
 
 function drawTableHeader(w: Writer): void {
-  const height = 20;
+  const height = 17;
   w.page.drawRectangle({ x: MARGIN, y: w.y - height + 6, width: CONTENT_WIDTH, height, color: DARK });
-  COLUMNS.forEach((column, i) => cellText(w, i, column.title, w.y - 8, { size: 7, bold: true, color: WHITE }));
+  COLUMNS.forEach((column, i) => cellText(w, i, column.title, w.y - 6.5, { size: 7, bold: true, color: WHITE }));
   w.y -= height + 4;
 }
 
@@ -274,17 +274,23 @@ function drawLines(w: Writer, data: InvoicePdfData, recap: InvoiceRecap): void {
   drawTableHeader(w);
   const boardDecision = new Set(data.detail.lines.flatMap((l, i) => (l.boardDecisionId ? [i] : [])));
   const rows = Math.max(MIN_TABLE_ROWS, recap.lines.length);
+  // more than 8 lines: denser rows and a smaller font, so the invoice still fits on one page with the slip
+  const dense = recap.lines.length > 8;
+  const font = dense ? 7.5 : 8.5;
+  const lineGap = dense ? 8.5 : 10;
   for (let i = 0; i < rows; i += 1) {
     const line = recap.lines[i];
     const description = line ? (boardDecision.has(i) ? `${line.description} (odluka odbora)` : line.description) : '';
-    const wrapped = line ? wrapText(description, w.bold, 8.5, (COLUMNS[1]?.width ?? 150) - 8) : [''];
-    const height = Math.max(22, wrapped.length * 11 + 10);
+    const wrapped = line ? wrapText(description, w.bold, font, (COLUMNS[1]?.width ?? 150) - 8) : [''];
+    // compact rows: a new child's invoice (instalment, enrolment fee, deposit, materials, breakfast, extra services)
+    // stays on one page with the payment slip (Director, 2026-11-22: „PDF računi na dvije stranice. Zašto?“)
+    const height = dense ? Math.max(12, wrapped.length * lineGap + 3.5) : Math.max(16, wrapped.length * lineGap + 6);
     w.ensure(height + 4, () => drawTableHeader(w));
     const top = w.y + 6;
     const mid = top - height / 2 - 3;
-    cellText(w, 0, String(i + 1), mid, { size: 8.5 });
+    cellText(w, 0, String(i + 1), mid, { size: font });
     if (line) {
-      wrapped.forEach((text, k) => w.text(text, cellX(1) + 4, { y: top - 13 - k * 11, size: 8.5, bold: true }));
+      wrapped.forEach((text, k) => w.text(text, cellX(1) + 4, { y: top - (dense ? 9 : 11) - k * lineGap, size: font, bold: true }));
       cellText(w, 2, line.unit, mid);
       cellText(w, 3, String(line.quantity), mid);
       cellText(w, 4, amountText(line.price), mid);
@@ -302,7 +308,7 @@ function drawLines(w: Writer, data: InvoicePdfData, recap: InvoiceRecap): void {
     }
     w.y -= height;
   }
-  w.y -= 14;
+  w.y -= dense ? 6 : 10;
 }
 
 /**
@@ -368,28 +374,28 @@ function drawNoteAndRecap(w: Writer, data: InvoicePdfData, recap: InvoiceRecap):
     // nothing is paid on a credit note
     isCreditNote ? '' : `Uplatu izvršiti na TRN: ${institution.bankName} -> ${institution.bankAccount.replace(/\s+/g, '')}`,
   ].filter(Boolean);
-  const noteLines = noteParagraphs.flatMap((p) => wrapText(p, w.regular, 8, noteWidth - 16));
+  const noteLines = noteParagraphs.flatMap((p) => wrapText(p, w.regular, 7.5, noteWidth - 16));
   const recapRows = recapitulationRows(recap, invoice, data.detail.creditNotes);
   // the sample's 19 pt rows; rows for credit notes are tighter so the slip stays on the first page
-  const rowHeight = recapRows.length > 5 ? 15 : 19;
-  const height = Math.max(noteLines.length * 10.5 + 30, recapRows.length * rowHeight);
+  const rowHeight = recapRows.length > 5 ? 14 : 16;
+  const height = Math.max(noteLines.length * 9.5 + 24, recapRows.length * rowHeight);
   w.ensure(height + 60);
   const top = w.y + 6;
 
   w.page.drawRectangle({ x: MARGIN, y: top - height, width: noteWidth, height, color: rgb(0.97, 0.98, 0.99), borderColor: RULE, borderWidth: 0.7 });
   // the heading names the PDV exemption only when the institution has its PDV sentence (IDSS: open, SPEC)
-  w.text(pdvNote ? 'Napomena o oslobađanju od PDV-a:' : 'Napomena:', MARGIN + 8, { y: top - 14, size: 8, bold: true });
-  noteLines.forEach((line, i) => w.text(line, MARGIN + 8, { y: top - 28 - i * 10.5, size: 8, color: MUTED }));
+  w.text(pdvNote ? 'Napomena o oslobađanju od PDV-a:' : 'Napomena:', MARGIN + 8, { y: top - 12, size: 8, bold: true });
+  noteLines.forEach((line, i) => w.text(line, MARGIN + 8, { y: top - 24 - i * 9.5, size: 7.5, color: MUTED }));
 
   recapRows.forEach(([label, value, total], i) => {
     const y = top - i * rowHeight;
     w.page.drawRectangle({ x: recapX, y: y - rowHeight, width: recapWidth, height: rowHeight, color: total ? DARK : WHITE, borderColor: RULE, borderWidth: 0.6 });
     w.page.drawLine({ start: { x: recapX + recapWidth * 0.62, y }, end: { x: recapX + recapWidth * 0.62, y: y - rowHeight }, thickness: 0.6, color: RULE });
     const color = total ? WHITE : INK;
-    w.text(label, recapX + 6, { y: y - rowHeight + 6, size: total ? 9 : 8.5, bold: total, color });
-    w.rightText(formatKM(value), recapX + recapWidth - 6, { y: y - rowHeight + 6, size: total ? 9.5 : 8.5, bold: total, color });
+    w.text(label, recapX + 6, { y: y - rowHeight + 4.5, size: total ? 9 : 8.5, bold: total, color });
+    w.rightText(formatKM(value), recapX + recapWidth - 6, { y: y - rowHeight + 4.5, size: total ? 9.5 : 8.5, bold: total, color });
   });
-  w.y = top - height - 14;
+  w.y = top - height - 12;
 
   // Payments are never printed: the invoice is the demand the parent receives before paying, and it reads the same
   // whenever it is printed or sent (Director, 2026-11-21). Payment status lives in the register and the invoice detail.

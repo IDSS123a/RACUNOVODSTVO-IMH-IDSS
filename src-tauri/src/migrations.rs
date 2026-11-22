@@ -20,6 +20,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (11, include_str!("../migrations/011_credit_note_line_position.sql")),
     (12, include_str!("../migrations/012_imh_pdv_note.sql")),
     (13, include_str!("../migrations/013_invoice_line_quantity.sql")),
+    (14, include_str!("../migrations/014_invoice_line_unit_free.sql")),
 ];
 
 /// Latest schema version this build understands.
@@ -338,7 +339,52 @@ mod tests {
         assert_eq!(detail.lines[0].amount, 71000);
         assert!(conn.execute("UPDATE invoice_lines SET quantity = 0 WHERE id = 'i-1'", []).is_err());
         assert!(conn.execute("UPDATE invoice_lines SET quantity = 1000 WHERE id = 'i-1'", []).is_err());
-        assert!(conn.execute("UPDATE invoice_lines SET unit = 'kg' WHERE id = 'i-1'", []).is_err());
+        // since 014 any short unit is accepted (Director, 2026-11-22); empty, padded, digits or too long are not
+        assert!(conn.execute("UPDATE invoice_lines SET unit = 'sedm.' WHERE id = 'i-1'", []).is_ok());
+        for bad in ["", " srv", "12", "sedmicaaaaa"] {
+            assert!(conn.execute("UPDATE invoice_lines SET unit = ?1 WHERE id = 'i-1'", [bad]).is_err(), "{bad:?}");
+        }
+    }
+
+    /// 014: rebuilding the line table keeps every column of every existing line, including credit-note positions,
+    /// quantities and units, and the foreign keys still hold.
+    #[test]
+    fn migration_014_keeps_every_line_unchanged() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v <= 13) {
+            let tx = conn.transaction().unwrap();
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", version).unwrap();
+            tx.commit().unwrap();
+        }
+        conn.execute_batch(
+            "INSERT INTO families(id, display_name, created_at) VALUES ('f', 'T', 'x');
+             INSERT INTO invoices(id, number, entity, kind, family_id, buyer_name, issue_date, due_date, period_from, period_to,
+                                  total_fenings, status, created_at)
+               VALUES ('i', 'IMH-001/26', 'IMH', 'OTHER', 'f', 'B', '2026-10-01', '2026-10-05', '2026-10-01', '2026-10-31', 45150, 'ISSUED', 'x');
+             INSERT INTO invoice_lines(id, invoice_id, position, item_code, description, list_amount, amount, quantity, unit, credits_position)
+               VALUES ('i-1', 'i', 1, 'OTHER', 'Ljetna škola', 45150, 45150, 3, 'srv', NULL),
+                      ('i-2', 'i', 2, 'OTHER', 'Materijal', 0, 0, 1, 'kom', 1);",
+        )
+        .unwrap();
+        let before: Vec<(String, i64, Option<String>, Option<i64>, i64)> = conn
+            .prepare("SELECT id, quantity, unit, credits_position, amount FROM invoice_lines ORDER BY id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        apply(&mut conn).unwrap();
+        assert_eq!(current_version(&conn).unwrap(), latest_version());
+        let after: Vec<(String, i64, Option<String>, Option<i64>, i64)> = conn
+            .prepare("SELECT id, quantity, unit, credits_position, amount FROM invoice_lines ORDER BY id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(before, after);
+        assert!(conn.execute("INSERT INTO invoice_lines(id, invoice_id, position, item_code, description, list_amount, amount) VALUES ('x', 'missing', 1, 'OTHER', 'x', 1, 1)", []).is_err());
     }
 
     #[test]

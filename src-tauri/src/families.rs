@@ -197,6 +197,12 @@ pub fn save_family(tx: &Transaction, family: &Family, guardians: &[Guardian]) ->
     if guardians.iter().any(|g| g.family_id != family.id) {
         return Err(AppError::Validation("roditelj pripada drugoj porodici".into()));
     }
+    // canonical formats, checked again on save (DL-P017); empty stays allowed
+    for g in guardians {
+        crate::formats::check_phone(&g.phone, "telefon roditelja")?;
+        crate::formats::check_email(&g.email, "e-mail roditelja")?;
+        crate::formats::check_iban(&g.iban, "IBAN roditelja")?;
+    }
     tx.execute(
         "INSERT INTO families(id, display_name, address, created_at) VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT(id) DO UPDATE SET display_name = excluded.display_name, address = excluded.address",
@@ -260,14 +266,66 @@ fn count(tx: &Transaction, sql: &str, id: &str) -> AppResult<i64> {
     Ok(tx.query_row(sql, params![id], |r| r.get(0))?)
 }
 
-/// Delete a child only when nothing references it (A-10: pre-check blockers, never cascade).
+/// The number of an issued invoice that bills this child or enrolment, if any. Accounting records are never deleted:
+/// a billed child is withdrawn instead (BR-13–BR-15).
+fn first_invoice_of(tx: &Transaction, child_id: Option<&str>, enrolment_id: Option<&str>) -> AppResult<Option<String>> {
+    Ok(tx
+        .query_row(
+            "SELECT i.number FROM invoices i
+             WHERE (?1 IS NOT NULL AND i.child_id = ?1)
+                OR i.id IN (SELECT l.invoice_id FROM invoice_lines l
+                            WHERE (?1 IS NOT NULL AND l.child_id = ?1) OR (?2 IS NOT NULL AND l.enrolment_id = ?2))
+             ORDER BY i.issue_date LIMIT 1",
+            params![child_id, enrolment_id],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
+/// Delete an enrolment entered by mistake (Director, 2026-11-21: deleting an entered item must work), whatever its
+/// status, as long as it was never invoiced. Its payment plans (no instalment invoiced) and breakfast go with it.
+pub fn delete_enrolment(tx: &Transaction, enrolment_id: &str) -> AppResult<()> {
+    if count(tx, "SELECT count(*) FROM enrolments WHERE id = ?1", enrolment_id)? == 0 {
+        return Err(AppError::NotFound("upis ne postoji".into()));
+    }
+    if let Some(number) = first_invoice_of(tx, None, Some(enrolment_id))? {
+        return Err(AppError::Conflict(format!("upis je već fakturisan (račun {number}) — ne briše se, koristite ispis djeteta")));
+    }
+    let invoiced_plan = count(
+        tx,
+        "SELECT count(*) FROM payment_plan_items i JOIN payment_plans p ON p.id = i.plan_id
+         WHERE p.enrolment_id = ?1 AND i.invoice_id IS NOT NULL",
+        enrolment_id,
+    )?;
+    if invoiced_plan > 0 {
+        return Err(AppError::Conflict("plan plaćanja ovog upisa ima fakturisane rate — ne briše se, koristite ispis".into()));
+    }
+    tx.execute(
+        "DELETE FROM payment_plan_items WHERE plan_id IN (SELECT id FROM payment_plans WHERE enrolment_id = ?1)",
+        params![enrolment_id],
+    )?;
+    tx.execute("DELETE FROM payment_plans WHERE enrolment_id = ?1", params![enrolment_id])?;
+    tx.execute("DELETE FROM enrolment_breakfast WHERE enrolment_id = ?1", params![enrolment_id])?;
+    tx.execute("DELETE FROM enrolments WHERE id = ?1", params![enrolment_id])?;
+    Ok(())
+}
+
+/// Delete a child entered by mistake, with its never-invoiced enrolments, in one transaction.
+/// A child with an invoice or a board decision is never deleted.
 pub fn delete_child(tx: &Transaction, child_id: &str) -> AppResult<()> {
-    let enrolments = count(tx, "SELECT count(*) FROM enrolments WHERE child_id = ?1", child_id)?;
+    if let Some(number) = first_invoice_of(tx, Some(child_id), None)? {
+        return Err(AppError::Conflict(format!("dijete ima račun ({number}) — ne briše se, koristite ispis")));
+    }
     let decisions = count(tx, "SELECT count(*) FROM board_decisions WHERE child_id = ?1", child_id)?;
-    if enrolments + decisions > 0 {
-        return Err(AppError::Conflict(format!(
-            "dijete ima {enrolments} upis(a) i {decisions} odluk(a) odbora — prvo ih uklonite ili ispišite dijete"
-        )));
+    if decisions > 0 {
+        return Err(AppError::Conflict(format!("dijete ima {decisions} odluk(a) odbora — ne briše se")));
+    }
+    let enrolments: Vec<String> = tx
+        .prepare("SELECT id FROM enrolments WHERE child_id = ?1")?
+        .query_map(params![child_id], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    for enrolment in &enrolments {
+        delete_enrolment(tx, enrolment)?;
     }
     let affected = tx.execute("DELETE FROM children WHERE id = ?1", params![child_id])?;
     if affected != 1 {
@@ -276,26 +334,20 @@ pub fn delete_child(tx: &Transaction, child_id: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// Delete an enrolment only while it is still awaiting enrolment payments; otherwise it must be withdrawn.
-pub fn delete_enrolment(tx: &Transaction, enrolment_id: &str) -> AppResult<()> {
-    let status: Option<String> = tx
-        .query_row("SELECT status FROM enrolments WHERE id = ?1", params![enrolment_id], |r| r.get(0))
-        .optional()?;
-    match status.as_deref() {
-        None => Err(AppError::NotFound("upis ne postoji".into())),
-        Some("AWAITING_ENROLMENT_PAYMENT") => {
-            tx.execute("DELETE FROM enrolments WHERE id = ?1", params![enrolment_id])?;
-            Ok(())
-        }
-        Some(_) => Err(AppError::Conflict("aktivan upis se ne briše — koristite ispis".into())),
-    }
-}
-
-/// Delete a family only when it has no children.
+/// Delete a family entered by mistake, with its children and guardians, when none of it was ever invoiced.
 pub fn delete_family(tx: &Transaction, family_id: &str) -> AppResult<()> {
-    let children = count(tx, "SELECT count(*) FROM children WHERE family_id = ?1", family_id)?;
-    if children > 0 {
-        return Err(AppError::Conflict(format!("porodica ima {children} djece — prvo obrišite djecu")));
+    let invoiced: Option<String> = tx
+        .query_row("SELECT number FROM invoices WHERE family_id = ?1 LIMIT 1", params![family_id], |r| r.get(0))
+        .optional()?;
+    if let Some(number) = invoiced {
+        return Err(AppError::Conflict(format!("porodica ima račune ({number}) — ne briše se")));
+    }
+    let children: Vec<String> = tx
+        .prepare("SELECT id FROM children WHERE family_id = ?1")?
+        .query_map(params![family_id], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    for child in &children {
+        delete_child(tx, child)?;
     }
     tx.execute("DELETE FROM guardians WHERE family_id = ?1", params![family_id])?;
     let affected = tx.execute("DELETE FROM families WHERE id = ?1", params![family_id])?;
@@ -326,7 +378,7 @@ mod tests {
             role: "MOTHER".into(),
             email: "".into(),
             phone: "".into(),
-            iban: "BA391990490058487943".into(),
+            iban: "BA39 1990 4900 5848 7943".into(),
             is_payer: payer,
         }
     }
@@ -406,13 +458,31 @@ mod tests {
         save_family(&tx, &family(), &[guardian("g1", true)]).unwrap();
         save_child(&tx, &child("c1")).unwrap();
         save_enrolment(&tx, &enrolment("e1", "TODDLERS", "ACTIVE")).unwrap();
-        assert!(matches!(delete_family(&tx, F), Err(AppError::Conflict(_))));
-        assert!(matches!(delete_child(&tx, "c1"), Err(AppError::Conflict(_))));
-        assert!(matches!(delete_enrolment(&tx, "e1"), Err(AppError::Conflict(_))));
-        save_enrolment(&tx, &enrolment("e1", "TODDLERS", "AWAITING_ENROLMENT_PAYMENT")).unwrap();
+        // Director 2026-11-21: an ACTIVE enrolment entered by mistake and never invoiced can be deleted
         delete_enrolment(&tx, "e1").unwrap();
-        delete_child(&tx, "c1").unwrap();
+        save_enrolment(&tx, &enrolment("e1", "TODDLERS", "ACTIVE")).unwrap();
+        // a whole family entered by mistake goes in one step (children, enrolments, guardians)
         delete_family(&tx, F).unwrap();
         assert!(matches!(delete_family(&tx, F), Err(AppError::NotFound(_))));
+        assert!(matches!(delete_enrolment(&tx, "e1"), Err(AppError::NotFound(_))));
+
+        // once invoiced, nothing of it can be deleted
+        save_family(&tx, &family(), &[guardian("g1", true)]).unwrap();
+        save_child(&tx, &child("c1")).unwrap();
+        save_enrolment(&tx, &enrolment("e1", "TODDLERS", "ACTIVE")).unwrap();
+        tx.execute_batch(&format!(
+            "INSERT INTO invoices(id, number, entity, kind, family_id, child_id, buyer_name, issue_date, due_date, period_from,
+                                  period_to, total_fenings, status, created_at)
+               VALUES ('i1', 'IMH-001/26', 'IMH', 'MONTHLY', '{F}', 'c1', 'B', '2026-10-01', '2026-10-05', '2026-10-01',
+                       '2026-10-31', 100, 'ISSUED', 'x');
+             INSERT INTO invoice_lines(id, invoice_id, position, item_code, description, child_id, enrolment_id, program,
+                                       list_amount, amount)
+               VALUES ('i1-1', 'i1', 1, 'TUITION', 'x', 'c1', 'e1', 'TODDLERS', 100, 100);"
+        ))
+        .unwrap();
+        for result in [delete_enrolment(&tx, "e1"), delete_child(&tx, "c1"), delete_family(&tx, F)] {
+            let error = result.unwrap_err();
+            assert!(matches!(error, AppError::Conflict(_)) && error.to_string().contains("IMH-001/26"), "{error}");
+        }
     }
 }

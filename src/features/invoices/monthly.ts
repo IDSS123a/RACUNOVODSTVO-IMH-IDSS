@@ -2,7 +2,7 @@ import { sum, type Fenings } from '@/features/billing/money';
 import { PricingError } from '@/features/billing/pricing';
 import { ACTIVE_STATUSES } from '@/features/families/domain';
 import type { Enrolment, FamilyDetail } from '@/features/families/types';
-import { PROGRAM_ENTITY, type PriceListItem } from '@/features/price-lists/types';
+import { PROGRAM_ENTITY, type LegalEntityCode, type PriceListItem } from '@/features/price-lists/types';
 import { dueDateForMonth, InvoiceError, monthBounds, schoolYearOfMonth } from './domain';
 import { buildEnrolmentFeeInvoice } from './enrolment-fees';
 import type { ManualUnit } from './manual';
@@ -32,7 +32,7 @@ export interface PreviewLine {
 
 export interface PreviewInvoice {
   readonly key: string;
-  readonly kind: 'MONTHLY' | 'INSTALMENT';
+  readonly kind: 'MONTHLY' | 'INSTALMENT' | 'ENROLMENT_FEES';
   /** Header of the draft; lines and total come from `lines`. */
   readonly header: Omit<InvoiceDraft, 'lines' | 'total'>;
   readonly lines: ReadonlyArray<PreviewLine>;
@@ -122,9 +122,9 @@ export function familyPreview(
   billed: ReadonlyArray<BilledOneTime>,
   month: BillingMonth,
   issueDate: string,
-): { previews: PreviewInvoice[]; problems: string[] } {
+): { previews: PreviewInvoice[]; problems: Array<{ entity: LegalEntityCode; text: string }> } {
   const previews: PreviewInvoice[] = [];
-  const problems: string[] = [];
+  const problems: Array<{ entity: LegalEntityCode; text: string }> = [];
   const toPreview = (draft: InvoiceDraft, kind: PreviewInvoice['kind'], planItems: ReadonlyArray<PlanItemRef>): PreviewInvoice => {
     const { lines } = draft;
     const header: PreviewInvoice['header'] = {
@@ -164,7 +164,7 @@ export function familyPreview(
       extra = oneTimeLines(detail, priceItems, plans, enrolment, billed, issueDate);
     } catch (error: unknown) {
       if (error instanceof InvoiceError || error instanceof PricingError) {
-        problems.push(`${child.firstName} ${child.lastName}: jednokratni troškovi — ${error.message}`);
+        problems.push({ entity, text: `${child.firstName} ${child.lastName}: jednokratni troškovi — ${error.message}` });
         continue;
       }
       throw error;

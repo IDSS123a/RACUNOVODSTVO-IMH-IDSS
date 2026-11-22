@@ -23,7 +23,7 @@ export interface InvoiceLine {
   /** Whole quantity 1–999; omitted = 1. `amount = quantity × unit price` (migration 013). */
   readonly quantity?: number;
   /** Unit of measure when entered; omitted = derived from the item code. */
-  readonly unit?: 'kom' | 'srv';
+  readonly unit?: string;
 }
 
 /** An invoice before it gets a number — one per child, entity and month (BR-27). */

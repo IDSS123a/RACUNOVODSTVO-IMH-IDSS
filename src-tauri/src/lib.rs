@@ -9,6 +9,7 @@ mod credit_notes;
 mod crypto;
 mod error;
 mod families;
+mod formats;
 mod findings;
 mod invoices;
 mod keystore;
@@ -59,6 +60,7 @@ pub fn run() {
             commands::list_enrolment_overview,
             commands::list_audit_log,
             commands::list_billed_one_time,
+            commands::list_billed_services,
             commands::save_family,
             commands::save_child,
             commands::save_enrolment,

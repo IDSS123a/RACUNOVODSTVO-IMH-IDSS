@@ -57,23 +57,12 @@ describe('manual invoice (F2)', () => {
     expect(InvoiceDraftSchema.safeParse({ ...r.draft, id: id(99), kind: 'OTHER', lines: [...r.draft.lines], planItems: [] }).success).toBe(true);
   });
 
-  it('Director 2026-11-21: never for a child regularly enrolled in that institution — its extras go on the monthly invoice', () => {
-    const errors = errorsOf(buildManualInvoice(family(), input({ entity: 'IDSS', childId: IDSS_CHILD, month: '2027-02' })));
-    expect(errors).toEqual([
-      'Dijete je redovno upisano u IDSS (2026/2027) — dodatne usluge idu na njegov mjesečni račun („Mjesečni računi“ → „Dodaj uslugu van cjenovnika“).',
-    ]);
-    // the IDSS pupil may attend the IMH summer school: it is not enrolled in IMH
-    expect(buildManualInvoice(family(), input({ entity: 'IMH', childId: IDSS_CHILD })).ok).toBe(true);
-    // a child of the other institution's year: enrolled in IMH for 2026/2027 only
-    const imhPupil = family([enrolment(20, IMH_CHILD, 'TODDLERS')]);
-    expect(buildManualInvoice(imhPupil, input()).ok).toBe(false);
-    expect(buildManualInvoice(imhPupil, input({ month: '2027-09', issueDate: '2027-09-01', dueDate: '2027-09-05' })).ok).toBe(true);
-  });
-
-  it('school year of the month; a withdrawn enrolment is not a regular enrolment, a completed one is', () => {
+  it('Director 2026-11-21 (DEFINICIJA): other services may go to ANY child, enrolled or not, on their own invoice', () => {
+    const enrolledPupil = buildManualInvoice(family(), input({ entity: 'IDSS', childId: IDSS_CHILD, month: '2027-02' }));
+    expect(enrolledPupil.ok).toBe(true);
+    if (enrolledPupil.ok) expect(enrolledPupil.draft.lines.every((l) => l.enrolmentId === '' && l.program === '')).toBe(true);
+    expect(buildManualInvoice(family([enrolment(20, IMH_CHILD, 'TODDLERS')]), input()).ok).toBe(true);
     expect(buildManualInvoice(family([enrolment(20, IMH_CHILD, 'TODDLERS', 'WITHDRAWN')]), input()).ok).toBe(true);
-    expect(buildManualInvoice(family([enrolment(20, IMH_CHILD, 'TODDLERS', 'COMPLETED')]), input()).ok).toBe(false);
-    expect(buildManualInvoice(family([enrolment(20, IMH_CHILD, 'TODDLERS', 'ACTIVE', '2025/2026')]), input()).ok).toBe(true);
   });
 
   it('every required field has the document message (M5)', () => {
@@ -110,6 +99,9 @@ describe('manual invoice (F2)', () => {
     expect(countsAsMonthlyBilled({ ...base, kind: 'MONTHLY', source: 'APP' })).toBe(true);
     expect(countsAsMonthlyBilled({ ...base, kind: 'CREDIT_NOTE', source: 'APP' })).toBe(false);
     expect(countsAsMonthlyBilled({ ...base, kind: 'MONTHLY', source: 'APP', status: 'CANCELLED' })).toBe(false);
+    expect(countsAsMonthlyBilled({ ...base, kind: 'INSTALMENT', source: 'APP' })).toBe(true);
+    // an enrolment invoice (period = the school year, starting in September) never stops the September invoice
+    expect(countsAsMonthlyBilled({ ...base, kind: 'ENROLMENT_FEES', source: 'APP' })).toBe(false);
   });
 
   it('parsing: bs-BA and plain notation, thousands separators, never floating point', () => {
@@ -137,5 +129,13 @@ describe('manual invoice (F2)', () => {
       expect([r.draft.total, recap.total, recap.salesValue]).toEqual([expected, expected, expected]);
       expect(recap.lines.every((l, i) => l.price === rows[i]?.f && l.quantity === rows[i]?.q)).toBe(true);
     }
+  });
+});
+
+describe('the same service is recognised however it is typed (Director, 2026-11-22)', () => {
+  it('serviceKey ignores case and spacing, like the backend', async () => {
+    const { serviceKey } = await import('./manual');
+    expect(serviceKey('  Ljetna   ŠKOLA 2026 — 1. sedmica ')).toBe(serviceKey('ljetna škola 2026 — 1. sedmica'));
+    expect(serviceKey('Ljetna škola 2026 — 1. sedmica')).not.toBe(serviceKey('Ljetna škola 2026 — 2. sedmica'));
   });
 });
