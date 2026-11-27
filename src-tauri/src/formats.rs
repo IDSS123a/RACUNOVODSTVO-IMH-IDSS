@@ -4,11 +4,21 @@
 
 use crate::error::{AppError, AppResult};
 
+/// A subscriber number of one repeated digit (e.g. „+387 61 111 111“) is a placeholder (SPEC registration-validation A8).
+fn is_placeholder_number(subscriber: &str) -> bool {
+    let mut chars = subscriber.chars().filter(char::is_ascii_digit);
+    match chars.next() {
+        Some(first) => chars.all(|c| c == first),
+        None => false,
+    }
+}
+
 /// „+387 33 562 114“, „+387 60 345 1275“ or a foreign E.164 number „+4917612345678“.
 pub fn is_canonical_phone(value: &str) -> bool {
     if let Some(national) = value.strip_prefix("+387 ") {
         let parts: Vec<&str> = national.split(' ').collect();
         return parts.len() == 3
+            && !is_placeholder_number(&format!("{}{}", parts[1], parts[2]))
             && parts[0].len() == 2
             && parts[1].len() == 3
             && (parts[2].len() == 3 || parts[2].len() == 4)
@@ -16,7 +26,33 @@ pub fn is_canonical_phone(value: &str) -> bool {
             && matches!(parts[0].as_bytes()[0], b'3'..=b'6');
     }
     let Some(digits) = value.strip_prefix('+') else { return false };
-    !digits.starts_with("387") && (8..=15).contains(&digits.len()) && digits.chars().all(|c| c.is_ascii_digit())
+    !digits.starts_with("387")
+        && (8..=15).contains(&digits.len())
+        && digits.chars().all(|c| c.is_ascii_digit())
+        && !is_placeholder_number(digits.get(3..).unwrap_or(""))
+}
+
+/// A person's name as saved: not empty, at most 80 characters, letters of any alphabet with their accents, space,
+/// hyphen, apostrophe and dot — no digits or other symbols (SPEC registration-validation A5; the forms normalize).
+pub fn is_plausible_name(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty()
+        && trimmed.chars().count() <= 80
+        && trimmed.chars().next().is_some_and(char::is_alphabetic)
+        && trimmed.chars().all(|c| c.is_alphabetic() || matches!(c, ' ' | '-' | '\'' | '.') || is_combining_mark(c))
+}
+
+/// Unicode combining marks (accents typed as a separate character).
+fn is_combining_mark(c: char) -> bool {
+    matches!(c as u32, 0x0300..=0x036F | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x20D0..=0x20FF | 0xFE20..=0xFE2F)
+}
+
+pub fn check_name(value: &str, what: &str) -> AppResult<()> {
+    if is_plausible_name(value) {
+        Ok(())
+    } else {
+        Err(AppError::Validation(format!("{what}: dozvoljena su samo slova (i razmak, crtica, apostrof), bez brojeva i simbola")))
+    }
 }
 
 /// Lower case, one „@“, a dot in the domain, no spaces.
@@ -73,6 +109,23 @@ mod tests {
         }
         for bad in ["033562114", "+387/33 562-114", "+387 33 5621 14", "+387 99 562 114", "+38733562114", "+49 176", ""] {
             assert!(!is_canonical_phone(bad), "{bad}");
+        }
+        // SPEC registration-validation A8: one repeated digit is a placeholder; a sequence is a real number
+        for placeholder in ["+387 61 111 111", "+387 33 000 000", "+49111111111111"] {
+            assert!(!is_canonical_phone(placeholder), "{placeholder}");
+        }
+        assert!(is_canonical_phone("+387 61 123 456"));
+    }
+
+    /// SPEC registration-validation A5: names of every alphabet; no digits or symbols.
+    #[test]
+    fn names() {
+        for ok in ["María", "Łukasz", "Şahin", "Müller", "Van der Berg", "O'Neil", "Đurđa Čolić-Šećić", "Jean-Pierre", "e\u{301}va"] {
+            assert!(is_plausible_name(ok), "{ok}");
+        }
+        let too_long = "A".repeat(81);
+        for bad in ["", "   ", "Amir123", "Beg!ović", "-Ana", "Ana <b>", too_long.as_str()] {
+            assert!(!is_plausible_name(bad), "{bad}");
         }
     }
 

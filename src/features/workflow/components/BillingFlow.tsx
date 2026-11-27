@@ -18,6 +18,7 @@ import { PreviewInvoiceTable } from '@/features/invoices/components/PreviewInvoi
 import { monthLabel, schoolYearOfMonth } from '@/features/invoices/domain';
 import { finalDrafts, previewProblem, previewTotal, type PreviewInvoice } from '@/features/invoices/monthly';
 import { amountDue } from '@/features/invoices/pdf';
+import { matchesQuery } from '@/features/invoices/search';
 import type { PeriodFilter } from '@/features/invoices/pdf-actions';
 import type { BillingMonth } from '@/features/invoices/types';
 import type { LegalEntityCode } from '@/features/price-lists/types';
@@ -289,13 +290,21 @@ function CollectionStep({ entity, month, onChanged }: { entity: LegalEntityCode;
   const [refresh, setRefresh] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
   const [pdfId, setPdfId] = useState<string | null>(null);
-  const filter: PeriodFilter = onlyMonth
+  // search finds ANY invoice of the institution — paid, open or stornoed — so a payment or a storno can be made on it
+  // (Director, 2026-11-27: „Kako da ovo pronađem u app?“)
+  const [query, setQuery] = useState('');
+  const searching = query.trim() !== '';
+  const filter: PeriodFilter = onlyMonth && !searching
     ? { from: '', to: '', entity, billingMonth: month }
     : { from: '2000-01-01', to: '2999-12-31', entity };
   const { invoices, error } = useStepInvoices(filter, refresh);
   const rows = (invoices ?? []).filter((i) => i.kind !== 'CREDIT_NOTE');
   const balances = rows.map((i) => ({ invoice: i, balance: invoiceBalance(i) }));
-  const shown = onlyMonth ? balances : balances.filter((b) => b.balance.open > 0);
+  const shown = searching
+    ? balances.filter((b) => matchesQuery(b.invoice, query)).sort((a, b) => b.invoice.issueDate.localeCompare(a.invoice.issueDate))
+    : onlyMonth
+      ? balances
+      : balances.filter((b) => b.balance.open > 0);
   const total = sum(balances.map((b) => b.balance.net));
   const paid = sum(balances.map((b) => Math.min(b.balance.paid, b.balance.net)));
   const open = sum(balances.map((b) => b.balance.open));
@@ -309,6 +318,18 @@ function CollectionStep({ entity, month, onChanged }: { entity: LegalEntityCode;
         <label className="flex items-center gap-2">
           <input type="radio" name="collection" checked={!onlyMonth} onChange={() => setOnlyMonth(false)} /> Sve neplaćene ({entity})
         </label>
+        <Input
+          aria-label="Traži račun"
+          placeholder="Traži račun: broj, dijete, roditelj (npr. 907/26)"
+          className="h-9 w-full sm:w-80"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        {searching && (
+          <span className="text-muted-foreground">
+            Pronađeno: <strong>{shown.length}</strong> (svi računi {entity}, plaćeni i neplaćeni)
+          </span>
+        )}
       </div>
       <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
         {[

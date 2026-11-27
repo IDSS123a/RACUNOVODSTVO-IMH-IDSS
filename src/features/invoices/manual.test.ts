@@ -119,7 +119,8 @@ describe('manual invoice (F2)', () => {
     for (let n = 0; n < 5_000; n += 1) {
       const rows = Array.from({ length: 1 + Math.floor(random() * 5) }, () => {
         const quantity = 1 + Math.floor(random() * 999);
-        const fenings = 1 + Math.floor(random() * 500_000);
+        // up to 20 KM × 999 × 5 rows stays within MAX_AMOUNT (100.000,00 KM)
+        const fenings = 1 + Math.floor(random() * 2_000);
         return { description: 'x', unit: 'srv' as const, quantity: String(quantity), unitPrice: `${Math.floor(fenings / 100)},${String(fenings % 100).padStart(2, '0')}`, q: quantity, f: fenings };
       });
       const r = buildManualInvoice(family(), input({ rows }));
@@ -137,5 +138,23 @@ describe('the same service is recognised however it is typed (Director, 2026-11-
     const { serviceKey } = await import('./manual');
     expect(serviceKey('  Ljetna   ŠKOLA 2026 — 1. sedmica ')).toBe(serviceKey('ljetna škola 2026 — 1. sedmica'));
     expect(serviceKey('Ljetna škola 2026 — 1. sedmica')).not.toBe(serviceKey('Ljetna škola 2026 — 2. sedmica'));
+  });
+});
+
+describe('no absurd amount (Director, 2026-11-27: an invoice of 10 trillion KM was issued — IMH-907/26)', () => {
+  it('a price, a line or an invoice above 100.000,00 KM is refused; 100.000,00 itself is fine', async () => {
+    const { parsePrice, rowTotal } = await import('./manual');
+    expect(parsePrice('100000000000')).toBeNull();
+    expect(parsePrice('100.000,01')).toBeNull();
+    expect(parsePrice('100.000,00')).toBe(10_000_000);
+    expect(rowTotal({ description: 'x', unit: 'srv', quantity: '2', unitPrice: '60.000,00' }).total).toBeNull();
+    expect(rowTotal({ description: 'x', unit: 'srv', quantity: '2', unitPrice: '500,00' }).total).toBe(100_000);
+  });
+
+  it('the amount in words still prints an invoice issued before the limit, and its credit note', async () => {
+    const { amountInWords } = await import('@/features/billing/amount-in-words');
+    expect(amountInWords(10_000_000_000_000_00)).toBe('deset biliona i 00/100 KM');
+    expect(amountInWords(2_001_000_000_00)).toBe('dvije milijarde jedan milion i 00/100 KM');
+    expect(amountInWords(68000)).toBe('šest stotina osamdeset i 00/100 KM');
   });
 });

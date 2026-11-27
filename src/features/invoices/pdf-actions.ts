@@ -13,7 +13,7 @@ import { call, type Result } from '@/lib/tauri/invoke';
 import { buildEml, chunkBySize, zipFiles } from './bundle';
 import { letterheadOf } from '@/features/settings/letterheads';
 import { renderInvoiceDocx } from './docx';
-import { amountDue, invoiceFileName, renderInvoicePdf, type InvoicePdfData, type PdfAssets } from './pdf';
+import { amountDue, invoiceFileName, remainderFigures, remainderNoticeFileName, renderInvoicePdf, renderRemainderNoticePdf, type InvoicePdfData, type PdfAssets } from './pdf';
 import { getInvoice, listInvoices, type InvoiceDetail, type InvoiceSummary } from './repository';
 
 /**
@@ -235,4 +235,25 @@ export async function openMailDrafts(filter: PeriodFilter, onProgress?: (done: n
     if (!opened.success) return opened;
   }
   return { success: true, data: groups.length };
+}
+
+/**
+ * „Obavijest o neplaćenom ostatku“ of an invoice that is not fully paid (Director, 2026-11-22): the invoice stays as
+ * issued; this separate notice states the payments and the remainder, with a slip for the remainder.
+ * @param dueDate the day by which the remainder is to be paid
+ */
+export async function buildRemainderNotice(invoiceId: string, issueDate: string, dueDate: string): Promise<Result<{ bytes: Uint8Array; fileName: string; number: string }>> {
+  const [detail, context] = await Promise.all([getInvoice(invoiceId), loadContext()]);
+  if (!detail.success) return detail;
+  if (!context.success) return context;
+  if (remainderFigures(detail.data).remainder <= 0) return fail(`račun ${detail.data.invoice.number} nema neplaćen ostatak`);
+  if (dueDate < issueDate) return fail('rok uplate ne može biti prije datuma obavijesti');
+  const data = await documentData(detail.data, context.data);
+  if (!data.success) return data;
+  try {
+    const bytes = await renderRemainderNoticePdf({ ...data.data, detail: detail.data }, { issueDate, dueDate }, assetsFor(detail.data.invoice.entity));
+    return { success: true, data: { bytes, fileName: remainderNoticeFileName(detail.data.invoice.number, detail.data.invoice.childName), number: detail.data.invoice.number } };
+  } catch (error: unknown) {
+    return fail(`obavijest za račun ${detail.data.invoice.number} nije napravljena: ${error instanceof Error ? error.message : String(error)}`, 'PDF');
+  }
 }

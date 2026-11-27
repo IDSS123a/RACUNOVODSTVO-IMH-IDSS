@@ -176,10 +176,17 @@ pub fn next_number(tx: &Transaction, entity: &str, issue_date: &str) -> AppResul
     Ok(format!("{entity}-{sequence:03}/{:02}", year % 100))
 }
 
+/// Highest amount of one line, one invoice or one payment, in fenings: 100.000,00 KM. An invoice of 10 trillion KM
+/// was issued from a mistyped price (Director, 2026-11-27); the forms check the same (`MAX_AMOUNT` in money.ts).
+pub const MAX_AMOUNT: i64 = 10_000_000;
+
 /// Issue an invoice: validate, number, insert header and lines. Returns the assigned number.
 pub fn issue_invoice(tx: &Transaction, draft: &InvoiceDraft) -> AppResult<String> {
     if draft.lines.is_empty() {
         return Err(AppError::Validation("račun mora imati barem jednu stavku".into()));
+    }
+    if draft.total > MAX_AMOUNT || draft.lines.iter().any(|l| l.amount.abs() > MAX_AMOUNT || l.list_amount.abs() > MAX_AMOUNT) {
+        return Err(AppError::Validation("iznos stavke ili računa je veći od 100.000,00 KM — provjerite cijenu".into()));
     }
     let line_sum: i64 = draft.lines.iter().map(|l| l.amount).sum();
     if line_sum != draft.total {
@@ -680,6 +687,9 @@ pub fn record_payment(tx: &Transaction, payment: &Payment) -> AppResult<()> {
     if payment.amount <= 0 {
         return Err(AppError::Validation("iznos uplate mora biti veći od nule".into()));
     }
+    if payment.amount > MAX_AMOUNT {
+        return Err(AppError::Validation("iznos uplate je veći od 100.000,00 KM — provjerite iznos".into()));
+    }
     tx.execute(
         "INSERT INTO payments(id, invoice_id, paid_on, amount, payer_name, reference, note, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -824,6 +834,32 @@ mod tests {
         let mut second = draft("i-oct-2", "2026-10", "2026-10-01", "INSTALMENT");
         second.lines[0].item_code = "BREAKFAST".into();
         assert!(matches!(issue_invoice(&tx, &second), Err(AppError::Conflict(_))));
+    }
+
+    /// Director, 2026-11-27: an invoice of 10 trillion KM was issued from a mistyped price. A line, an invoice or a
+    /// payment above 100.000,00 KM is refused; exactly 100.000,00 KM is fine.
+    #[test]
+    fn no_amount_above_one_hundred_thousand_km() {
+        let mut conn = db_with_family();
+        let tx = conn.transaction().unwrap();
+        let mut absurd = manual("m-absurd");
+        absurd.lines[0].quantity = 1;
+        absurd.lines[0].amount = 1_000_000_000_000_000;
+        absurd.lines[0].list_amount = 1_000_000_000_000_000;
+        absurd.total = 1_000_000_000_000_000;
+        assert!(matches!(issue_invoice(&tx, &absurd), Err(AppError::Validation(_))));
+        let mut limit = manual("m-limit");
+        limit.lines[0].quantity = 1;
+        limit.lines[0].amount = MAX_AMOUNT;
+        limit.lines[0].list_amount = MAX_AMOUNT;
+        limit.total = MAX_AMOUNT;
+        assert!(issue_invoice(&tx, &limit).is_ok());
+        let pay = |id: &str, amount: i64| Payment {
+            id: id.into(), invoice_id: "m-limit".into(), paid_on: "2027-09-02".into(), amount, payer_name: "Majka".into(),
+            reference: String::new(), note: String::new(), reversed_on: None, reversal_reason: None,
+        };
+        assert!(record_payment(&tx, &pay("p1", MAX_AMOUNT + 1)).is_err());
+        assert!(record_payment(&tx, &pay("p2", MAX_AMOUNT)).is_ok());
     }
 
     /// specs/manual-invoice: a manual invoice is numbered in its institution's series, keeps quantity, unit and basis.

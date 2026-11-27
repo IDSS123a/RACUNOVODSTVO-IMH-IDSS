@@ -126,6 +126,11 @@ Payments from any family member are booked against invoices, and the open balanc
 - ⏳ Every field: a template and the possibility to write it differently (2026-11-22, DL-P022, migration 014). Summer school covers one week or both, and the unit of measure is free. Waiting for the Director's check (C-13).
 - ✅ Fix (2026-11-22, L-S3-15, DL-P023): nothing is invoiced twice to the same child for the same period. This now covers other services and IDSS monthly invoices, which had no guard; the backend refuses it and the screens say it before creating. The Director checked it in the running app (C-13).
 - ✅ Fix (2026-11-22, L-S3-16, DL-P024): the invoice PDF fits on one page with the payment slip up to 12 lines (before: 4). The Director checked the samples (C-13).
+- ⚠️ Fix (2026-11-22, L-S3-17, DL-P025): a child's date of birth must fit the child (at most 16) and the program; checked on the screens and in the backend. Waiting for the Director to confirm the ranges (C-13).
+- ⏳ Notice of the unpaid remainder (2026-11-22, DL-P026): the invoice stays as issued; a separate PDF on the letterhead has a slip for the remainder. Waiting for the Director's check (C-13).
+- ⚠️ Fix (2026-11-27, L-S3-18, DL-P027): no price, line, invoice or payment above 100.000,00 KM; IMH-907/26 is to be stornoed.
+- ⏳ Registration validation step 1 (2026-11-27, `specs/registration-validation/`): A5–A8 done (DL-P028); A9 (Toddler / Preschooler group) next.
+- ⚠️ **Data-loss fix** (2026-11-27, L-S3-19, DL-P029): since 2026-11-21 the disk was one write behind after a restart, so the last change before closing was lost (development builds only; installer 0.3.0 is not affected). Fixed and tested; the Director checked it (C-13).
 - Next from the definition: „Ispravi fakturu“ in one step (M8); GDPR compliance review (M4).
 
 ## Still open before Sprint 03 closes

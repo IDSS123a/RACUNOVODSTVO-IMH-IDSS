@@ -133,3 +133,32 @@
 - **Lesson:**
   - When a rule changes the shape of documents (here: more lines per invoice), test the document at the new realistic maximum, not at the old typical size.
   - A layout with a fixed bottom block needs a test at its capacity limit.
+
+## L-S3-17 — „Every field is checked“ checked the format, not the meaning
+- **Trigger:** the Director, 2026-11-22: a kindergarten enrolment for a child born in 1998 was accepted.
+- **Cause:** DL-P017 checked that each value is well formed (a real date, not in the future). It never asked whether the value makes sense for this record: the age of a child, or the age for a program.
+- **Fix:** DL-P025 adds age limits for a child and per program, on the screens and in the backend.
+- **Lesson:**
+  - Validation has two layers: the form of a value, and its plausibility in context (child, program, school year).
+  - For every date or amount, ask „what range is possible here?“ and test the absurd value the Director would try first.
+
+## L-S3-18 — An invoice of 10 trillion KM could be issued
+- **Trigger:** the Director, 2026-11-27: „PDF računa IMH-907/26 nije napravljen: cannot spell 10000000000000“.
+- **Cause:**
+  - Every amount was checked for its form only.
+  - Nothing asked what amount is possible.
+  - The failure appeared only later, when the PDF spelled the amount, after the invoice was already issued and numbered.
+- **Fix:** DL-P027 limits every price, line, invoice and payment to 100.000,00 KM on the screens and in the backend, and the amount in words covers what was issued before.
+- **Lesson:** the same as L-S3-17, for money. Every amount needs a plausible range, enforced before a document is issued, and tested with the absurd value. A check that only runs when printing comes too late, because the document already exists.
+
+## L-S3-19 — The disk was one write behind after every restart
+- **Trigger:** the Director, 2026-11-27: an issued invoice (IMH-907/26) did not exist after the app had restarted.
+- **Cause:**
+  - The 2026-11-21 fix „disk before memory“ serialised the database inside the open transaction.
+  - That includes the change only for a fresh in-memory database, not for one loaded from disk.
+  - The test covered only the fresh case (first run), so a real-life path — every start after the first — was never tested.
+- **Fix (DL-P029):** commit first, then write; on a failed write, restore memory from the snapshot taken before; and a test that reopens the database between writes.
+- **Lesson:**
+  - A persistence test must cover the lifecycle the user lives: open, write, close, reopen, write, close, reopen.
+  - A fix for an unlikely failure (a disk write error) must not be accepted without checking the common path it changes.
+  - When a record „does not exist“, check the database before assuming a user mistake.

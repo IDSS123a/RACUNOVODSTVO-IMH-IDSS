@@ -19,9 +19,9 @@ export async function saveFamilyWithGuardians(family: Family, guardians: Guardia
   return saveFamily(family, guardians.map((guardian) => ({ ...guardian, iban: formatIban(guardian.iban) })));
 }
 
-/** Save an enrolment after checking it against the child's other enrolments. */
-export async function saveValidatedEnrolment(enrolment: Enrolment, siblingsOfChild: ReadonlyArray<Enrolment>): Promise<Result<null>> {
-  const problems = enrolmentProblems(enrolment, siblingsOfChild);
+/** Save an enrolment after checking it against the child's other enrolments and age. */
+export async function saveValidatedEnrolment(enrolment: Enrolment, siblingsOfChild: ReadonlyArray<Enrolment>, dateOfBirth: string | null = null): Promise<Result<null>> {
+  const problems = enrolmentProblems(enrolment, siblingsOfChild, dateOfBirth);
   if (problems.length > 0) return failure(problems);
   return saveEnrolment(enrolment);
 }

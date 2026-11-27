@@ -22,11 +22,22 @@ describe('documents on the institution letterhead', () => {
       expect(types).not.toContain('wordprocessingml.template.main+xml');
     });
 
-    it(`${code.toUpperCase()}: the bundled letterhead carries no person's name (BR-22)`, () => {
+    it(`${code.toUpperCase()}: the bundled letterhead carries no person's name in any part, images included (BR-22)`, () => {
       const files = unzipSync(letterhead(code));
       const core = strFromU8(files['docProps/core.xml'] ?? new Uint8Array());
       expect(core).toContain(`<dc:creator>${code.toUpperCase()}</dc:creator>`);
-      expect(core).not.toMatch(/Mulali/i);
+      // every author field of every part — Word properties AND the XMP metadata of embedded images (2026-11-27: the
+      // IDSS logo carried its author's name in <pdf:Author>) — names only the institution, or nothing
+      const AUTHOR = /<(?:dc:creator|cp:lastModifiedBy|pdf:Author|xmp:CreatorTool|photoshop:AuthorsPosition|dc:rights)[^>]*>([\s\S]*?)<\//g;
+      for (const [name, bytes] of Object.entries(files)) {
+        const text = strFromU8(bytes, true);
+        for (const match of text.matchAll(AUTHOR)) {
+          const value = (match[1] ?? '').replace(/<[^>]+>/g, '').trim();
+          expect(['', 'IMH', 'IDSS'], `${name}: ${match[0].slice(0, 20)}`).toContain(value);
+        }
+        // PNG text chunks (author, comments) are removed entirely
+        if (name.endsWith('.png')) for (const chunk of ['tEXt', 'iTXt', 'zTXt']) expect(text.includes(chunk), `${name} ${chunk}`).toBe(false);
+      }
     });
   }
 

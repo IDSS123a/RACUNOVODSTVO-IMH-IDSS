@@ -142,3 +142,26 @@ describe('Director feedback 2026-10-21', () => {
     expect(guardianProblems([mother1, father1, other, other2])).toEqual([]);
   });
 });
+
+describe('the age of the child must fit the program (Director, 2026-11-22: kindergarten for a child born in 1998)', () => {
+  it('refuses a kindergarten enrolment of a 28-year-old and of a 9-year-old, accepts a 3-year-old; school by its own range', async () => {
+    const { ageOn, enrolmentAgeProblem } = await import('./domain');
+    expect(ageOn('1998-01-01', '2026-09-01')).toBe(28);
+    expect(ageOn('2020-09-02', '2026-09-01')).toBe(5);
+    expect(enrolmentAgeProblem('PRESCHOOLERS', '1998-01-01', '2026-09-01')).toContain('28 god.');
+    expect(enrolmentAgeProblem('PRESCHOOLERS', '2017-03-01', '2026-09-01')).not.toBeNull();
+    expect(enrolmentAgeProblem('PRESCHOOLERS', '2023-03-01', '2026-09-01')).toBeNull();
+    expect(enrolmentAgeProblem('PRIMARY_1_4', '2020-03-01', '2026-09-01')).toBeNull();
+    expect(enrolmentAgeProblem('PRIMARY_1_4', '2023-03-01', '2026-09-01')).not.toBeNull();
+    expect(enrolmentAgeProblem('PRIMARY_5_9', '2014-03-01', '2026-09-01')).toBeNull();
+    // unknown date of birth (imported child): not judged here, it is asked in „Dopuna podataka o djeci“
+    expect(enrolmentAgeProblem('PRESCHOOLERS', null, '2026-09-01')).toBeNull();
+  });
+
+  it('the child form refuses a date of birth that would make the child older than 16', async () => {
+    const { ChildInputSchema } = await import('@/lib/validation/schemas');
+    const base = { id: '00000000-0000-4000-8000-000000000010', familyId: '00000000-0000-4000-8000-000000000001', firstName: 'Ana', lastName: 'Test', residency: 'DOMESTIC', citizenBih: true, residenceKs: true, importReview: false };
+    expect(ChildInputSchema.safeParse({ ...base, dateOfBirth: '1998-01-01' }).success).toBe(false);
+    expect(ChildInputSchema.safeParse({ ...base, dateOfBirth: '2022-05-10' }).success).toBe(true);
+  });
+});

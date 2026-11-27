@@ -49,6 +49,13 @@ export function divideRounded(numerator: number, denominator: number): number {
  * @param km e.g. "1.234,56", "1234.56" or 1234.56
  * @returns integer fenings
  */
+/**
+ * Highest amount of one line, one invoice or one payment: 100.000,00 KM (Director, 2026-11-27: an invoice of
+ * 10 trillion KM was issued from a mistyped price — „PDF računa IMH-907/26 nije napravljen“). No price, tuition or
+ * payment of the institutions comes near it; the backend checks the same (`MAX_AMOUNT` in invoices.rs).
+ */
+export const MAX_AMOUNT: Fenings = 10_000_000;
+
 export function kmToFenings(km: string | number): Fenings {
   const text = typeof km === 'number' ? km.toFixed(2) : normalizeDecimal(km);
   const match = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(text);

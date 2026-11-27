@@ -484,7 +484,8 @@ export const ChildInputSchema = ChildSchema.extend({
   firstName: nameField(),
   lastName: nameField(),
   dateOfBirth: pastDate('unesite stvarni datum rođenja (ne u budućnosti)')
-    .refine((d) => d >= '1990-01-01', 'datum rođenja je prije 1990. — provjerite')
+    // a child of the institutions is at most 16 (Director, 2026-11-22: a kindergarten child born in 1998 was accepted)
+    .refine((d) => d >= `${Number(today().slice(0, 4)) - 17}${today().slice(4)}`, 'dijete bi imalo više od 16 godina — provjerite datum rođenja')
     .nullable()
     .refine((d) => d !== null, 'unesite datum rođenja'),
 });

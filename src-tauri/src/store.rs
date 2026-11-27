@@ -115,21 +115,30 @@ impl Store {
         f(&inner.conn)
     }
 
-    /// Run a write in one transaction. The encrypted snapshot, which includes the changes of
-    /// the open transaction, is written to disk BEFORE the commit (DL-P004 amendment, 2026-11-21).
-    /// If the disk write fails, the transaction is rolled back: memory and disk stay equal, so an
-    /// invoice the operator was told failed does not exist and its number is not used.
+    /// Run a write in one transaction, then put it on disk before the caller hears it succeeded.
+    ///
+    /// DL-P029 (2026-11-27): the snapshot used to be serialised INSIDE the open transaction. For a database loaded
+    /// from disk (deserialised, every start but the first), SQLite serialises the committed pages only, so the
+    /// change being made was missing from the file: the disk was always one write behind, and the last change
+    /// before closing the app was lost (an issued invoice, IMH-907/26, was gone after a restart).
+    ///
+    /// Now: commit in memory, then write the snapshot of the committed state. If the disk write fails, memory is
+    /// put back to the state before this write, so memory and disk stay equal and the operator is told it failed
+    /// (DL-P004 amendment: an invoice reported as failed does not exist and its number is not used).
     pub fn write<T>(&self, f: impl FnOnce(&Transaction) -> AppResult<T>) -> AppResult<T> {
         let mut guard = self.lock()?;
         let inner = &mut *guard;
-        let tx = inner.conn.transaction()?;
-        let result = f(&tx)?; // an error drops `tx`, which rolls back
-        write_snapshot(&tx, &inner.key, &inner.db_path)?; // a failed write drops `tx` as well
-        if let Err(error) = tx.commit() {
-            // Practically impossible for an in-memory database; if it happens the disk is ahead of
-            // memory, so write the rolled-back state back to keep the two equal.
-            let _ = write_snapshot(&inner.conn, &inner.key, &inner.db_path);
-            return Err(error.into());
+        let before = inner.conn.serialize(MAIN_DB)?.to_vec();
+        let result = {
+            let tx = inner.conn.transaction()?;
+            let result = f(&tx)?; // an error drops `tx`, which rolls back
+            tx.commit()?;
+            result
+        };
+        if let Err(error) = write_snapshot(&inner.conn, &inner.key, &inner.db_path) {
+            // the change is not on disk: undo it in memory as well
+            inner.conn = connection_from(&before)?;
+            return Err(error);
         }
         Ok(result)
     }
@@ -198,8 +207,13 @@ impl Store {
 /// Decrypt a snapshot into a fresh in-memory connection.
 fn load_snapshot(key: &DataKey, file: &[u8]) -> AppResult<Connection> {
     let plain = crypto::decrypt(key, file)?;
+    connection_from(&plain)
+}
+
+/// A fresh in-memory connection holding a serialised (plain) database.
+fn connection_from(plain: &[u8]) -> AppResult<Connection> {
     let mut conn = Connection::open_in_memory()?;
-    conn.deserialize_read_exact(MAIN_DB, plain.as_slice(), plain.len(), false)?;
+    conn.deserialize_read_exact(MAIN_DB, plain, plain.len(), false)?;
     conn.execute_batch("PRAGMA foreign_keys = ON;")?;
     Ok(conn)
 }
@@ -209,7 +223,7 @@ fn persist(inner: &Inner) -> AppResult<()> {
     write_snapshot(&inner.conn, &inner.key, &inner.db_path)
 }
 
-/// Serialise `conn` (including the changes of an open transaction on it), encrypt, and replace the
+/// Serialise `conn` (its COMMITTED state — never call it inside an open transaction, DL-P029), encrypt, and replace the
 /// file atomically: write a temp file, flush it to the disk (`sync_all`, so a power cut cannot leave
 /// an empty file), keep the previous file as `.prev`, then rename over the database file.
 fn write_snapshot(conn: &Connection, key: &DataKey, db_path: &Path) -> AppResult<()> {
@@ -440,5 +454,42 @@ impl AppStore {
                 AppError::KeyStore(reason.clone())
             }
         })
+    }
+}
+
+#[cfg(all(test, windows))]
+mod last_write_survives {
+    use super::*;
+
+    fn count(store: &Store) -> i64 {
+        store.read(|c| Ok(c.query_row("SELECT count(*) FROM settings WHERE key LIKE 'w%'", [], |r| r.get(0))?)).unwrap()
+    }
+
+    fn put(store: &Store, key: &str) {
+        store
+            .write(|tx| {
+                tx.execute("INSERT INTO settings(key, value_json, updated_at) VALUES (?1, '1', 'now')", [key])?;
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    /// Director, 2026-11-27: an issued invoice (IMH-907/26) was gone after the app was restarted. The LAST write
+    /// before closing must be on disk — also after the database was once loaded from disk (deserialized).
+    #[test]
+    fn the_last_write_before_closing_is_on_disk_after_reopening() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let store = Store::open(dir.path()).unwrap(); // first run: a fresh in-memory database
+            put(&store, "w1");
+        }
+        {
+            let store = Store::open(dir.path()).unwrap(); // loaded from disk
+            assert_eq!(count(&store), 1);
+            put(&store, "w2");
+            put(&store, "w3"); // the last write before closing
+        }
+        let store = Store::open(dir.path()).unwrap();
+        assert_eq!(count(&store), 3, "the last write before closing was lost");
     }
 }
