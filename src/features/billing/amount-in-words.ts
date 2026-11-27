@@ -28,10 +28,28 @@ function belowThousand(n: number): string {
   return words.join(' ');
 }
 
-/** Whole number 0–999.999.999 in words. */
+/** Whole number 0–999.999.999.999.999 in words (milijarda, bilion above a million, in the same style). */
 export function integerInWords(n: number): string {
-  if (!Number.isInteger(n) || n < 0 || n > 999_999_999) throw new MoneyError(`cannot spell ${n}`);
+  if (!Number.isSafeInteger(n) || n < 0 || n > 999_999_999_999_999) throw new MoneyError(`cannot spell ${n}`);
   if (n === 0) return 'nula';
+  if (n > 999_999_999) {
+    // above the highest amount an invoice can have since 2026-11-27 (MAX_AMOUNT); kept so that an invoice issued
+    // before the limit, and its credit note, can still be printed
+    const trillions = Math.floor(n / 1_000_000_000_000);
+    const billions = Math.floor(n / 1_000_000_000) % 1000;
+    const below = n % 1_000_000_000;
+    const parts: string[] = [];
+    if (trillions > 0) parts.push(`${belowThousand(trillions)} ${trillions % 10 === 1 && trillions % 100 !== 11 ? 'bilion' : 'biliona'}`);
+    if (billions > 0) {
+      const last = billions % 10;
+      const lastTwo = billions % 100;
+      let text = belowThousand(billions);
+      if (last === 1 || last === 2) text = text.replace(/jedan$/, 'jedna').replace(/dva$/, 'dvije');
+      parts.push(`${text} ${lastTwo > 10 && lastTwo < 20 ? 'milijardi' : last === 1 ? 'milijarda' : last >= 2 && last <= 4 ? 'milijarde' : 'milijardi'}`);
+    }
+    if (below > 0) parts.push(integerInWords(below));
+    return parts.join(' ');
+  }
   const millions = Math.floor(n / 1_000_000);
   const thousands = Math.floor(n / 1000) % 1000;
   const rest = n % 1000;

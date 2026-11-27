@@ -431,10 +431,17 @@ function underline(w: Writer, x: number, y: number, width: number): void {
  * the invoice after its credit notes, independent of payments (DL-P013 amendment 2, replacing DL-P008 „what is still
  * open“); place/date of payment stay blank for the parent (DL-P008). The QR uses the assumed EPC/BAM format.
  */
-function drawPaymentSlip(w: Writer, data: InvoicePdfData): void {
+/** What the slip asks for when it is not the invoice itself (the remainder notice). */
+interface SlipOverride {
+  readonly amount: number;
+  readonly purpose: string;
+  readonly dueDate: string;
+}
+
+function drawPaymentSlip(w: Writer, data: InvoicePdfData, override?: SlipOverride): void {
   const { invoice } = data.detail;
   const { institution } = data;
-  const open = slipAmount(invoice);
+  const open = override ? override.amount : slipAmount(invoice);
   const top = SLIP_TOP;
   const bottom = SLIP.bottom;
   w.page.drawRectangle({ x: MARGIN, y: bottom, width: CONTENT_WIDTH, height: SLIP.height, borderColor: INK, borderWidth: 0.9 });
@@ -452,7 +459,7 @@ function drawPaymentSlip(w: Writer, data: InvoicePdfData): void {
   underline(w, lx, y - 25, lw);
   y -= 36;
   label(w, 'SVRHA DOZNAKE:', lx, y);
-  fit(`Račun ${invoice.number} · ${invoice.childName} · period ${formatDate(invoice.periodFrom)} – ${formatDate(invoice.periodTo)}`, 2).forEach((t, i) =>
+  fit(override?.purpose ?? `Račun ${invoice.number} · ${invoice.childName} · period ${formatDate(invoice.periodFrom)} – ${formatDate(invoice.periodTo)}`, 2).forEach((t, i) =>
     w.text(t, lx, { y: y - 11 - i * 10, size: 8.5 }),
   );
   underline(w, lx, y - 25, lw);
@@ -484,7 +491,7 @@ function drawPaymentSlip(w: Writer, data: InvoicePdfData): void {
   w.page.drawRectangle({ x: mx, y: my - 24, width: 80, height: 18, borderColor: INK, borderWidth: 0.9 });
   const amount = `= ${formatKM(open)}`;
   w.text(amount, mx + 40 - w.bold.widthOfTextAtSize(amount, 9.5) / 2, { y: my - 18, size: 9.5, bold: true });
-  w.text(`do ${formatDate(invoice.dueDate)}`, mx + 86, { y: my - 18, size: 8.5, bold: true });
+  w.text(`do ${formatDate(override?.dueDate ?? invoice.dueDate)}`, mx + 86, { y: my - 18, size: 8.5, bold: true });
   my -= 34;
   w.page.drawRectangle({ x: mx, y: my - 39, width: mw, height: 41, borderColor: MUTED, borderWidth: 0.5, borderDashArray: [2, 2] });
   w.text('Podaci za uplatu:', mx + 4, { y: my - 8, size: 6.5, bold: true, color: MUTED });
@@ -599,6 +606,121 @@ export async function renderInvoicePdf(data: InvoicePdfData, assets: PdfAssets):
   drawSignatures(w, data);
   drawFooters(doc, w, data);
   return doc.save();
+}
+
+/**
+ * „Obavijest o neplaćenom ostatku“ (Director, 2026-11-22): the issued invoice stays as it was issued (a legal document);
+ * what is still owed after a partial payment goes to the parent on this separate notice, on the institution's
+ * letterhead, with a payment slip for the remainder. It has no number and is not an accounting document.
+ */
+export interface RemainderNotice {
+  /** Day the notice is made; the balance is as of this day. */
+  readonly issueDate: string;
+  /** Day by which the remainder is to be paid. */
+  readonly dueDate: string;
+}
+
+/** The figures of the notice: amount due after credit notes, each payment that was not reversed, and what is left. */
+export function remainderFigures(detail: Pick<InvoiceDetail, 'invoice' | 'payments'>): { due: number; payments: Array<{ paidOn: string; amount: number }>; remainder: number } {
+  const due = amountDue(detail.invoice);
+  const payments = detail.payments.filter((p) => !p.reversedOn).map((p) => ({ paidOn: p.paidOn, amount: p.amount })).sort((a, b) => a.paidOn.localeCompare(b.paidOn));
+  const paid = payments.reduce((s, p) => s + p.amount, 0);
+  return { due, payments, remainder: Math.max(0, due - paid) };
+}
+
+/** Render the remainder notice of an issued invoice that is not fully paid. */
+export async function renderRemainderNoticePdf(data: InvoicePdfData & { readonly detail: { readonly payments: InvoiceDetail['payments'] } }, notice: RemainderNotice, assets: PdfAssets): Promise<Uint8Array> {
+  const { invoice } = data.detail;
+  if (invoice.entity !== data.institution.code) throw new Error('institution does not match the invoice entity');
+  const figures = remainderFigures({ invoice, payments: data.detail.payments });
+  if (invoice.kind === 'CREDIT_NOTE' || invoice.status === 'CANCELLED' || figures.remainder <= 0) throw new Error('račun nema neplaćen ostatak');
+  const partial = figures.payments.length > 0;
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const [regular, bold, logo] = await Promise.all([doc.embedFont(assets.regularFont), doc.embedFont(assets.boldFont), doc.embedPng(assets.logoPng)]);
+  const title = partial ? 'OBAVIJEST O NEPLAĆENOM OSTATKU' : 'OBAVIJEST O NEPLAĆENOM RAČUNU';
+  doc.setTitle(`${partial ? 'Obavijest o neplaćenom ostatku' : 'Obavijest o neplaćenom računu'} — ${invoice.number}`);
+  doc.setAuthor(data.institution.shortName);
+  doc.setSubject(`${invoice.buyerName} — ${invoice.childName}`);
+  doc.setCreator('Fakturisanje IMH & IDSS');
+  doc.setProducer('Fakturisanje IMH & IDSS (pdf-lib)');
+  doc.setLanguage('bs');
+
+  const w = new Writer(doc, regular, bold);
+  drawLetterhead(w, data.institution, logo);
+  w.text(title, MARGIN, { size: 15, bold: true });
+  w.rightText(`${ISSUE_PLACE}, ${formatDate(notice.issueDate)}`, PAGE.width - MARGIN, { size: 9 });
+  w.y -= 16;
+  w.text(`po računu br. ${invoice.number} od ${formatDate(invoice.issueDate)}`, MARGIN, { size: 10, bold: true });
+  w.y -= 22;
+
+  // buyer and invoice facts
+  const facts: Array<[string, string]> = [
+    ['Kupac:', invoice.buyerName],
+    ['Dijete:', invoice.childName || '—'],
+    ['Adresa:', invoice.buyerAddress || '—'],
+    ['Obračunski period:', `${formatDate(invoice.periodFrom)} do ${formatDate(invoice.periodTo)}`],
+    ['Rok plaćanja računa:', formatDate(invoice.dueDate)],
+  ];
+  const boxHeight = facts.length * 13 + 12;
+  w.page.drawRectangle({ x: MARGIN, y: w.y - boxHeight + 6, width: CONTENT_WIDTH, height: boxHeight, color: rgb(0.97, 0.98, 0.99), borderColor: RULE, borderWidth: 0.7 });
+  facts.forEach(([label, value], i) => {
+    const y = w.y - 8 - i * 13;
+    w.text(label, MARGIN + 10, { y, size: 9, color: MUTED });
+    w.text(wrapText(value, w.bold, 9.5, CONTENT_WIDTH - 140)[0] ?? '', MARGIN + 130, { y, size: 9.5, bold: true });
+  });
+  w.y -= boxHeight + 12;
+
+  // figures: amount of the invoice, each payment, the remainder
+  const rows: Array<[string, number, boolean]> = [
+    ['Iznos računa (za uplatu):', figures.due, false],
+    ...figures.payments.map((p): [string, number, boolean] => [`Uplata od ${formatDate(p.paidOn)}:`, -p.amount, false]),
+    [partial ? 'OSTATAK ZA UPLATU:' : 'ZA UPLATU:', figures.remainder, true],
+  ];
+  const rowHeight = 17;
+  const tableX = MARGIN + CONTENT_WIDTH * 0.35;
+  const tableWidth = CONTENT_WIDTH * 0.65;
+  rows.forEach(([label, value, total], i) => {
+    const y = w.y + 6 - i * rowHeight;
+    w.page.drawRectangle({ x: tableX, y: y - rowHeight, width: tableWidth, height: rowHeight, color: total ? DARK : WHITE, borderColor: RULE, borderWidth: 0.6 });
+    const color = total ? WHITE : INK;
+    w.text(label, tableX + 8, { y: y - rowHeight + 5, size: total ? 9.5 : 9, bold: total, color });
+    w.rightText(formatKM(value), tableX + tableWidth - 8, { y: y - rowHeight + 5, size: total ? 10 : 9, bold: total, color });
+  });
+  w.y -= rows.length * rowHeight + 14;
+  w.text(`Slovima: ${amountInWords(figures.remainder)}`, MARGIN, { size: 9, bold: true });
+  w.y -= 22;
+
+  const text = [
+    'Poštovani,',
+    partial
+      ? `prema našoj evidenciji na dan ${formatDate(notice.issueDate)} po računu br. ${invoice.number} uplaćeno je ${formatKM(figures.due - figures.remainder)}, a neplaćen je ostatak od ${formatKM(figures.remainder)}.`
+      : `prema našoj evidenciji na dan ${formatDate(notice.issueDate)} račun br. ${invoice.number} na iznos od ${formatKM(figures.due)} nije plaćen.`,
+    `Molimo Vas da iznos od ${formatKM(figures.remainder)} uplatite do ${formatDate(notice.dueDate)} na račun ${data.institution.bankAccount} (${data.institution.bankName}), uz svrhu navedenu na uplatnici ispod.`,
+    'Ako ste uplatu u međuvremenu izvršili, molimo Vas da ovu obavijest smatrate bespredmetnom. Zahvaljujemo.',
+  ];
+  for (const paragraph of text) {
+    for (const line of wrapText(paragraph, w.regular, 9, CONTENT_WIDTH)) {
+      w.text(line, MARGIN, { size: 9 });
+      w.y -= 12;
+    }
+    w.y -= 4;
+  }
+
+  reserveBottom(w, true);
+  drawPaymentSlip(w, data, {
+    amount: figures.remainder,
+    purpose: `${partial ? 'Ostatak po računu' : 'Račun'} ${invoice.number} · ${invoice.childName}`,
+    dueDate: notice.dueDate,
+  });
+  drawSignatures(w, data);
+  drawFooters(doc, w, data);
+  return doc.save();
+}
+
+/** File name of the remainder notice: „Obavijest_IMH-012-26_Ime_Prezime.pdf“. */
+export function remainderNoticeFileName(number: string, childName: string): string {
+  return `Obavijest_${invoiceFileName(number, childName)}`;
 }
 
 const TRANSLITERATION: Readonly<Record<string, string>> = { č: 'c', ć: 'c', đ: 'dj', š: 's', ž: 'z', Č: 'C', Ć: 'C', Đ: 'Dj', Š: 'S', Ž: 'Z' };

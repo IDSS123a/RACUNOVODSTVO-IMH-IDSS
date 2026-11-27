@@ -197,8 +197,10 @@ pub fn save_family(tx: &Transaction, family: &Family, guardians: &[Guardian]) ->
     if guardians.iter().any(|g| g.family_id != family.id) {
         return Err(AppError::Validation("roditelj pripada drugoj porodici".into()));
     }
+    crate::formats::check_name(&family.display_name, "naziv porodice")?;
     // canonical formats, checked again on save (DL-P017); empty stays allowed
     for g in guardians {
+        crate::formats::check_name(&g.full_name, "ime i prezime roditelja")?;
         crate::formats::check_phone(&g.phone, "telefon roditelja")?;
         crate::formats::check_email(&g.email, "e-mail roditelja")?;
         crate::formats::check_iban(&g.iban, "IBAN roditelja")?;
@@ -231,7 +233,41 @@ pub fn save_family(tx: &Transaction, family: &Family, guardians: &[Guardian]) ->
     Ok(())
 }
 
+/// Ages (completed years) a child may have on the first day of a program; the same table as `PROGRAM_AGE` in
+/// `src/features/families/domain.ts` (Director, 2026-11-22: a kindergarten child born in 1998 was accepted).
+fn program_age(program: &str) -> Option<(i32, i32)> {
+    match program {
+        "TODDLERS" | "PRESCHOOLERS" => Some((0, 6)),
+        "IDSS_PRESCHOOLERS" => Some((3, 6)),
+        "PRIMARY_1_4" => Some((5, 11)),
+        "PRIMARY_5_9" => Some((9, 16)),
+        _ => None,
+    }
+}
+
+/// Completed years between two ISO dates.
+fn age_on(date_of_birth: &str, date: &str) -> Option<i32> {
+    let year = |d: &str| d.get(0..4).and_then(|y| y.parse::<i32>().ok());
+    let (born, on) = (year(date_of_birth)?, year(date)?);
+    let years = on - born;
+    Some(if date.get(5..)? < date_of_birth.get(5..)? { years - 1 } else { years })
+}
+
+/// Oldest age of a child of the institutions on the day it is saved.
+const CHILD_MAX_AGE: i32 = 16;
+
 pub fn save_child(tx: &Transaction, c: &Child) -> AppResult<()> {
+    crate::formats::check_name(&c.first_name, "ime djeteta")?;
+    crate::formats::check_name(&c.last_name, "prezime djeteta")?;
+    if let Some(dob) = c.date_of_birth.as_deref() {
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        if dob > today.as_str() {
+            return Err(AppError::Validation("datum rođenja ne može biti u budućnosti".into()));
+        }
+        if age_on(dob, &today).is_some_and(|age| age > CHILD_MAX_AGE) {
+            return Err(AppError::Validation(format!("dijete bi imalo više od {CHILD_MAX_AGE} godina — provjerite datum rođenja")));
+        }
+    }
     let affected = tx.execute(
         "INSERT INTO children(id, family_id, first_name, last_name, date_of_birth, residency, citizen_bih, residence_ks, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
@@ -251,6 +287,19 @@ pub fn save_child(tx: &Transaction, c: &Child) -> AppResult<()> {
 }
 
 pub fn save_enrolment(tx: &Transaction, e: &Enrolment) -> AppResult<()> {
+    let dob: Option<String> = tx
+        .query_row("SELECT date_of_birth FROM children WHERE id = ?1", params![e.child_id], |r| r.get(0))
+        .optional()?
+        .flatten();
+    if let (Some(dob), Some((min, max))) = (dob.as_deref(), program_age(&e.program)) {
+        if let Some(age) = age_on(dob, &e.starts_on) {
+            if age < min || age > max {
+                return Err(AppError::Validation(format!(
+                    "dijete ima {age} god. na dan početka — za ovaj program dozvoljeno je {min}–{max} god.; provjerite datum rođenja ili program"
+                )));
+            }
+        }
+    }
     tx.execute(
         "INSERT INTO enrolments(id, child_id, program, school_year, starts_on, ends_on, status, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -374,7 +423,8 @@ mod tests {
         Guardian {
             id: id.into(),
             family_id: F.into(),
-            full_name: format!("Roditelj {id}"),
+            // a name of letters only (the backend refuses digits in a name, SPEC registration-validation A5)
+            full_name: format!("Roditelj {}", id.chars().map(|c| if c.is_ascii_digit() { char::from(b'A' + (c as u8 - b'0')) } else { c }).collect::<String>()),
             role: "MOTHER".into(),
             email: "".into(),
             phone: "".into(),
@@ -409,6 +459,34 @@ mod tests {
         }
     }
 
+    /// Director, 2026-11-22: a kindergarten enrolment for a child born in 1998 was accepted. The backend refuses a
+    /// child older than 16 and an age that does not fit the program on its first day.
+    #[test]
+    fn date_of_birth_must_fit_the_child_and_the_program() {
+        let mut conn = db();
+        let tx = conn.transaction().unwrap();
+        save_family(&tx, &family(), &[guardian("g1", true)]).unwrap();
+        let mut adult = child("c1");
+        adult.date_of_birth = Some("1998-01-01".into());
+        assert!(matches!(save_child(&tx, &adult), Err(AppError::Validation(_))));
+        let mut future = child("c1");
+        future.date_of_birth = Some("2999-01-01".into());
+        assert!(save_child(&tx, &future).is_err());
+
+        save_child(&tx, &child("c1")).unwrap(); // born 2021-03-01: 5 years old on 2026-09-01
+        assert!(save_enrolment(&tx, &enrolment("e1", "PRESCHOOLERS", "ACTIVE")).is_ok());
+        let err = save_enrolment(&tx, &enrolment("e2", "PRIMARY_5_9", "ACTIVE")).unwrap_err();
+        assert!(matches!(err, AppError::Validation(ref m) if m.contains("5 god.")), "{err:?}");
+        // an imported child without a date of birth is not judged here
+        let mut unknown = child("c2");
+        unknown.date_of_birth = None;
+        save_child(&tx, &unknown).unwrap();
+        let mut e = enrolment("e3", "PRIMARY_5_9", "ACTIVE");
+        e.child_id = "c2".into();
+        assert!(save_enrolment(&tx, &e).is_ok());
+        assert_eq!((age_on("2020-09-02", "2026-09-01"), age_on("2020-09-01", "2026-09-01")), (Some(5), Some(6)));
+    }
+
     fn family() -> Family {
         Family { id: F.into(), display_name: "Test".into(), address: "Sarajevo".into() }
     }
@@ -431,7 +509,7 @@ mod tests {
         assert_eq!(detail.enrolments, vec![enrolment("e1", "TODDLERS", "ACTIVE")]);
         let summary = list_families(&conn).unwrap();
         assert_eq!(summary[0].child_count, 1);
-        assert_eq!(summary[0].payer_name.as_deref(), Some("Roditelj g2"));
+        assert_eq!(summary[0].payer_name.as_deref(), Some("Roditelj gC"));
     }
 
     #[test]

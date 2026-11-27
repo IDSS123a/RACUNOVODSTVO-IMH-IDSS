@@ -1,5 +1,5 @@
 import { isRealDate } from '@/lib/validation/formats';
-import { enrolmentProblems, schoolYearBounds } from './domain';
+import { enrolmentProblems, schoolYearBounds, ageOn, CHILD_MAX_AGE } from './domain';
 import type { Child, Enrolment, FamilyDetail } from './types';
 import { ENROLLABLE_PROGRAMS, PROGRAM_ENTITY, type LegalEntityCode, type ProgramCode, type SchoolYear } from '@/features/price-lists/types';
 
@@ -83,9 +83,10 @@ export function rowProblems(row: BulkRow, schoolYear: SchoolYear, today: string)
   else if (row.entity && PROGRAM_ENTITY[row.program] !== row.entity) problems.push('program ne pripada ustanovi');
   if (!isRealDate(row.dateOfBirth)) problems.push('unesite datum rođenja');
   else if (row.dateOfBirth >= today) problems.push('datum rođenja mora biti u prošlosti');
-  else if (row.dateOfBirth < '1990-01-01') problems.push('datum rođenja je prije 1990. — provjerite');
+  else if (ageOn(row.dateOfBirth, today) > CHILD_MAX_AGE) problems.push(`dijete bi imalo ${ageOn(row.dateOfBirth, today)} god. — provjerite datum rođenja`);
   if (row.program) {
-    problems.push(...enrolmentProblems(toEnrolment(row, schoolYear, 'x'), []).map((p) => p.replace(/\.$/, '').toLowerCase()));
+    const dateOfBirth = isRealDate(row.dateOfBirth) && row.dateOfBirth < today ? row.dateOfBirth : null;
+    problems.push(...enrolmentProblems(toEnrolment(row, schoolYear, 'x'), [], dateOfBirth).map((p) => p.replace(/\.$/, '')));
   }
   return problems;
 }

@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { formatKM, kmToFenings, MoneyError } from '@/features/billing/money';
+import { formatKM, kmToFenings, MAX_AMOUNT, MoneyError } from '@/features/billing/money';
 import { Field } from '@/features/settings/components/OperatorForm';
 import { formatDate } from '@/lib/format';
 import { useAsyncResult } from '@/lib/use-async-result';
@@ -27,12 +27,13 @@ const PaymentFormSchema = z.object({
   paidOn: z.string().refine((d) => isRealDate(d) && d <= new Date().toISOString().slice(0, 10), 'unesite stvarni datum uplate (ne u budućnosti)'),
   amountKm: z.string().refine((value) => {
     try {
-      return kmToFenings(value) > 0;
+      const amount = kmToFenings(value);
+      return amount > 0 && amount <= MAX_AMOUNT;
     } catch (error: unknown) {
       if (error instanceof MoneyError) return false;
       throw error;
     }
-  }, 'unesite iznos, npr. 710,00'),
+  }, `unesite iznos od 0,01 do ${formatKM(MAX_AMOUNT)}, npr. 710,00`),
   payerName: fullNameField(),
   // both come from a template (identical syntax); empty = a template field is still missing
   reference: z.string().trim().min(1, 'popunite šablon reference'),
@@ -86,6 +87,67 @@ function InvoiceBody({ invoiceId, onChanged, onShowPdf, readOnly }: { invoiceId:
   );
 }
 
+/** Day `days` after an ISO date. */
+function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * „Obavijest o neplaćenom ostatku“ (Director, 2026-11-22): a separate PDF on the letterhead with the payments, the
+ * remainder and a payment slip for it; the issued invoice is not changed.
+ */
+function RemainderNoticePanel({ invoiceId, open, paid, onClose }: { invoiceId: string; open: number; paid: number; onClose: () => void }): React.JSX.Element {
+  const today = new Date().toISOString().slice(0, 10);
+  const [dueDate, setDueDate] = useState(addDays(today, 8));
+  const [busy, setBusy] = useState(false);
+  async function save(): Promise<void> {
+    setBusy(true);
+    try {
+      const actions = await import('../pdf-actions');
+      const notice = await actions.buildRemainderNotice(invoiceId, today, dueDate);
+      if (!notice.success) return void toast.error(notice.error);
+      const saved = await actions.saveDocument(notice.data.bytes, notice.data.fileName, `Obavijest o neplaćenom ostatku ${notice.data.number}`);
+      if (!saved.success) toast.error(saved.error);
+      else if (saved.data) {
+        toast.success(`Sačuvano: ${saved.data}`);
+        onClose();
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="grid gap-3 rounded-md border p-3">
+      <p className="text-sm">
+        {paid > 0 ? (
+          <>
+            Uplaćeno <strong className="tabular-nums">{formatKM(paid)}</strong>, neplaćen ostatak <strong className="tabular-nums">{formatKM(open)}</strong>.
+          </>
+        ) : (
+          <>
+            Neplaćeno <strong className="tabular-nums">{formatKM(open)}</strong>.
+          </>
+        )}{' '}
+        Račun ostaje kakav je izdat; roditelj dobija posebnu obavijest na memorandumu, s uplatnicom na {formatKM(open)}.
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="grid gap-1.5">
+          <label htmlFor="notice-due" className="text-sm font-medium">Rok za uplatu ostatka</label>
+          <Input id="notice-due" type="date" className="h-9 w-44" min={today} value={dueDate} onChange={(e) => setDueDate(e.target.value || addDays(today, 8))} />
+        </div>
+        <Button disabled={busy || dueDate < today} onClick={() => void save()}>
+          <FileTextIcon aria-hidden /> {busy ? 'Pravim…' : 'Sačuvaj obavijest (PDF)'}
+        </Button>
+        <Button variant="ghost" disabled={busy} onClick={onClose}>
+          Odustani
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function InvoiceContent({ detail, onPaid, onShowPdf, readOnly }: { detail: InvoiceDetail; onPaid: () => void; onShowPdf: () => void; readOnly: boolean }): React.JSX.Element {
   const { invoice, lines, payments, creditNotes } = detail;
   // Effective balance from the backend: reversed payments and moved credit are already accounted for.
@@ -94,6 +156,9 @@ function InvoiceContent({ detail, onPaid, onShowPdf, readOnly }: { detail: Invoi
   const isCreditNote = invoice.kind === 'CREDIT_NOTE';
   const canCredit = !readOnly && !isCreditNote && invoice.status === 'ISSUED' && summary.net > 0;
   const canPay = !readOnly && !isCreditNote && invoice.status === 'ISSUED';
+  // a not fully paid invoice: the remainder notice for the parent (Director, 2026-11-22); the invoice stays as issued
+  const canNotify = !readOnly && !isCreditNote && invoice.status === 'ISSUED' && summary.open > 0;
+  const [showNotice, setShowNotice] = useState(false);
   const form = useForm<PaymentForm>({
     resolver: zodResolver(PaymentFormSchema),
     defaultValues: {
@@ -152,6 +217,11 @@ function InvoiceContent({ detail, onPaid, onShowPdf, readOnly }: { detail: Invoi
           <Button variant="outline" onClick={onShowPdf}>
             <FileTextIcon aria-hidden /> PDF / štampa
           </Button>
+          {canNotify && !showNotice && (
+            <Button variant="outline" onClick={() => setShowNotice(true)}>
+              <FileTextIcon aria-hidden /> {summary.paid > 0 ? 'Obavijest o neplaćenom ostatku…' : 'Obavijest o neplaćenom računu…'}
+            </Button>
+          )}
           {canCredit && !showCreditNote && (
             <Button variant="outline" onClick={() => setShowCreditNote(true)}>
               Knjižno odobrenje (storno)…
@@ -159,6 +229,7 @@ function InvoiceContent({ detail, onPaid, onShowPdf, readOnly }: { detail: Invoi
           )}
         </div>
       </div>
+      {canNotify && showNotice && <RemainderNoticePanel invoiceId={invoice.id} open={summary.open} paid={summary.paid} onClose={() => setShowNotice(false)} />}
 
       <Table>
         <TableHeader>

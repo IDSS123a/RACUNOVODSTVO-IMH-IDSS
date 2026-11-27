@@ -207,3 +207,31 @@ describe('one page with the payment slip (Director, 2026-11-22: „PDF računi n
     }
   }, 60000);
 });
+
+describe('remainder notice (Director, 2026-11-22: partial payment → the invoice stays, a notice for the remainder)', () => {
+  const pay = (id: string, paidOn: string, amount: number, reversedOn: string | null = null) => ({ id, invoiceId: 'i', paidOn, amount, payerName: 'Žana Test', reference: '', note: '', reversedOn, reversalReason: null });
+
+  it('figures: amount due after credit notes, payments not reversed, remainder', async () => {
+    const { remainderFigures } = await import('./pdf');
+    const d = data(1); // 710,00
+    const invoice = { ...d.detail.invoice, total: 100000, credited: -10000 };
+    expect(remainderFigures({ invoice, payments: [pay('a', '2026-10-20', 50000), pay('b', '2026-10-10', 20000, '2026-10-12')] })).toEqual({
+      due: 90000,
+      payments: [{ paidOn: '2026-10-20', amount: 50000 }],
+      remainder: 40000,
+    });
+  });
+
+  it('one page with a slip for the remainder; refused when nothing is owed', async () => {
+    const { renderRemainderNoticePdf } = await import('./pdf');
+    const d = data(1);
+    const invoice = { ...d.detail.invoice, total: 100000, paid: 50000 };
+    const withPayments = { ...d, detail: { ...d.detail, invoice, lines: [{ ...d.detail.lines[0]!, amount: 100000, listAmount: 100000 }], payments: [pay('a', '2026-10-20', 50000)] } };
+    const bytes = await renderRemainderNoticePdf(withPayments, { issueDate: '2026-11-22', dueDate: '2026-11-30' }, ASSETS);
+    const doc = await PDFDocument.load(bytes);
+    expect(doc.getPageCount()).toBe(1);
+    expect(doc.getTitle()).toBe('Obavijest o neplaćenom ostatku — IMH-001/26');
+    const paidInFull = { ...withPayments, detail: { ...withPayments.detail, payments: [pay('a', '2026-10-20', 100000)] } };
+    await expect(renderRemainderNoticePdf(paidInFull, { issueDate: '2026-11-22', dueDate: '2026-11-30' }, ASSETS)).rejects.toThrow('nema neplaćen ostatak');
+  });
+});

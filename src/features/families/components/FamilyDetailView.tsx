@@ -291,7 +291,8 @@ export function FamilyDetailView({
             schoolYears={schoolYears}
             onSubmit={async (enrolment) => {
               const others = enrolments.filter((e) => e.childId === enrolment.childId);
-              if (!(await run(saveValidatedEnrolment(enrolment, others), 'Dijete je upisano.'))) return;
+              const dateOfBirth = children.find((c) => c.id === enrolment.childId)?.dateOfBirth ?? null;
+              if (!(await run(saveValidatedEnrolment(enrolment, others, dateOfBirth), 'Dijete je upisano.'))) return;
               // an IDSS pupil needs a payment plan: the proposed one opens at once, the operator only confirms it
               if (PROGRAM_ENTITY[enrolment.program] === 'IDSS') setDialog({ kind: 'plan', enrolment });
               else close();

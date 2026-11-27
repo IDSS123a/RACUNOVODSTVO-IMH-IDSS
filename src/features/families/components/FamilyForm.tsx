@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Field } from '@/features/settings/components/OperatorForm';
-import { FORMAT } from '@/lib/validation/formats';
+import { correctedValue, FORMAT, normalizeAddress, normalizeEmail, normalizeFullName, normalizeIban, normalizeName, normalizePhone } from '@/lib/validation/formats';
 import { FamilyFormSchema, GuardianFormSchema } from '@/lib/validation/schemas';
 import { newGuardian } from '../factories';
 import { ROLE_LABEL, type Family, type Guardian, type GuardianRole } from '../types';
@@ -59,10 +59,10 @@ export function FamilyForm({
   return (
     <form className="grid gap-5" onSubmit={form.handleSubmit((v) => onSubmit(v.family, v.guardians))} noValidate>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field id="family-name" label="Porodica (npr. prezime)" hint={FORMAT.name} error={errors.family?.displayName?.message}>
+        <Field id="family-name" label="Porodica (npr. prezime)" hint={FORMAT.name} corrected={correctedValue(form.watch('family.displayName'), normalizeName)} error={errors.family?.displayName?.message}>
           <Input id="family-name" {...form.register('family.displayName')} aria-invalid={Boolean(errors.family?.displayName)} />
         </Field>
-        <Field id="family-address" label="Adresa (za račune)" hint={FORMAT.address} error={errors.family?.address?.message}>
+        <Field id="family-address" label="Adresa (za račune)" hint={FORMAT.address} corrected={correctedValue(form.watch('family.address'), normalizeAddress)} error={errors.family?.address?.message}>
           <Input id="family-address" {...form.register('family.address')} aria-invalid={Boolean(errors.family?.address)} />
         </Field>
       </div>
@@ -77,7 +77,7 @@ export function FamilyForm({
           const e = errors.guardians?.[index];
           return (
             <div key={field.id} className="grid gap-3 rounded-lg border p-4 md:grid-cols-6">
-              <Field id={`g-${index}-name`} label="Ime i prezime" hint={FORMAT.fullName} error={e?.fullName?.message} className="md:col-span-2">
+              <Field id={`g-${index}-name`} label="Ime i prezime" hint={FORMAT.fullName} corrected={correctedValue(values[index]?.fullName, normalizeFullName)} error={e?.fullName?.message} className="md:col-span-2">
                 <Input id={`g-${index}-name`} {...form.register(`guardians.${index}.fullName`)} aria-invalid={Boolean(e?.fullName)} />
               </Field>
               <Field id={`g-${index}-role`} label="Uloga" error={e?.role?.message}>
@@ -97,13 +97,13 @@ export function FamilyForm({
                   </SelectContent>
                 </Select>
               </Field>
-              <Field id={`g-${index}-email`} label="Email" hint={FORMAT.email} error={e?.email?.message} className="md:col-span-2">
+              <Field id={`g-${index}-email`} label="Email" hint={FORMAT.email} corrected={correctedValue(values[index]?.email, normalizeEmail)} error={e?.email?.message} className="md:col-span-2">
                 <Input id={`g-${index}-email`} type="email" {...form.register(`guardians.${index}.email`)} aria-invalid={Boolean(e?.email)} />
               </Field>
-              <Field id={`g-${index}-phone`} label="Telefon" hint={FORMAT.phone} error={e?.phone?.message} className="md:col-span-2">
+              <Field id={`g-${index}-phone`} label="Telefon" hint={FORMAT.phone} corrected={correctedValue(values[index]?.phone, normalizePhone)} error={e?.phone?.message} className="md:col-span-2">
                 <Input id={`g-${index}-phone`} type="tel" {...form.register(`guardians.${index}.phone`)} aria-invalid={Boolean(e?.phone)} />
               </Field>
-              <Field id={`g-${index}-iban`} label="IBAN za povrat subvencije (nije obavezno)" hint={FORMAT.iban} error={e?.iban?.message} className="md:col-span-2">
+              <Field id={`g-${index}-iban`} label="IBAN za povrat subvencije (nije obavezno)" hint={FORMAT.iban} corrected={correctedValue(values[index]?.iban, normalizeIban)} error={e?.iban?.message} className="md:col-span-2">
                 <Input id={`g-${index}-iban`} placeholder="BA39 …" {...form.register(`guardians.${index}.iban`)} aria-invalid={Boolean(e?.iban)} />
               </Field>
               <label className="flex items-center gap-2 self-end pb-2 text-sm md:col-span-2">

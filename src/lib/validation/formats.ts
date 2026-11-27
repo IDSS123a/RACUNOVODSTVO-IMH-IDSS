@@ -22,12 +22,45 @@ function capitalizeWord(word: string): string {
   return lower.charAt(0).toLocaleUpperCase('bs') + lower.slice(1);
 }
 
-/** A name part or full name: letters, space, hyphen, apostrophe; each word with a capital initial. */
+/**
+ * Name particles written in lower case inside a name („Ludwig van Beethoven“, „Maria de la Cruz“) when typed so
+ * (SPEC registration-validation A6); the first word of a name always has a capital initial.
+ */
+const NAME_PARTICLES = new Set(['von', 'van', 'der', 'den', 'de', 'del', 'della', 'di', 'da', 'du', 'la', 'le', 'al', 'el', 'bin', 'ibn', 'ter', 'zu']);
+
+/** Letters of every alphabet with their accents (María, Łukasz, Şahin, Müller …) — SPEC registration-validation A5. */
+const NAME_PATTERN = /^\p{L}[\p{L}\p{M}]*(?:[ '-]\p{L}[\p{L}\p{M}]*)*$/u;
+
+/**
+ * A name part or full name: letters of any alphabet, space, hyphen, apostrophe; each word with a capital initial,
+ * except name particles typed in lower case inside the name. Accents are kept exactly (NFC).
+ */
 export function normalizeName(value: string): string | null {
-  const text = squashSpaces(value).replace(/\s*-\s*/g, '-').replace(/[’`]/g, "'");
-  if (!new RegExp(`^[${LETTERS}]+(?:[ '\\-][${LETTERS}]+)*$`).test(text) || text.length > 80) return null;
+  const text = squashSpaces(value.normalize('NFC')).replace(/\s*-\s*/g, '-').replace(/[’`]/g, "'");
+  if (!NAME_PATTERN.test(text) || text.length > 80) return null;
+  let first = true;
   // every word between a space, hyphen or apostrophe gets the capital initial („o'neil“ → „O'Neil“)
-  return text.split(/([ '-])/).map((piece) => (/^[ '-]$/.test(piece) ? piece : capitalizeWord(piece))).join('');
+  return text
+    .split(/([ '-])/)
+    .map((piece) => {
+      if (/^[ '-]$/.test(piece) || piece === '') return piece;
+      const lower = piece.toLocaleLowerCase('bs');
+      const word = !first && piece === lower && NAME_PARTICLES.has(lower) ? lower : capitalizeWord(piece);
+      first = false;
+      return word;
+    })
+    .join('');
+}
+
+/**
+ * What a field will be saved as, when that differs from what was typed (SPEC registration-validation A7: automatic
+ * corrections are shown, never silent). Null while the value is empty, invalid or already in its canonical form.
+ */
+export function correctedValue(raw: string | null | undefined, normalize: (value: string) => string | null): string | null {
+  const typed = (raw ?? '').trim();
+  if (typed === '') return null;
+  const saved = normalize(typed);
+  return saved !== null && saved !== typed ? saved : null;
 }
 
 /** Ime i prezime: at least two words. */
@@ -47,6 +80,8 @@ export function normalizePhone(value: string): string | null {
   else if (digits.startsWith('0')) digits = `+387${digits.slice(1)}`;
   else if (!digits.startsWith('+')) return null;
   if (!/^\+\d{8,15}$/.test(digits)) return null;
+  // a subscriber number of one repeated digit is a placeholder, not a telephone (SPEC registration-validation A8)
+  if (/^(\d)\1+$/.test(digits.startsWith('+387') ? digits.slice(6) : digits.slice(4))) return null;
   if (!digits.startsWith('+387')) return digits;
   const national = digits.slice(4);
   if (!/^[3-6]\d{7,8}$/.test(national)) return null;

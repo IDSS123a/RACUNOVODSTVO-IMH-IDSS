@@ -56,6 +56,7 @@ export function Field({
   label,
   error,
   hint,
+  corrected,
   children,
   className,
 }: {
@@ -64,6 +65,8 @@ export function Field({
   error?: string | undefined;
   /** The allowed format, shown while there is no error. */
   hint?: string | undefined;
+  /** What the value will be saved as, when it differs from what was typed (SPEC registration-validation A7). */
+  corrected?: string | null | undefined;
   children: React.ReactNode;
   className?: string;
 }): React.JSX.Element {
@@ -76,7 +79,14 @@ export function Field({
           {error}
         </p>
       ) : (
-        hint && <p className="text-xs text-muted-foreground">Format: {hint}</p>
+        <>
+          {corrected && (
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+              Ispravljeno — biće spremljeno kao: „{corrected}“
+            </p>
+          )}
+          {hint && <p className="text-xs text-muted-foreground">Format: {hint}</p>}
+        </>
       )}
     </div>
   );

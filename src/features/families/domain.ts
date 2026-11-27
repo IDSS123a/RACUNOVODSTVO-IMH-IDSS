@@ -1,15 +1,7 @@
 import { SCHOOL_YEAR_START_MONTH } from '@/constants';
 import type { Fenings } from '@/features/billing/money';
 import { assignSiblingTiers, findPrice, PricingError } from '@/features/billing/pricing';
-import {
-  PROGRAM_ENTITY,
-  type BillingBasis,
-  type LegalEntityCode,
-  type PriceListItem,
-  type ProgramCode,
-  type SchoolYear,
-  type SiblingTier,
-} from '@/features/price-lists/types';
+import { PROGRAM_ENTITY, type BillingBasis, type LegalEntityCode, type PriceListItem, type ProgramCode, type SchoolYear, type SiblingTier, PROGRAM_LABEL } from '@/features/price-lists/types';
 import type { Child, Enrolment, EnrolmentStatus, Guardian } from './types';
 
 /**
@@ -100,8 +92,41 @@ export function schoolYearBounds(year: SchoolYear): { from: string; to: string }
  * Problems with an enrolment against the child's other enrolments.
  * One active enrolment per child, legal entity and school year (BR-1, BR-6).
  */
-export function enrolmentProblems(enrolment: Enrolment, others: ReadonlyArray<Enrolment>): string[] {
+/**
+ * Ages a child may have on the first day of a program (completed years). Director, 2026-11-22: a kindergarten
+ * enrolment for a child born in 1998 was accepted. These are wide guards against an impossible date; the backend
+ * checks the same (`families.rs`). The exact ranges are for the Director to confirm.
+ */
+export const PROGRAM_AGE: Readonly<Record<ProgramCode, readonly [number, number]>> = {
+  TODDLERS: [0, 6],
+  PRESCHOOLERS: [0, 6],
+  IDSS_PRESCHOOLERS: [3, 6],
+  PRIMARY_1_4: [5, 11],
+  PRIMARY_5_9: [9, 16],
+};
+
+/** Oldest age (completed years) of any child of the institutions on the day the record is saved. */
+export const CHILD_MAX_AGE = 16;
+
+/** Completed years between a date of birth and a date (both ISO). */
+export function ageOn(dateOfBirth: string, date: string): number {
+  const years = Number(date.slice(0, 4)) - Number(dateOfBirth.slice(0, 4));
+  return date.slice(5) < dateOfBirth.slice(5) ? years - 1 : years;
+}
+
+/** The child's age does not fit the program on its first day; null = fits or the date of birth is not known. */
+export function enrolmentAgeProblem(program: ProgramCode, dateOfBirth: string | null, startsOn: string): string | null {
+  if (!dateOfBirth) return null;
+  const age = ageOn(dateOfBirth, startsOn);
+  const [min, max] = PROGRAM_AGE[program];
+  if (age >= min && age <= max) return null;
+  return `Dijete rođeno ${dateOfBirth.split('-').reverse().join('.')}. ima ${age} god. na dan početka — za ${PROGRAM_LABEL[program]} dozvoljeno je ${min}–${max} god. Provjerite datum rođenja ili program.`;
+}
+
+export function enrolmentProblems(enrolment: Enrolment, others: ReadonlyArray<Enrolment>, dateOfBirth: string | null = null): string[] {
   const problems: string[] = [];
+  const age = enrolmentAgeProblem(enrolment.program, dateOfBirth, enrolment.startsOn);
+  if (age) problems.push(age);
   const { from, to } = schoolYearBounds(enrolment.schoolYear as SchoolYear);
   if (enrolment.startsOn < from || enrolment.startsOn > to) {
     problems.push(`Datum početka mora biti unutar školske godine ${enrolment.schoolYear}.`);

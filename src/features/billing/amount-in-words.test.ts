@@ -86,6 +86,6 @@ describe('amount in words — the document wording', () => {
   it('refuses invalid amounts', () => {
     expect(() => amountInWords(-1)).toThrow(MoneyError);
     expect(() => amountInWords(1.5)).toThrow(MoneyError);
-    expect(() => integerInWords(1_000_000_000)).toThrow(MoneyError);
+    expect(() => integerInWords(1_000_000_000_000_000)).toThrow(MoneyError);
   });
 });

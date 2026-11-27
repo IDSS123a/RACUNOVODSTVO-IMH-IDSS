@@ -1,5 +1,5 @@
 import { normalizeUnit } from '@/lib/validation/formats';
-import { kmToFenings, MoneyError, sum, type Fenings } from '@/features/billing/money';
+import { formatKM, kmToFenings, MAX_AMOUNT, MoneyError, sum, type Fenings } from '@/features/billing/money';
 import type { FamilyDetail } from '@/features/families/types';
 import type { LegalEntityCode } from '@/features/price-lists/types';
 import { monthBounds } from './domain';
@@ -92,7 +92,7 @@ export function parsePrice(text: string): Fenings | null {
   if (text.trim() === '') return null;
   try {
     const value = kmToFenings(text);
-    return value >= 0 && Number.isSafeInteger(value) ? value : null;
+    return value >= 0 && value <= MAX_AMOUNT ? value : null;
   } catch (error: unknown) {
     if (error instanceof MoneyError) return null;
     throw error;
@@ -102,7 +102,9 @@ export function parsePrice(text: string): Fenings | null {
 export function rowTotal(row: ManualRowInput): ManualRowTotal {
   const quantity = parseQuantity(row.quantity);
   const unitPrice = parsePrice(row.unitPrice);
-  return { quantity, unitPrice, total: quantity !== null && unitPrice !== null ? quantity * unitPrice : null };
+  const total = quantity !== null && unitPrice !== null ? quantity * unitPrice : null;
+  // a line above the highest amount is a typing error (10 trillion KM was issued once — MAX_AMOUNT)
+  return { quantity, unitPrice, total: total !== null && total <= MAX_AMOUNT ? total : null };
 }
 
 const isEmptyRow = (row: ManualRowInput): boolean => !row.description.trim() && !row.quantity.trim() && !row.unitPrice.trim();
@@ -134,7 +136,8 @@ export function buildManualInvoice(detail: FamilyDetail, input: ManualInvoiceInp
     const { quantity, unitPrice, total } = rowTotal(row);
     if (!row.description.trim()) errors.push(`Red ${n}: Unesite naziv usluge/stavke.`);
     if (quantity === null) errors.push(`Red ${n}: Količina mora biti cijeli broj od 1 do ${MAX_QUANTITY}.`);
-    if (unitPrice === null) errors.push(`Red ${n}: Cijena mora biti iznos u KM (najviše dvije decimale) i ne može biti negativna.`);
+    if (unitPrice === null) errors.push(`Red ${n}: Cijena mora biti iznos u KM (najviše dvije decimale), od 0 do ${formatKM(MAX_AMOUNT)}.`);
+    else if (quantity !== null && total === null) errors.push(`Red ${n}: Iznos stavke (količina × cijena) ne može biti veći od ${formatKM(MAX_AMOUNT)} — provjerite cijenu.`);
     const unit = normalizeUnit(row.unit);
     if (unit === null) errors.push(`Red ${n}: Jedinica mjere je kratka riječ (npr. srv, kom, sedm.), najviše 10 slova.`);
     if (child && row.description.trim() && quantity !== null && total !== null && unit !== null) {
@@ -156,6 +159,7 @@ export function buildManualInvoice(detail: FamilyDetail, input: ManualInvoiceInp
   if (input.rows.every(isEmptyRow)) errors.push('Unesite barem jednu ispravnu stavku na račun (naziv, količina > 0 i cijena).');
   const invoiceTotal = sum(lines.map((l) => l.amount));
   if (lines.length > 0 && invoiceTotal <= 0) errors.push('Ukupan iznos računa mora biti veći od 0 KM.');
+  if (invoiceTotal > MAX_AMOUNT) errors.push(`Ukupan iznos računa ne može biti veći od ${formatKM(MAX_AMOUNT)} — provjerite cijene.`);
 
   if (errors.length > 0 || !child || !buyer || !input.month) return { ok: false, errors };
   const { from, to } = monthBounds(input.month);

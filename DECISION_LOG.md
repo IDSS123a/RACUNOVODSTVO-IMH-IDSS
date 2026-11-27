@@ -722,4 +722,138 @@
 
 ---
 
+## DL-P025 — A child's date of birth must fit the child and the program
+
+**Date:** 2026-11-22 · **Source:** Director, 2026-11-22: „Presretanje greške nije u funkciji — dozvolio mi je da formiram upis u vrtić za dijete rođeno 1998. godine.“ · **Amends:** DL-P017 · **Lesson:** L-S3-17.
+
+**Cause:** the only check on a date of birth was „not in the future, not before 1990“. A 28-year-old passed, and nothing compared the age with the program.
+
+**Decision:**
+- **Child:** no older than **16** on the day it is saved, and the date of birth is not in the future. This is checked in the child form, in „Dopuna podataka o djeci“ and in the backend (`save_child`).
+- **Enrolment:** the child's age on the program's first day (completed years) must fit the program. This is checked in the enrolment form, in „Dopuna“ and in the backend (`save_enrolment`). The message names the age and the allowed range.
+
+| Program | Age on the first day |
+|---|---|
+| Toddlers / Preschoolers (IMH) | 0–6 |
+| IDSS Preschoolers | 3–6 |
+| Osnovna škola I–IV | 5–11 |
+| Osnovna škola V–IX | 9–16 |
+
+- These are **wide guards against impossible dates**. The HTML document gives no ages, so the exact ranges are for the Director to confirm.
+- An imported child without a date of birth is not judged until the date is entered in „Dopuna“.
+
+**Verified:**
+- Vitest: a kindergarten enrolment for a child born in 1998 is refused, and so are a 9-year-old in kindergarten and a 3-year-old in primary school; ages on the day before or after a birthday are correct.
+- cargo test 63/63, including the backend refusal.
+- **Open:** the Director's confirmation of the ranges (C-13).
+
+---
+
+## DL-P026 — Notice of the unpaid remainder; the issued invoice stays as issued
+
+**Date:** 2026-11-22 · **Source:** Director, 2026-11-22: after a partial payment the invoice printed again „bio je na puni iznos“. Chosen: „Opomena za ostatak“ (the invoice stays a legal document, unchanged; a separate notice for the remainder).
+
+**Cause:** the partial payment was recorded correctly. The status was „Djelimično plaćen“, the remainder was right, and the next payment proposed it. But the invoice PDF never shows payments (Director, 2026-11-21, DL-P013 amendment 2), so the parent had no document for the remainder.
+
+**Decision:**
+- **The invoice PDF does not change**: it always states UKUPNO ZA UPLATU after credit notes.
+- **„Obavijest o neplaćenom ostatku“** (or „… računu“ when nothing has been paid) is a separate PDF on the institution's letterhead. It contains:
+  - the invoice number, date and period, the buyer and the child;
+  - the amount due, each payment that was not reversed, and the remainder („OSTATAK ZA UPLATU“), also in words;
+  - a short letter;
+  - a payment slip and QR code for the remainder only, with the purpose „Ostatak po računu …“ and the deadline the FAS chooses (8 days by default);
+  - the signatures.
+- It has no number and is not an accounting document.
+- **Where:** in the invoice detail, „Obavijest o neplaćenom ostatku…“. This covers step E (Prati naplatu), which opens the invoice detail. It is not offered in read-only reporting, and only while something is still open.
+
+**Verified:**
+- Vitest 288/288. Tests cover:
+  - the figures (credit notes count, a reversed payment does not);
+  - one page;
+  - the refusal when nothing is owed.
+- Sample looked at: 1.000 KM, 500 paid, 500 left, with a slip for 500.
+- **Open:** the Director's check in the running app (C-13).
+
+---
+
+## DL-P027 — No amount above 100.000,00 KM
+
+**Date:** 2026-11-27 · **Source:** Director, 2026-11-27: „PDF računa IMH-907/26 nije napravljen: cannot spell 10000000000000“. An invoice of about 10 trillion KM had been issued from a mistyped price. · **Lesson:** L-S3-18.
+
+**Cause:**
+- A price was checked only for form: a number with at most two decimals, not negative.
+- There was no upper limit on a price, a line, an invoice or a payment, on the screens or in the backend.
+- The PDF then failed on the amount in words, which went up to 999.999.999 KM.
+
+**Decision:**
+- **Limit: 100.000,00 KM** (`MAX_AMOUNT`, the same value in `money.ts` and `invoices.rs`). It applies to:
+  - a unit price;
+  - a line (quantity × price);
+  - an invoice total;
+  - a payment.
+- The forms refuse a higher amount with a message that names the row; the backend refuses it again (`issue_invoice`, `record_payment`). Exactly 100.000,00 KM is accepted.
+- **Credit notes** are not capped by this limit: they are bounded by the invoice they cancel. That way an invoice issued before the limit, like IMH-907/26, can be stornoed in full.
+- **The amount in words** now goes up to 999 trillion (milijarda, bilion), so that such an invoice and its credit note still print. No new invoice can reach it.
+- **IMH-907/26** turned out not to exist on disk: it was lost by the data-loss bug of DL-P029, so there is nothing to storno.
+
+**Verified:**
+- Vitest 337/337:
+  - price, line and invoice above the limit refused, 100.000,00 accepted;
+  - amount in words for billions and trillions;
+  - the random test now stays within the limit.
+- cargo test 65/65: an invoice or payment above the limit is refused, exactly 100.000,00 KM is accepted.
+- **Open:** the Director's check (C-13) and confirmation that 100.000,00 KM is the right limit.
+
+---
+
+## DL-P028 — Names of every alphabet, particles, visible corrections, no placeholder telephone (SPEC registration-validation A5–A8)
+
+**Date:** 2026-11-27 · **Spec:** `specs/registration-validation/` (approved 2026-11-27) · **Source:** the Director's proposal „Parent / Payer Registration — Master QA Standard“ and its analysis.
+
+**Decision:**
+- **A5:** names may use the letters of every alphabet with their accents (María, Ramón, Łukasz, Şahin). The accents are kept exactly as typed (NFC). Digits and symbols are still refused, and the backend checks the same on saving a family, parent or child.
+- **A6:** the particles `von, van, der, den, de, del, della, di, da, du, la, le, al, el, bin, ibn, ter, zu` stay in lower case inside a name when typed so. The first word of a name always has a capital initial, and mixed case („McKenzie“) is kept.
+- **A7:** an automatic correction is shown under the field, e.g. „Ispravljeno — biće spremljeno kao: „Begović““. This covers the family name, address, parent name, e-mail, telephone, IBAN and the child's names. Trimming spaces alone is not reported.
+- **A8:** a telephone whose subscriber part is one repeated digit („+387 61 111 111“) is refused on the screens and in the backend. A sequence („+387 61 123 456“) is a real number and is accepted, as in the proposal.
+
+**Verified:**
+- Vitest: every example of the proposal (§1, §2, §8, §9), row by row, in `registration-examples.test.ts`.
+- cargo test: names of every alphabet, refused symbols, placeholder telephones.
+- The older tests used a parent named „Roditelj g1“; it now has letters only.
+- **Open:** the Director's check in the running app (C-13).
+
+---
+
+## DL-P029 — The last change before closing the app must be on disk (data-loss fix)
+
+**Date:** 2026-11-27 · **Source:** Director, 2026-11-27: an invoice created in „Ostalo fakturisanje“ (IMH-907/26) was gone: „Ovaj račun ne postoji“. · **Amends:** DL-P004 amendment 1 · **Lesson:** L-S3-19.
+
+**Diagnosis:**
+- Method: a read-only copy of the database, with technical fields only and no personal data; the copy was deleted afterwards.
+- No invoice IMH-907/26 was on disk; the IMH series stood at 906; the audit log had no issue of it and no restore.
+- The invoice existed in the running app: its PDF was made from it in step B.
+
+**Cause:**
+- Since DL-P004 amendment 1 (2026-11-21, commit 5305459) the encrypted snapshot was serialised **inside** the open transaction, to write the disk before the commit.
+- For a database **loaded from disk** (every start but the very first), SQLite serialises only the committed pages. The change being made was therefore missing from the file, and the disk was always **one write behind**.
+- The last change before the app was closed or restarted was lost. IMH-907/26 was the last change before a restart.
+- The existing test opened a fresh database (first run), where the snapshot does include the open transaction, so it never saw the loss.
+
+**Decision:**
+- `Store::write` now commits in memory first, then writes the snapshot of the committed state.
+- If the disk write fails, memory is put back to the state before this write, from a snapshot taken at the start of the write. Memory and disk stay equal, and a change reported as failed does not exist, as DL-P004 amendment 1 requires.
+- `write_snapshot` must never be called inside an open transaction (doc comment).
+
+**Scope:**
+- **Not affected:** the installed version 0.3.0 (2026-10-21). It committed first and then wrote, so data entered there is safe.
+- **Affected:** only the development builds since 2026-11-21, i.e. the Director's trial database. In each session there, the last change before closing could be lost. Such a change cannot be recovered and must be entered again if it is still needed.
+- The partial payment the Director saw „na puni iznos“ (DL-P026) may also have been such a lost payment.
+
+**Verified:**
+- cargo test 66/66. A new test writes, reopens and writes twice more; the last write is on disk after reopening. Before the fix it failed with 2 of 3.
+- The failed-disk-write test still passes: the change is undone in memory, the number is not used, and the file is unchanged.
+- **The Director checked it in the running app (2026-11-27, C-13):** an invoice issued, the app closed and reopened, and the invoice is there.
+
+---
+
 *Commander v1.8.1 — IDSS123a Organisation*

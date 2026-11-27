@@ -38,7 +38,11 @@ describe('Upis uvezene djece', () => {
     const [row] = bulkRows([family], '2026/2027', new Map([[id(10), 'IMH']]));
     if (!row) throw new Error('fixture');
     expect(rowProblems(row, '2026/2027', TODAY)).toEqual(['odaberite program', 'unesite datum rođenja']);
-    expect(rowProblems({ ...row, program: 'PRIMARY_1_4', dateOfBirth: '2023-03-03' }, '2026/2027', TODAY)).toEqual(['program ne pripada ustanovi']);
+    const wrong = rowProblems({ ...row, program: 'PRIMARY_1_4', dateOfBirth: '2023-03-03' }, '2026/2027', TODAY);
+    expect(wrong[0]).toBe('program ne pripada ustanovi');
+    // a 3-year-old in primary school is refused too (Director, 2026-11-22)
+    expect(wrong[1]).toContain('3 god.');
+    expect(rowProblems({ ...row, dateOfBirth: '1998-01-01' }, '2026/2027', TODAY).join(' ')).toContain('provjerite datum rođenja');
     expect(rowProblems({ ...row, program: 'TODDLERS', dateOfBirth: '2027-01-01' }, '2026/2027', TODAY)).toEqual(['datum rođenja mora biti u prošlosti']);
     expect(rowProblems({ ...row, program: 'PRESCHOOLERS', dateOfBirth: '2023-03-03', startsOn: '2027-09-01' }, '2026/2027', TODAY)[0]).toContain('školske godine');
     expect(rowProblems({ ...row, program: 'PRESCHOOLERS', dateOfBirth: '2023-03-03' }, '2026/2027', TODAY)).toEqual([]);
