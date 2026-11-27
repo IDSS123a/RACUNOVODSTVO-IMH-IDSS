@@ -26,6 +26,7 @@ export const ACTION_LABEL: Readonly<Record<string, string>> = {
   ACKNOWLEDGE: 'Potvrđen ključ za oporavak',
   BREAKFAST_ON: 'Doručak uključen',
   BREAKFAST_OFF: 'Doručak isključen',
+  GROUP_CHANGE: 'Promijenjena grupa (Toddlers / Preschoolers)',
 };
 
 export const ENTITY_LABEL: Readonly<Record<string, string>> = {

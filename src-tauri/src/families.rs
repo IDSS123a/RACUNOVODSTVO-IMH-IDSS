@@ -237,7 +237,9 @@ pub fn save_family(tx: &Transaction, family: &Family, guardians: &[Guardian]) ->
 /// `src/features/families/domain.ts` (Director, 2026-11-22: a kindergarten child born in 1998 was accepted).
 fn program_age(program: &str) -> Option<(i32, i32)> {
     match program {
-        "TODDLERS" | "PRESCHOOLERS" => Some((0, 6)),
+        // Director, 2026-11-27: Toddlers until the 4th birthday, Preschoolers from the 2nd (SPEC A9)
+        "TODDLERS" => Some((0, 3)),
+        "PRESCHOOLERS" => Some((2, 6)),
         "IDSS_PRESCHOOLERS" => Some((3, 6)),
         "PRIMARY_1_4" => Some((5, 11)),
         "PRIMARY_5_9" => Some((9, 16)),
@@ -309,6 +311,44 @@ pub fn save_enrolment(tx: &Transaction, e: &Enrolment) -> AppResult<()> {
     )
     .map_err(|err| constraint_to_conflict(err, "dijete već ima aktivan upis u istoj ustanovi za tu školsku godinu"))?;
     Ok(())
+}
+
+/// Move an active IMH kindergarten enrolment to the other group from a day (SPEC registration-validation A9).
+/// Only Toddlers ↔ Preschoolers; the child's age on that day must fit the new group. It is the same enrolment: no new
+/// enrolment fee, deposit or materials, the same price, and issued invoices do not change.
+pub fn change_enrolment_group(tx: &Transaction, enrolment_id: &str, program: &str, from: &str) -> AppResult<String> {
+    if !matches!(program, "TODDLERS" | "PRESCHOOLERS") {
+        return Err(AppError::Validation("grupa je Toddlers ili Preschoolers".into()));
+    }
+    let found: Option<(String, String, String, Option<String>)> = tx
+        .query_row(
+            "SELECT e.program, e.status, e.starts_on, c.date_of_birth FROM enrolments e JOIN children c ON c.id = e.child_id WHERE e.id = ?1",
+            params![enrolment_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .optional()?;
+    let Some((current, status, starts_on, dob)) = found else { return Err(AppError::NotFound("upis ne postoji".into())) };
+    if !matches!(current.as_str(), "TODDLERS" | "PRESCHOOLERS") {
+        return Err(AppError::Validation("grupa se mijenja samo u IMH vrtiću (Toddlers / Preschoolers)".into()));
+    }
+    if current == program {
+        return Err(AppError::Validation("dijete je već u toj grupi".into()));
+    }
+    if !matches!(status.as_str(), "AWAITING_ENROLMENT_PAYMENT" | "ACTIVE" | "WITHDRAWAL_NOTIFIED" | "SUSPENDED") {
+        return Err(AppError::Validation("grupa se mijenja samo na aktivnom upisu".into()));
+    }
+    if from < starts_on.as_str() {
+        return Err(AppError::Validation("promjena ne može biti prije početka upisa".into()));
+    }
+    if let (Some(dob), Some((min, max))) = (dob.as_deref(), program_age(program)) {
+        if let Some(age) = age_on(dob, from) {
+            if age < min || age > max {
+                return Err(AppError::Validation(format!("dijete ima {age} god. na dan promjene — za ovu grupu dozvoljeno je {min}–{max} god.")));
+            }
+        }
+    }
+    tx.execute("UPDATE enrolments SET program = ?1 WHERE id = ?2", params![program, enrolment_id])?;
+    Ok(current)
 }
 
 fn count(tx: &Transaction, sql: &str, id: &str) -> AppResult<i64> {
@@ -439,7 +479,7 @@ mod tests {
             family_id: F.into(),
             first_name: "Ana".into(),
             last_name: "Test".into(),
-            date_of_birth: Some("2021-03-01".into()),
+            date_of_birth: Some("2023-03-01".into()),
             import_review: false,
             residency: "DOMESTIC".into(),
             citizen_bih: true,
@@ -473,10 +513,10 @@ mod tests {
         future.date_of_birth = Some("2999-01-01".into());
         assert!(save_child(&tx, &future).is_err());
 
-        save_child(&tx, &child("c1")).unwrap(); // born 2021-03-01: 5 years old on 2026-09-01
+        save_child(&tx, &child("c1")).unwrap(); // born 2023-03-01: 3 years old on 2026-09-01
         assert!(save_enrolment(&tx, &enrolment("e1", "PRESCHOOLERS", "ACTIVE")).is_ok());
         let err = save_enrolment(&tx, &enrolment("e2", "PRIMARY_5_9", "ACTIVE")).unwrap_err();
-        assert!(matches!(err, AppError::Validation(ref m) if m.contains("5 god.")), "{err:?}");
+        assert!(matches!(err, AppError::Validation(ref m) if m.contains("3 god.")), "{err:?}");
         // an imported child without a date of birth is not judged here
         let mut unknown = child("c2");
         unknown.date_of_birth = None;
@@ -485,6 +525,34 @@ mod tests {
         e.child_id = "c2".into();
         assert!(save_enrolment(&tx, &e).is_ok());
         assert_eq!((age_on("2020-09-02", "2026-09-01"), age_on("2020-09-01", "2026-09-01")), (Some(5), Some(6)));
+    }
+
+    /// SPEC A9: „Promijeni grupu“ moves Toddlers ↔ Preschoolers on the same enrolment, from a day, with the age
+    /// checked on that day; nothing else can be changed this way.
+    #[test]
+    fn group_change_toddlers_preschoolers() {
+        let mut conn = db();
+        let tx = conn.transaction().unwrap();
+        save_family(&tx, &family(), &[guardian("g1", true)]).unwrap();
+        save_child(&tx, &Child { date_of_birth: Some("2024-03-01".into()), ..child("c1") }).unwrap(); // 2 y 6 m on 2026-09-01
+        save_enrolment(&tx, &enrolment("e1", "TODDLERS", "ACTIVE")).unwrap();
+        assert_eq!(change_enrolment_group(&tx, "e1", "PRESCHOOLERS", "2026-10-01").unwrap(), "TODDLERS");
+        let program: String = tx.query_row("SELECT program FROM enrolments WHERE id = 'e1'", [], |r| r.get(0)).unwrap();
+        assert_eq!(program, "PRESCHOOLERS");
+        // back to Toddlers on the 4th birthday is refused; before it, allowed
+        assert!(change_enrolment_group(&tx, "e1", "TODDLERS", "2028-03-01").is_err());
+        assert!(change_enrolment_group(&tx, "e1", "TODDLERS", "2026-11-01").is_ok());
+        // before the start of the enrolment, to the same group, or to another program: refused
+        assert!(change_enrolment_group(&tx, "e1", "PRESCHOOLERS", "2026-08-01").is_err());
+        assert!(change_enrolment_group(&tx, "e1", "TODDLERS", "2026-11-02").is_err());
+        assert!(change_enrolment_group(&tx, "e1", "PRIMARY_1_4", "2026-11-02").is_err());
+        // a younger child (1 y 11 m) cannot be moved to Preschoolers
+        save_child(&tx, &Child { id: "c2".into(), date_of_birth: Some("2024-10-01".into()), ..child("c2") }).unwrap();
+        save_enrolment(&tx, &Enrolment { id: "e2".into(), child_id: "c2".into(), ..enrolment("e2", "TODDLERS", "ACTIVE") }).unwrap();
+        assert!(change_enrolment_group(&tx, "e2", "PRESCHOOLERS", "2026-09-01").is_err());
+        // a withdrawn enrolment keeps its group
+        save_enrolment(&tx, &enrolment("e1", "TODDLERS", "WITHDRAWN")).unwrap();
+        assert!(change_enrolment_group(&tx, "e1", "PRESCHOOLERS", "2026-12-01").is_err());
     }
 
     fn family() -> Family {
@@ -517,7 +585,8 @@ mod tests {
         let mut conn = db();
         let tx = conn.transaction().unwrap();
         save_family(&tx, &family(), &[guardian("g1", true)]).unwrap();
-        save_child(&tx, &child("c1")).unwrap();
+        // this test is about the database rule, not the age: a child without a date of birth (as imported)
+        save_child(&tx, &Child { date_of_birth: None, ..child("c1") }).unwrap();
         save_enrolment(&tx, &enrolment("e1", "TODDLERS", "ACTIVE")).unwrap();
         let clash = save_enrolment(&tx, &enrolment("e2", "IDSS_PRESCHOOLERS", "ACTIVE"));
         assert!(matches!(clash, Err(AppError::Conflict(_))));

@@ -724,7 +724,7 @@ mod tests {
         .unwrap();
         save_child(&tx, &Child {
             id: "c1".into(), family_id: F.into(), first_name: "A".into(), last_name: "T".into(),
-            date_of_birth: Some("2022-01-01".into()), residency: "DOMESTIC".into(), citizen_bih: true, residence_ks: true, import_review: false,
+            date_of_birth: Some("2024-01-01".into()), residency: "DOMESTIC".into(), citizen_bih: true, residence_ks: true, import_review: false,
         })
         .unwrap();
         save_enrolment(&tx, &Enrolment {
@@ -1060,6 +1060,8 @@ mod tests {
 
     fn idss_enrolment(conn: &mut Connection) {
         let tx = conn.transaction().unwrap();
+        // these tests are about IDSS plans, not the age: the test child (a toddler) gets no date of birth here
+        tx.execute("UPDATE children SET date_of_birth = NULL WHERE id = 'c1'", []).unwrap();
         save_enrolment(&tx, &Enrolment {
             id: "e9".into(), child_id: "c1".into(), program: "PRIMARY_1_4".into(), school_year: "2027/2028".into(),
             starts_on: "2027-09-01".into(), ends_on: None, status: "ACTIVE".into(),

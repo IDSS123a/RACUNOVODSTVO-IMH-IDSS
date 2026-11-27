@@ -216,6 +216,16 @@ pub fn list_audit_log(state: State<'_, AppStore>, filter: crate::audit::AuditFil
     store.read(|c| crate::audit::list_audit(c, &filter))
 }
 
+/// „Promijeni grupu“ (SPEC registration-validation A9): Toddlers ↔ Preschoolers from a day; written to the audit log.
+#[tauri::command]
+pub fn change_enrolment_group(state: State<'_, AppStore>, enrolment_id: String, program: String, from: String) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        let previous = families::change_enrolment_group(tx, &enrolment_id, &program, &from)?;
+        repo::audit(tx, "GROUP_CHANGE", "enrolment", &enrolment_id, &format!("{previous} -> {program} od {from}"))
+    })
+}
+
 /// Services outside the price list already on issued invoices of an institution and month (no double billing).
 #[tauri::command]
 pub fn list_billed_services(state: State<'_, AppStore>, entity: String, period_from: String) -> AppResult<Vec<crate::invoices::BilledService>> {

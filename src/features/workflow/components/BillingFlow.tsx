@@ -59,6 +59,7 @@ export function BillingFlow({ entity, onOpenFamilies }: { entity: LegalEntityCod
       problems: data.problems.filter((p) => p.entity === null || p.entity === entity),
       withoutEnrolment: data.withoutEnrolment.filter((c) => c.entity === entity),
       unknownInstitution: data.withoutEnrolment.filter((c) => c.entity === null).length,
+      groupWarnings: entity === 'IMH' ? data.groupWarnings : [],
     };
   }, [preview.state, entity]);
 
@@ -137,6 +138,7 @@ function ChildrenStep({
     problems: MonthlyPreview['problems'];
     withoutEnrolment: MonthlyPreview['withoutEnrolment'];
     unknownInstitution: number;
+    groupWarnings: MonthlyPreview['groupWarnings'];
   };
   onChanged: () => void;
   onOpenFamilies: () => void;
@@ -199,6 +201,21 @@ function ChildrenStep({
         </Alert>
       )}
       {data.withoutEnrolment.length > 0 && <WithoutEnrolment month={month} children={data.withoutEnrolment} />}
+      {data.groupWarnings.length > 0 && (
+        <Alert>
+          <AlertTitle>{data.groupWarnings.length} djece u Toddlers puni 4 godine ove školske godine</AlertTitle>
+          <AlertDescription>
+            <p>Toddlers je dozvoljen do 4. rođendana. Kada pedagog odluči, prebacite dijete u Preschoolers: Porodice i djeca → dijete → „Promijeni grupu“.</p>
+            <ul className="list-disc pl-5">
+              {data.groupWarnings.map((w) => (
+                <li key={`${w.familyName}-${w.childName}`}>
+                  {w.childName} ({w.familyName}) — 4. rođendan {formatDate(w.fourthBirthday)}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
       {data.unknownInstitution > 0 && (
         <p className="text-sm text-muted-foreground">
           Još {data.unknownInstitution} djece nema poznatu ustanovu (npr. samo u registru starog Excela, bez ijedne fakture i upisa), pa nisu ni na spisku IMH ni na spisku IDSS.

@@ -856,4 +856,36 @@
 
 ---
 
+## DL-P030 — The IMH kindergarten records its group: Toddlers (until the 4th birthday) and Preschoolers (from the 2nd)
+
+**Date:** 2026-11-27 · **Spec:** `specs/registration-validation/` §A9 (approved) · **Source:** Director, 2026-11-27: „Dijete može biti u Toddler grupi samo u dobi 0–3 godine“. The group is recorded; Toddlers until the 4th birthday; Preschoolers from 2 years. · **Amends:** DL-P014 amendment 2 (the single choice „Toddlers / Preschoolers“) and DL-P025 (the 0–6 range).
+
+**Decision:**
+- **Two groups, same price:** an IMH kindergarten enrolment chooses **Toddlers** or **Preschoolers**. The price list is unchanged, and „IDSS Preschoolers“ stays a separate program.
+- **Age on the first day** (completed years, limits included):
+  - Toddlers 0–3, i.e. until the day before the 4th birthday;
+  - Preschoolers 2–6.
+  Between the 2nd and the 4th birthday both are allowed, because the pedagogue decides. The ranges are the same on the screens (`PROGRAM_AGE`) and in the backend (`program_age`).
+- **Proposal:** a new enrolment opens with the group for the child's age on the first day (Toddlers until the 3rd birthday, Preschoolers after it). The form shows the age and the proposal. „Dopuna podataka o djeci“ proposes the group when the date of birth is entered. The operator may change it within the range.
+- **„Promijeni grupu“** on an active kindergarten enrolment (command `change_enrolment_group`):
+  - Toddlers ↔ Preschoolers from a chosen day, not before the start of the enrolment;
+  - the age is checked on that day;
+  - it is the same enrolment: no new enrolment fee, deposit or materials, the same price, and issued invoices unchanged;
+  - it is written to the audit log as „Promijenjena grupa“.
+- **Step A (IMH):** a warning lists the children in Toddlers who turn 4 before the end of the school year, with the date of the 4th birthday.
+- **Migration 015:** an enrolment stored as Preschoolers (the old single choice) of a child younger than 2 on its first day becomes Toddlers. Every other enrolment keeps its group, and a child without a date of birth is not changed.
+
+**Verified:**
+- Vitest 339/339, including:
+  - the limits (3 y 11 m in Toddlers allowed, the 4th birthday refused; 1 y 11 m in Preschoolers refused, the 2nd birthday allowed);
+  - the proposal;
+  - the 4th birthday, also on 29 February.
+- cargo test 68/68:
+  - the group change: allowed both ways inside the range; refused out of range, before the start, to the same group, to another program, and on a withdrawn enrolment;
+  - migration 015: under 2 → Toddlers; exactly 2, older, and no date of birth unchanged.
+- Older tests that put 4–5-year-olds into Toddlers now use younger children; tests about other rules use a child without a date of birth.
+- **The Director checked it in the running app (2026-11-27, C-13): „Da, ispravno“.**
+
+---
+
 *Commander v1.8.1 — IDSS123a Organisation*

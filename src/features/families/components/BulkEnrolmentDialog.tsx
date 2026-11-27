@@ -11,7 +11,9 @@ import { listInvoices } from '@/features/invoices/repository';
 import { PROGRAM_LABEL, type LegalEntityCode, type ProgramCode, type SchoolYear } from '@/features/price-lists/types';
 import type { Result } from '@/lib/tauri/invoke';
 import { useAsyncResult } from '@/lib/use-async-result';
+import { isRealDate } from '@/lib/validation/formats';
 import { bulkItems, bulkRows, lastEntityByChild, programsOf, rowProblems, type BulkRow } from '../bulk-enrolment';
+import { suggestedGroup } from '../domain';
 import { getFamily, listFamilies, saveEnrolmentsBulk } from '../repository';
 import { STATUS_LABEL } from '../types';
 
@@ -196,7 +198,14 @@ function Editor({ initial, schoolYear, onSaved }: { initial: BulkRow[]; schoolYe
                     </select>
                   </TableCell>
                   <TableCell>
-                    <Input aria-label={`Datum rođenja — ${name}`} type="date" className="h-8 w-36" value={row.dateOfBirth} onChange={(e) => set(row.child.id, { dateOfBirth: e.target.value })} />
+                    <Input aria-label={`Datum rođenja — ${name}`} type="date" className="h-8 w-36" value={row.dateOfBirth}
+                      onChange={(e) => {
+                        const dateOfBirth = e.target.value;
+                        // IMH kindergarten: the group is proposed by age on the first day (SPEC A9); the operator may change it
+                        const kindergarten = row.entity === 'IMH' && (row.program === '' || row.program === 'TODDLERS' || row.program === 'PRESCHOOLERS');
+                        set(row.child.id, kindergarten && isRealDate(dateOfBirth) ? { dateOfBirth, program: suggestedGroup(dateOfBirth, row.startsOn) } : { dateOfBirth });
+                      }}
+                    />
                   </TableCell>
                   <TableCell>
                     <select

@@ -98,12 +98,27 @@ export function schoolYearBounds(year: SchoolYear): { from: string; to: string }
  * checks the same (`families.rs`). The exact ranges are for the Director to confirm.
  */
 export const PROGRAM_AGE: Readonly<Record<ProgramCode, readonly [number, number]>> = {
-  TODDLERS: [0, 6],
-  PRESCHOOLERS: [0, 6],
+  // Director, 2026-11-27: Toddlers only until the 4th birthday; Preschoolers from the 2nd birthday (the pedagogue
+  // decides when a child moves up, so both groups are allowed between the 2nd and the 4th birthday)
+  TODDLERS: [0, 3],
+  PRESCHOOLERS: [2, 6],
   IDSS_PRESCHOOLERS: [3, 6],
   PRIMARY_1_4: [5, 11],
   PRIMARY_5_9: [9, 16],
 };
+
+/** The group the system proposes for the IMH kindergarten: Toddlers until the 3rd birthday, Preschoolers after it. */
+export function suggestedGroup(dateOfBirth: string | null, startsOn: string): 'TODDLERS' | 'PRESCHOOLERS' {
+  return dateOfBirth && ageOn(dateOfBirth, startsOn) < 3 ? 'TODDLERS' : 'PRESCHOOLERS';
+}
+
+/** The day a child turns `years` (ISO); 29 February becomes 28 February in a common year. */
+export function birthday(dateOfBirth: string, years: number): string {
+  const year = Number(dateOfBirth.slice(0, 4)) + years;
+  const monthDay = dateOfBirth.slice(5);
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  return `${year}-${monthDay === '02-29' && !leap ? '02-28' : monthDay}`;
+}
 
 /** Oldest age (completed years) of any child of the institutions on the day the record is saved. */
 export const CHILD_MAX_AGE = 16;

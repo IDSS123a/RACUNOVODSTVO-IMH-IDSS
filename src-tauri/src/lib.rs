@@ -61,6 +61,7 @@ pub fn run() {
             commands::list_audit_log,
             commands::list_billed_one_time,
             commands::list_billed_services,
+            commands::change_enrolment_group,
             commands::save_family,
             commands::save_child,
             commands::save_enrolment,

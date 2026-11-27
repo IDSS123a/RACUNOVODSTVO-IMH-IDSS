@@ -70,19 +70,23 @@ export const PROGRAM_ENTITY: Readonly<Record<ProgramCode, LegalEntityCode>> = {
  * and the price list; they read the same everywhere.
  */
 export const PROGRAM_LABEL: Readonly<Record<ProgramCode, string>> = {
-  TODDLERS: 'Toddlers / Preschoolers',
-  PRESCHOOLERS: 'Toddlers / Preschoolers',
+  // two groups of the IMH kindergarten, same price; the group is recorded (Director, 2026-11-27, SPEC A9)
+  TODDLERS: 'Toddlers',
+  PRESCHOOLERS: 'Preschoolers',
   IDSS_PRESCHOOLERS: 'IDSS Preschoolers',
   PRIMARY_1_4: 'Osnovna škola I–IV',
   PRIMARY_5_9: 'Osnovna škola V–IX',
 };
 
-/** Programs offered for a NEW enrolment: Toddlers / Preschoolers once (stored as PRESCHOOLERS). */
-export const ENROLLABLE_PROGRAMS: ReadonlyArray<ProgramCode> = ['PRESCHOOLERS', 'IDSS_PRESCHOOLERS', 'PRIMARY_1_4', 'PRIMARY_5_9'];
+/**
+ * Programs offered for a NEW enrolment. The IMH kindergarten has two groups, Toddlers and Preschoolers, with the same
+ * price; the group is recorded (Director, 2026-11-27 — replaces the single choice of DL-P014 amendment 2).
+ */
+export const ENROLLABLE_PROGRAMS: ReadonlyArray<ProgramCode> = ['TODDLERS', 'PRESCHOOLERS', 'IDSS_PRESCHOOLERS', 'PRIMARY_1_4', 'PRIMARY_5_9'];
 
-/** The program choices for a form: the enrollable ones, plus the stored one if it is the other Toddlers/Preschoolers code. */
-export function programChoices(current: ProgramCode | ''): ProgramCode[] {
-  return current && !ENROLLABLE_PROGRAMS.includes(current) ? [current, ...ENROLLABLE_PROGRAMS.filter((p) => p !== 'PRESCHOOLERS')] : [...ENROLLABLE_PROGRAMS];
+/** The program choices for a form: every enrollable program. */
+export function programChoices(): ProgramCode[] {
+  return [...ENROLLABLE_PROGRAMS];
 }
 
 /** Same group for billing rules: Toddlers and Preschoolers are one IMH program (Director, 2026-11-21). */

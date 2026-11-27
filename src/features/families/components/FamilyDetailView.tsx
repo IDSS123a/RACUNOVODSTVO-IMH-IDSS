@@ -15,8 +15,9 @@ import { PROGRAM_ENTITY, PROGRAM_LABEL, type SchoolYear } from '@/features/price
 import { formatDate } from '@/lib/format';
 import { useAsyncResult } from '@/lib/use-async-result';
 import { changeEnrolmentStatus, saveFamilyWithGuardians, saveValidatedEnrolment } from '../actions';
-import { allowedTransitions, buildFamilyPricing } from '../domain';
-import { deleteChild, deleteEnrolment, deleteFamily, getFamily, saveChild } from '../repository';
+import { ACTIVE_STATUSES, allowedTransitions, buildFamilyPricing, enrolmentAgeProblem } from '../domain';
+import { changeEnrolmentGroup, deleteChild, deleteEnrolment, deleteFamily, getFamily, saveChild } from '../repository';
+import { Input } from '@/components/ui/input';
 import { ROLE_LABEL, STATUS_LABEL, type Child, type Enrolment, type EnrolmentStatus } from '../types';
 import { newChild, newEnrolment } from '../factories';
 import { ChildForm } from './ChildForm';
@@ -29,7 +30,8 @@ type DialogState =
   | { kind: 'family' }
   | { kind: 'child'; child: Child }
   | { kind: 'enrolment'; enrolment: Enrolment }
-  | { kind: 'plan'; enrolment: Enrolment };
+  | { kind: 'plan'; enrolment: Enrolment }
+  | { kind: 'group'; enrolment: Enrolment };
 
 /** One family: guardians, children, enrolments, and who pays the full / discounted price. */
 export function FamilyDetailView({
@@ -193,7 +195,7 @@ export function FamilyDetailView({
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setDialog({ kind: 'enrolment', enrolment: newEnrolment(child.id, year) })}>
+                    <Button size="sm" variant="outline" onClick={() => setDialog({ kind: 'enrolment', enrolment: newEnrolment(child.id, year, child.dateOfBirth) })}>
                       <PlusIcon aria-hidden /> Upis
                     </Button>
                     <Button size="sm" variant="ghost" aria-label="Uredi dijete" onClick={() => setDialog({ kind: 'child', child })}>
@@ -214,6 +216,11 @@ export function FamilyDetailView({
                     <span className="text-muted-foreground">od {formatDate(enrolment.startsOn)}{enrolment.endsOn ? ` do ${formatDate(enrolment.endsOn)}` : ''}</span>
                     <Badge variant="outline">{STATUS_LABEL[enrolment.status]}</Badge>
                     <div className="ml-auto flex flex-wrap gap-1">
+                      {(enrolment.program === 'TODDLERS' || enrolment.program === 'PRESCHOOLERS') && ACTIVE_STATUSES.has(enrolment.status) && (
+                        <Button size="sm" variant="outline" onClick={() => setDialog({ kind: 'group', enrolment })}>
+                          Promijeni grupu → {enrolment.program === 'TODDLERS' ? 'Preschoolers' : 'Toddlers'}
+                        </Button>
+                      )}
                       {PROGRAM_ENTITY[enrolment.program] === 'IDSS' && (
                         <Button size="sm" variant="outline" onClick={() => setDialog({ kind: 'plan', enrolment })}>
                           <CalendarRangeIcon aria-hidden /> Plan plaćanja
@@ -278,7 +285,7 @@ export function FamilyDetailView({
               const isNew = !children.some((c) => c.id === child.id);
               if (!(await run(saveChild(child), 'Dijete je sačuvano.'))) return;
               // a new child is enrolled next, without searching for the button (Director, 2026-11-21)
-              if (isNew) setDialog({ kind: 'enrolment', enrolment: newEnrolment(child.id, year) });
+              if (isNew) setDialog({ kind: 'enrolment', enrolment: newEnrolment(child.id, year, child.dateOfBirth) });
               else close();
             }}
           />
@@ -288,6 +295,7 @@ export function FamilyDetailView({
         {dialog.kind === 'enrolment' && (
           <EnrolmentForm
             enrolment={dialog.enrolment}
+            dateOfBirth={children.find((c) => c.id === dialog.enrolment.childId)?.dateOfBirth ?? null}
             schoolYears={schoolYears}
             onSubmit={async (enrolment) => {
               const others = enrolments.filter((e) => e.childId === enrolment.childId);
@@ -296,6 +304,23 @@ export function FamilyDetailView({
               // an IDSS pupil needs a payment plan: the proposed one opens at once, the operator only confirms it
               if (PROGRAM_ENTITY[enrolment.program] === 'IDSS') setDialog({ kind: 'plan', enrolment });
               else close();
+            }}
+          />
+        )}
+      </FormDialog>
+      <FormDialog
+        open={dialog.kind === 'group'}
+        onOpenChange={close}
+        title="Promijeni grupu"
+        description="Prelazak određuje pedagog. Upis ostaje isti: nema nove upisnine, depozita ni materijala, cijena je ista, izdati računi se ne mijenjaju."
+      >
+        {dialog.kind === 'group' && (
+          <GroupChange
+            enrolment={dialog.enrolment}
+            dateOfBirth={children.find((c) => c.id === dialog.enrolment.childId)?.dateOfBirth ?? null}
+            onDone={async (to, from) => {
+              if (!(await run(changeEnrolmentGroup(dialog.enrolment.id, to, from), `Grupa promijenjena u ${PROGRAM_LABEL[to]}.`))) return;
+              close();
             }}
           />
         )}
@@ -310,6 +335,50 @@ export function FamilyDetailView({
         enrolment={dialog.kind === 'plan' ? dialog.enrolment : null}
         onClose={close}
       />
+    </div>
+  );
+}
+
+/** „Promijeni grupu“ (SPEC registration-validation A9): Toddlers ↔ Preschoolers from a chosen day, age checked. */
+function GroupChange({
+  enrolment,
+  dateOfBirth,
+  onDone,
+}: {
+  enrolment: Enrolment;
+  dateOfBirth: string | null;
+  onDone: (to: 'TODDLERS' | 'PRESCHOOLERS', from: string) => Promise<void>;
+}): React.JSX.Element {
+  const to = enrolment.program === 'TODDLERS' ? 'PRESCHOOLERS' : 'TODDLERS';
+  const today = new Date().toISOString().slice(0, 10);
+  const [from, setFrom] = useState(today < enrolment.startsOn ? enrolment.startsOn : today);
+  const [busy, setBusy] = useState(false);
+  const problem = enrolmentAgeProblem(to, dateOfBirth, from);
+  return (
+    <div className="grid gap-3">
+      <p className="text-sm">
+        {PROGRAM_LABEL[enrolment.program]} → <strong>{PROGRAM_LABEL[to]}</strong>, školska {enrolment.schoolYear}
+      </p>
+      <div className="grid gap-1.5">
+        <label htmlFor="group-from" className="text-sm font-medium">Od dana</label>
+        <Input id="group-from" type="date" className="h-9 w-44" min={enrolment.startsOn} value={from} onChange={(e) => setFrom(e.target.value || today)} />
+      </div>
+      {problem && <p className="text-sm text-destructive">{problem}</p>}
+      <div>
+        <Button
+          disabled={busy || problem !== null || from < enrolment.startsOn}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onDone(to, from);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? 'Spremanje…' : `Prebaci u ${PROGRAM_LABEL[to]}`}
+        </Button>
+      </div>
     </div>
   );
 }

@@ -165,3 +165,25 @@ describe('the age of the child must fit the program (Director, 2026-11-22: kinde
     expect(ChildInputSchema.safeParse({ ...base, dateOfBirth: '2022-05-10' }).success).toBe(true);
   });
 });
+
+describe('Toddlers / Preschoolers (Director, 2026-11-27, SPEC A9)', () => {
+  it('Toddlers until the day before the 4th birthday; Preschoolers from the 2nd birthday', async () => {
+    const { enrolmentAgeProblem } = await import('./domain');
+    const start = '2026-09-01';
+    expect(enrolmentAgeProblem('TODDLERS', '2022-09-02', start)).toBeNull(); // 3 years and 11+ months
+    expect(enrolmentAgeProblem('TODDLERS', '2022-09-01', start)).not.toBeNull(); // the 4th birthday
+    expect(enrolmentAgeProblem('PRESCHOOLERS', '2024-09-02', start)).not.toBeNull(); // 1 year 11+ months
+    expect(enrolmentAgeProblem('PRESCHOOLERS', '2024-09-01', start)).toBeNull(); // the 2nd birthday
+    expect(enrolmentAgeProblem('TODDLERS', '2026-01-10', start)).toBeNull(); // a baby
+  });
+
+  it('the system proposes Toddlers until the 3rd birthday, Preschoolers after it; 4th birthday also on 29 February', async () => {
+    const { birthday, suggestedGroup } = await import('./domain');
+    expect(suggestedGroup('2024-01-01', '2026-09-01')).toBe('TODDLERS');
+    expect(suggestedGroup('2023-09-01', '2026-09-01')).toBe('PRESCHOOLERS');
+    expect(suggestedGroup(null, '2026-09-01')).toBe('PRESCHOOLERS');
+    expect(birthday('2022-05-10', 4)).toBe('2026-05-10');
+    expect(birthday('2020-02-29', 4)).toBe('2024-02-29');
+    expect(birthday('2023-02-29'.replace('2023', '2024'), 3)).toBe('2027-02-28');
+  });
+});

@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PROGRAM_ENTITY, PROGRAM_LABEL, programChoices, type ProgramCode, type SchoolYear } from '@/features/price-lists/types';
 import { Field } from '@/features/settings/components/OperatorForm';
 import { EnrolmentSchema } from '@/lib/validation/schemas';
-import { schoolYearBounds } from '../domain';
+import { ageOn, enrolmentAgeProblem, schoolYearBounds, suggestedGroup } from '../domain';
 import type { Enrolment } from '../types';
 
 /**
@@ -17,8 +17,11 @@ export function EnrolmentForm({
   enrolment,
   schoolYears,
   onSubmit,
+  dateOfBirth = null,
 }: {
   enrolment: Enrolment;
+  /** The child's date of birth: the IMH group is proposed by age on the first day (SPEC A9). */
+  dateOfBirth?: string | null;
   schoolYears: ReadonlyArray<SchoolYear>;
   onSubmit: (enrolment: Enrolment) => Promise<void>;
 }): React.JSX.Element {
@@ -35,7 +38,7 @@ export function EnrolmentForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {programChoices(enrolment.program).map((code) => (
+            {programChoices().map((code) => (
               <SelectItem key={code} value={code}>
                 {PROGRAM_LABEL[code]} ({PROGRAM_ENTITY[code]})
               </SelectItem>
@@ -68,7 +71,15 @@ export function EnrolmentForm({
       </Field>
       <p className="self-end pb-2 text-sm text-muted-foreground">
         Ustanova: <strong>{PROGRAM_ENTITY[program]}</strong>
+        {dateOfBirth && (program === 'TODDLERS' || program === 'PRESCHOOLERS') && (
+          <>
+            {' · '}starost na dan početka {ageOn(dateOfBirth, form.watch('startsOn') || enrolment.startsOn)} god.; prijedlog: <strong>{PROGRAM_LABEL[suggestedGroup(dateOfBirth, form.watch('startsOn') || enrolment.startsOn)]}</strong>
+          </>
+        )}
       </p>
+      {dateOfBirth && enrolmentAgeProblem(program, dateOfBirth, form.watch('startsOn') || enrolment.startsOn) && (
+        <p className="text-sm text-destructive sm:col-span-2">{enrolmentAgeProblem(program, dateOfBirth, form.watch('startsOn') || enrolment.startsOn)}</p>
+      )}
       <div className="sm:col-span-2">
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting ? 'Spremanje…' : 'Upiši dijete'}

@@ -129,7 +129,7 @@ Payments from any family member are booked against invoices, and the open balanc
 - ⚠️ Fix (2026-11-22, L-S3-17, DL-P025): a child's date of birth must fit the child (at most 16) and the program; checked on the screens and in the backend. Waiting for the Director to confirm the ranges (C-13).
 - ⏳ Notice of the unpaid remainder (2026-11-22, DL-P026): the invoice stays as issued; a separate PDF on the letterhead has a slip for the remainder. Waiting for the Director's check (C-13).
 - ⚠️ Fix (2026-11-27, L-S3-18, DL-P027): no price, line, invoice or payment above 100.000,00 KM; IMH-907/26 is to be stornoed.
-- ⏳ Registration validation step 1 (2026-11-27, `specs/registration-validation/`): A5–A8 done (DL-P028); A9 (Toddler / Preschooler group) next.
+- ⏳ Registration validation step 1 (2026-11-27, `specs/registration-validation/`): A5–A8 (DL-P028) and A9 (DL-P030, Toddlers / Preschoolers, migration 015) are done; the Director checked A9 (C-13). Next: B (duplicates and warnings).
 - ⚠️ **Data-loss fix** (2026-11-27, L-S3-19, DL-P029): since 2026-11-21 the disk was one write behind after a restart, so the last change before closing was lost (development builds only; installer 0.3.0 is not affected). Fixed and tested; the Director checked it (C-13).
 - Next from the definition: „Ispravi fakturu“ in one step (M8); GDPR compliance review (M4).
 
