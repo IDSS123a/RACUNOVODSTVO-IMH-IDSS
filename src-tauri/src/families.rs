@@ -333,7 +333,14 @@ pub fn save_enrolment(tx: &Transaction, e: &Enrolment) -> AppResult<()> {
     if dob.as_deref().is_some_and(|d| e.starts_on.as_str() < d) {
         return Err(AppError::Validation("početak pohađanja je prije rođenja djeteta — provjerite datum početka ili datum rođenja".into()));
     }
-    if let (Some(dob), Some((min, max))) = (dob.as_deref(), program_age(&e.program)) {
+    // the age is checked when the enrolment is made or its program or start changes — never when only its status or
+    // end changes: an enrolment that does not fit (saved before the age checks) must still be withdrawn or completed
+    // (Director, 2026-11-28: „Neda ispis. neda obriši“)
+    let stored: Option<(String, String)> = tx
+        .query_row("SELECT program, starts_on FROM enrolments WHERE id = ?1", params![e.id], |r| Ok((r.get(0)?, r.get(1)?)))
+        .optional()?;
+    let placement_changed = stored.is_none_or(|(program, starts_on)| program != e.program || starts_on != e.starts_on);
+    if let (true, Some(dob), Some((min, max))) = (placement_changed, dob.as_deref(), program_age(&e.program)) {
         if let Some(age) = age_on(dob, &e.starts_on) {
             if age < min || age > max {
                 return Err(AppError::Validation(format!(
@@ -644,6 +651,23 @@ mod tests {
         // a withdrawn enrolment does not block the correction
         save_enrolment(&tx, &enrolment("e1", "TODDLERS", "WITHDRAWN")).unwrap();
         assert!(save_child(&tx, &older).is_ok());
+    }
+
+    /// Director, 2026-11-28: an enrolment saved before the age checks (a child born 1998 in Preschoolers) could be neither
+    /// withdrawn nor deleted (it was invoiced). A status change does not check the age again; a new or moved one does.
+    #[test]
+    fn an_enrolment_that_does_not_fit_the_age_can_still_be_withdrawn() {
+        let mut conn = db();
+        let tx = conn.transaction().unwrap();
+        save_family(&tx, &family(), &[guardian("g1", true)]).unwrap();
+        save_child(&tx, &child("c1")).unwrap();
+        save_enrolment(&tx, &enrolment("e1", "PRESCHOOLERS", "AWAITING_ENROLMENT_PAYMENT")).unwrap();
+        // as in the Director's database: the date of birth no longer fits, written before the checks existed
+        tx.execute("UPDATE children SET date_of_birth = '1998-01-01' WHERE id = 'c1'", []).unwrap();
+        assert!(save_enrolment(&tx, &enrolment("e1", "PRESCHOOLERS", "WITHDRAWN")).is_ok(), "withdrawing is allowed");
+        // moving it to another program or start, or a new enrolment, is still checked
+        assert!(matches!(save_enrolment(&tx, &enrolment("e1", "TODDLERS", "WITHDRAWN")), Err(AppError::Validation(_))));
+        assert!(matches!(save_enrolment(&tx, &enrolment("e2", "PRESCHOOLERS", "ACTIVE")), Err(AppError::Validation(_))));
     }
 
     fn family() -> Family {
