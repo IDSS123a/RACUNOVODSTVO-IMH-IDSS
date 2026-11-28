@@ -908,7 +908,16 @@
   - „Promijeni grupu“ is shown only when the other group fits the child's age on some day of the school year (`groupChangeFrom`). The dialog starts at that day, and the message says „na dan promjene“.
   - Every active enrolment whose age does not fit is shown in red on the family card („Upis ne odgovara starosti djeteta: …“). It is also listed in step A of the monthly flow, so it is fixed before billing.
   - The backend refuses a changed date of birth that no longer fits an open enrolment of the child; withdrawn and completed enrolments do not count.
-- **Verified:** Vitest 349/349 (`groupChangeFrom`: 6 and 4 years never Toddlers, 3 years still Toddlers, Preschoolers from the 2nd birthday, after the school year none; the wording), cargo test 77/77 (a corrected date of birth that no longer fits is refused). **Open:** the Director's check (C-13).
+- **Verified:** Vitest 349/349 (`groupChangeFrom`: 6 and 4 years never Toddlers, 3 years still Toddlers, Preschoolers from the 2nd birthday, after the school year none; the wording), cargo test 77/77 (a corrected date of birth that no longer fits is refused). **The Director checked it (2026-11-28, C-13):** „Promijeni grupu → Preschoolers“ is offered to a Toddler of 3, and nothing is offered to a Preschooler of 4. The enrolment born 1998 is shown in red; withdrawing it needed amendment 2. „Ispis uspio“.
+
+**Amendment 2 (2026-11-28) — an enrolment that does not fit the age can still be withdrawn.**
+- **Trigger:** the Director, C-13: the enrolment born 1998 was flagged in red as intended, but „Neda ispis. neda obriši“.
+- **Cause:**
+  - Deleting was refused correctly, because the enrolment is already invoiced, and accounting records are never deleted.
+  - The status change to „Ispisan“ goes through `save_enrolment`, which checked the age again and refused it. That left the wrong enrolment stuck.
+- **Decision:** `save_enrolment` checks the age only when an enrolment is new, or when its program or start date changes. A change of status or end date alone is always allowed, so a wrong enrolment can be withdrawn or completed. The frontend did not check the age on a status change anyway.
+- **Verified:** cargo test 79/79, including the new test `an_enrolment_that_does_not_fit_the_age_can_still_be_withdrawn`: withdrawing is allowed; moving it to another group, or a new enrolment, is still refused.
+
 ---
 
 ## DL-P031 — Possible duplicate family, parent or child: warn before saving
@@ -938,7 +947,7 @@
   - a family never matches itself, and shares its own home telephone;
   - a child in the same or another family.
 - cargo test 69/69: the backend refuses the same child twice in one family; saving the same record again, or another birth date, is fine.
-- **Open:** the Director's check in the running app (C-13).
+- **The Director checked it in the running app (2026-11-28, C-13): „Sve radi“.** A new family „Demo Begić“ and a second „Lejla Begić“ in the same family both showed „Možda već postoji“.
 
 ---
 
@@ -955,7 +964,7 @@
 - Every save (invoice PDF, remainder notice, ZIP of the month, register exports, import report) reports one of three outcomes: „Sačuvano: …“, an error, or „Spremanje otkazano — dokument nije sačuvan“.
 - **BR-22:** the audit entry of a saved document held the full path, which contains the user's folders and a file name with the child's name. It now holds only the kind of document (e.g. „.pdf“). Older entries in the trial database keep their path.
 
-**Verified:** Vitest 345/345, cargo test 70/70. **Open:** the Director's check (C-13).
+**Verified:** Vitest 345/345, cargo test 70/70. **The Director checked it in the running app (2026-11-28, C-13): „Sve radi“.** The preview has no viewer toolbar; a cancelled save and a completed save each report what happened.
 
 ---
 
@@ -1051,7 +1060,7 @@
 - Sample PDFs (invented data) were checked visually.
 
 **Open:**
-- the Director's check in the running app (C-13);
+- ~~the Director's check in the running app (C-13)~~ **done 2026-11-28: „Sve radi“** for every step: the grandfather's overpayment and its receipt (after DL-P036), and a payment without an invoice with its receipt, its application to an invoice and the PDF line, the storno of the application, the refund, and the storno of the refund and of the payment;
 - for the accountant: the account for prepayments (K1).
 - **K2 closed (Director, 2026-11-28):** IMH and IDSS are not PDV payers, as the Director had already stated and the invoice note says. A prepayment needs no avansni račun and no PDV.
 
@@ -1084,7 +1093,7 @@
 - The PDF of IDSS-584/26 no longer has the TRN line (checked by the Director's own export).
 
 **Open:**
-- the Director's check of the family card (C-13).
+- ~~the Director's check of the family card (C-13)~~ done 2026-11-28 (screenshot: every child's invoices with correct totals).
 
 ---
 
