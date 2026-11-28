@@ -7,9 +7,13 @@ import { formatDate } from '@/lib/format';
 import { useAsyncResult } from '@/lib/use-async-result';
 import { saldoText } from '../credit-notes';
 import { toast } from 'sonner';
-import { listChildBalances, listPrepayments, reversePrepayment, reversePrepaymentUse, type ChildBalance } from '../repository';
+import { listChildBalances, listInvoices, listPrepayments, reversePrepayment, reversePrepaymentUse, type ChildBalance } from '../repository';
 import { ChildPrepaidActions, ReceiptButton, ReverseControl } from './PrepaymentActions';
 import { PrepaymentDialog } from './PrepaymentDialog';
+import { childInvoices } from '../family-invoices';
+import { ChildInvoiceList } from './ChildInvoiceList';
+import { InvoiceDetailDialog } from './InvoiceDetailDialog';
+import { InvoicePdfDialog } from './InvoicePdfDialog';
 
 interface ChildRef {
   readonly id: string;
@@ -26,6 +30,7 @@ const saldoColor = (saldo: number): string =>
  * (prepayments::child_balances, one definition, M-7). Below each child: payments without an invoice.
  * „Evidentiraj uplatu bez računa“ records money received before any invoice (BR-24 amended). Shown for every
  * family with a child — „nema zaduženja a korisnik plati = u pretplati“.
+ * Under each child: its invoices, opened from here (Director, 2026-11-28: the operator moves easily and logically).
  */
 export function FamilySaldoCard({
   familyId,
@@ -37,15 +42,22 @@ export function FamilySaldoCard({
   guardians: ReadonlyArray<{ readonly fullName: string }>;
 }): React.JSX.Element | null {
   const [recording, setRecording] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [pdfId, setPdfId] = useState<string | null>(null);
   const load = useCallback(async () => {
-    const [balances, prepayments] = await Promise.all([listChildBalances(familyId), listPrepayments(familyId)]);
+    const [balances, prepayments, invoices] = await Promise.all([
+      listChildBalances(familyId),
+      listPrepayments(familyId),
+      listInvoices({ entity: null, month: null }),
+    ]);
     if (!balances.success) return balances;
     if (!prepayments.success) return prepayments;
-    return { success: true as const, data: { balances: balances.data, prepayments: prepayments.data } };
+    if (!invoices.success) return invoices;
+    return { success: true as const, data: { balances: balances.data, prepayments: prepayments.data, invoices: invoices.data } };
   }, [familyId]);
   const state = useAsyncResult(load);
   if (childList.length === 0 || state.state.status !== 'ready') return null;
-  const { balances, prepayments } = state.state.data;
+  const { balances, prepayments, invoices } = state.state.data;
   const name = (childId: string | null): string => {
     if (childId === null) return 'Računi bez djeteta';
     const child = childList.find((c) => c.id === childId);
@@ -57,7 +69,7 @@ export function FamilySaldoCard({
       <CardHeader>
         <CardTitle>Saldo porodice</CardTitle>
         <CardDescription>
-          Za svako dijete posebno: zaduženo (računi umanjeni za knjižna odobrenja) − uplaćeno + vraćeno. Negativan saldo znači da je dijete u pretplati.
+          Za svako dijete posebno: zaduženo (računi umanjeni za knjižna odobrenja) − uplaćeno + vraćeno. Negativan saldo znači da je dijete u pretplati. Ispod svakog djeteta su njegovi računi: klik na broj otvara račun (uplata, storno, opomena), „PDF“ ga prikazuje.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 text-sm">
@@ -81,6 +93,7 @@ export function FamilySaldoCard({
                     key={`${b.entity}|${b.childId ?? ''}`}
                     balance={b}
                     name={name(b.childId)}
+                    invoiceList={<ChildInvoiceList rows={childInvoices(invoices, familyId, b.entity, b.childId)} onOpen={setOpenId} onPdf={setPdfId} />}
                     actions={
                       b.prepaid > 0 ? (
                         <ChildPrepaidActions familyId={familyId} entity={b.entity} childId={b.childId} prepaid={b.prepaid} childList={childList} onDone={state.reload} />
@@ -175,11 +188,33 @@ export function FamilySaldoCard({
         onClose={() => setRecording(false)}
         onSaved={state.reload}
       />
+      <InvoiceDetailDialog
+        invoiceId={openId}
+        onClose={() => setOpenId(null)}
+        onChanged={state.reload}
+        onShowPdf={(id) => {
+          setOpenId(null);
+          setPdfId(id);
+        }}
+      />
+      <InvoicePdfDialog invoiceId={pdfId} onClose={() => setPdfId(null)} />
     </Card>
   );
 }
 
-function ChildCard({ balance: b, name, actions, children }: { balance: ChildBalance; name: string; actions: React.ReactNode; children: React.ReactNode }): React.JSX.Element {
+function ChildCard({
+  balance: b,
+  name,
+  actions,
+  invoiceList,
+  children,
+}: {
+  balance: ChildBalance;
+  name: string;
+  actions: React.ReactNode;
+  invoiceList: React.ReactNode;
+  children: React.ReactNode;
+}): React.JSX.Element {
   return (
     <li>
       <p>
@@ -194,6 +229,7 @@ function ChildCard({ balance: b, name, actions, children }: { balance: ChildBala
         {b.prepaid > 0 && <> · pretplata na raspolaganju <span className="tabular-nums">{formatKM(b.prepaid)}</span></>}
       </p>
       {actions}
+      <div className="text-muted-foreground">{invoiceList}</div>
       <ul className="pl-4 text-muted-foreground">{children}</ul>
     </li>
   );

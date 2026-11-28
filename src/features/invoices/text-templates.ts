@@ -193,3 +193,19 @@ export const PAYER_RELATIONS: ReadonlyArray<string> = [
   'stric',
   'brat / sestra',
 ];
+
+/** The relation proposed for a parent from the record (Q6). */
+export const PARENT_RELATION = 'roditelj / staratelj';
+
+const sameName = (a: string, b: string): boolean => a.replace(/\s+/g, ' ').trim().toLowerCase() === b.replace(/\s+/g, ' ').trim().toLowerCase();
+
+/**
+ * The relation after the payer's name changed (C-13, 2026-11-28): a parent from the record gets „roditelj / staratelj“;
+ * anyone else must have the relation typed, so the proposed parent relation is cleared and never stays by mistake.
+ * A relation the operator typed is kept.
+ */
+export function relationForPayer(payerName: string, parentNames: ReadonlyArray<string>, current: string): string {
+  const isParent = parentNames.some((p) => p.trim() !== '' && sameName(p, payerName));
+  if (isParent) return current.trim() === '' ? PARENT_RELATION : current;
+  return current.trim() === PARENT_RELATION ? '' : current;
+}

@@ -10,7 +10,7 @@ import { useAsyncResult } from '@/lib/use-async-result';
 import { isRealDate, normalizeFullName } from '@/lib/validation/formats';
 import { invoiceBalance, prepaymentWarnings } from '../credit-notes';
 import { listInvoices, recordPrepayment, type PrepaymentRow } from '../repository';
-import { PAYMENT_REFERENCE_TEMPLATES, PREPAYMENT_PURPOSE_TEMPLATES } from '../text-templates';
+import { PARENT_RELATION, PAYMENT_REFERENCE_TEMPLATES, PREPAYMENT_PURPOSE_TEMPLATES, relationForPayer } from '../text-templates';
 import { PayerRelationInput } from './PayerRelationInput';
 import { TemplateText } from './TemplateText';
 
@@ -80,7 +80,7 @@ function PrepaymentForm({
   const [paidOn, setPaidOn] = useState(today());
   const [amountKm, setAmountKm] = useState('');
   const [payerName, setPayerName] = useState(guardians[0]?.fullName ?? '');
-  const [relation, setRelation] = useState('roditelj / staratelj');
+  const [relation, setRelation] = useState(guardians.length > 0 ? PARENT_RELATION : '');
   const [reference, setReference] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -161,7 +161,11 @@ function PrepaymentForm({
         <Input id="pre-amount" inputMode="decimal" placeholder="npr. 1.000,00" value={amountKm} onChange={(e) => setAmountKm(e.target.value)} />
       </Field>
       <Field id="pre-payer" label="Uplatio/la (ime s izvoda)" corrected={payer && payer !== payerName.trim() ? payer : undefined}>
-        <Input id="pre-payer" list="pre-payer-list" value={payerName} onChange={(e) => setPayerName(e.target.value)} />
+        <Input id="pre-payer" list="pre-payer-list" value={payerName} onChange={(e) => {
+            const name = e.target.value;
+            setPayerName(name);
+            setRelation((r) => relationForPayer(name, guardians.map((g) => g.fullName), r));
+          }} />
         <datalist id="pre-payer-list">
           {guardians.map((g) => (
             <option key={g.fullName} value={g.fullName} />

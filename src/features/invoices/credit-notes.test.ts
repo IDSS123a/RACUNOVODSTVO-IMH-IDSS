@@ -80,7 +80,7 @@ describe('payment warnings (Director, 2026-11-28: 1.000 KM booked twice on a pai
     expect(paymentWarnings(50000, 80000, '2026-11-28', [])[0]).toContain('veći od preostalog');
     expect(paymentWarnings(50000, 100000, '2026-11-28', first)[1]).toContain('(drugi datum)');
     // a reversed payment does not count
-    expect(paymentWarnings(100000, 100000, '2026-11-27', [{ ...first[0], reversedOn: '2026-11-28' }])).toEqual([]);
+    expect(paymentWarnings(100000, 100000, '2026-11-27', [{ paidOn: '2026-11-27', amount: 100000, reversedOn: '2026-11-28' }])).toEqual([]);
     expect(paymentWarnings(0, 0, '2026-11-27', first)).toEqual([]);
   });
 });

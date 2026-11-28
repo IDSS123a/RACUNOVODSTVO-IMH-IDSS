@@ -247,7 +247,7 @@ describe('prepayment applied to the invoice (specs/family-advance Q3)', () => {
     ]);
     expect(amountToPay(partly)).toBe(51000);
     expect(slipAmount(partly)).toBe(51000);
-    expect(amountDue(partly)).toBe(71000, 'the invoice itself is unchanged');
+    expect(amountDue(partly), 'the invoice itself is unchanged').toBe(71000);
     expect(hasPaymentSlip({ ...partly, status: 'ISSUED' })).toBe(true);
     expect(paidFromPrepayment({ ...partly, status: 'ISSUED' })).toBe(false);
     // with a credit note too: total − credit note − prepayment
