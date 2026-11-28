@@ -334,7 +334,7 @@ function InvoiceContent({ detail, onPaid, onShowPdf, readOnly }: { detail: Invoi
         <Alert>
           <AlertTitle>Račun je plaćen u cijelosti</AlertTitle>
           <AlertDescription>
-            <p>Nova uplata nije potrebna. Ako je roditelj zaista uplatio još jednom, uplata postaje pretplata porodice (negativan saldo).</p>
+            <p>Nova uplata nije potrebna. Ako je roditelj zaista uplatio još jednom, uplata postaje pretplata djeteta (negativan saldo djeteta).</p>
             <Button className="mt-2" variant="outline" size="sm" onClick={() => setPayAnyway(true)}>
               Ipak evidentiraj uplatu…
             </Button>

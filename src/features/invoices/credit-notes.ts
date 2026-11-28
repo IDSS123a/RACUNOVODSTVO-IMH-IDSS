@@ -67,9 +67,9 @@ export function paymentWarnings(
 ): string[] {
   if (amount <= 0) return [];
   const warnings: string[] = [];
-  if (open === 0) warnings.push(`Račun je već plaćen u cijelosti. Cijela uplata od ${formatKM(amount)} biće pretplata porodice (saldo ${formatKM(-amount)}).`);
+  if (open === 0) warnings.push(`Račun je već plaćen u cijelosti. Cijela uplata od ${formatKM(amount)} biće pretplata djeteta (saldo djeteta ${formatKM(-amount)}); primjenjuje se na sljedeći račun djeteta ili se vraća.`);
   else if (amount > open)
-    warnings.push(`Iznos je veći od preostalog (${formatKM(open)}) za ${formatKM(amount - open)}; taj višak biće pretplata porodice.`);
+    warnings.push(`Iznos je veći od preostalog (${formatKM(open)}) za ${formatKM(amount - open)}; taj višak biće pretplata djeteta (negativan saldo djeteta) i primjenjuje se na sljedeći račun djeteta ili se vraća.`);
   const same = payments.filter((p) => !p.reversedOn && p.amount === amount);
   const sameDay = same.filter((p) => p.paidOn === paidOn);
   if (sameDay.length > 0)

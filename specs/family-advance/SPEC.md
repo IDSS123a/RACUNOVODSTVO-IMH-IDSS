@@ -129,10 +129,10 @@ U knjigama je pretplata obaveza prema kupcu (primljeni avans), a ne potraživanj
 
 ## Izvan opsega
 - glavna knjiga i kontni plan; uvoz bankovnog izvoda;
-- avansni račun kao poseban dokument (K2);
+- avansni račun kao poseban dokument: nije potreban, jer IMH i IDSS nisu obveznici PDV-a (K2);
 - pamćenje uplatilaca na porodici (Q6);
 - automatska primjena bez potvrde (Q2).
 
 ## Pitanja za knjigovođu (ne blokiraju razvoj, prije puštanja u rad)
 - **K1:** Na koji konto se knjiže primljene pretplate? Odgovara li list „Pretplate“ u XLSX-u za knjiženje?
-- **K2:** Napomena na računima kaže da ustanova nije u sistemu PDV-a, ali pravni osnov za svaku ustanovu još nije potvrđen (forenzika §5.1). Ako je neka ustanova u sistemu PDV-a, primljeni avans može tražiti avansni račun. **Aplikacija to ne pretpostavlja**; potvrđuje knjigovođa.
+- **K2 — zatvoreno (Direktor, 2026-11-28):** IMH i IDSS **nisu obveznici PDV-a**. Za primljenu pretplatu zato nema avansnog računa ni PDV-a. Ostaje samo K1.

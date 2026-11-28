@@ -1052,7 +1052,8 @@
 
 **Open:**
 - the Director's check in the running app (C-13);
-- for the accountant: the account for prepayments (K1), and PDV / avansni račun (K2). Nothing is assumed.
+- for the accountant: the account for prepayments (K1).
+- **K2 closed (Director, 2026-11-28):** IMH and IDSS are not PDV payers, as the Director had already stated and the invoice note says. A prepayment needs no avansni račun and no PDV.
 
 ---
 
