@@ -19,6 +19,8 @@ import { monthLabel, schoolYearOfMonth } from '@/features/invoices/domain';
 import { finalDrafts, previewProblem, previewTotal, type PreviewInvoice } from '@/features/invoices/monthly';
 import { amountDue } from '@/features/invoices/pdf';
 import { matchesQuery } from '@/features/invoices/search';
+import { listAllChildBalances } from '@/features/invoices/repository';
+import { prepaidTotal } from '@/features/reports/register-export';
 import type { PeriodFilter } from '@/features/invoices/pdf-actions';
 import type { BillingMonth } from '@/features/invoices/types';
 import type { LegalEntityCode } from '@/features/price-lists/types';
@@ -325,6 +327,9 @@ function CollectionStep({ entity, month, onChanged }: { entity: LegalEntityCode;
   const total = sum(balances.map((b) => b.balance.net));
   const paid = sum(balances.map((b) => Math.min(b.balance.paid, b.balance.net)));
   const open = sum(balances.map((b) => b.balance.open));
+  const loadPrepaid = useCallback(() => listAllChildBalances(entity), [entity, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cards = useAsyncResult(loadPrepaid);
+  const prepaid = cards.state.status === 'ready' ? prepaidTotal(cards.state.data) : 0;
   const overdue = sum(balances.filter((b) => b.balance.open > 0 && b.invoice.dueDate < today()).map((b) => b.balance.open));
   return (
     <div className="grid gap-4">
@@ -354,6 +359,7 @@ function CollectionStep({ entity, month, onChanged }: { entity: LegalEntityCode;
           ['Naplaćeno', paid, 'text-emerald-600 dark:text-emerald-400'],
           ['Otvoreno', open, 'text-amber-600 dark:text-amber-400'],
           ['Od toga dospjelo', overdue, 'text-rose-600 dark:text-rose-400'],
+          ...(prepaid < 0 ? [['U pretplati', prepaid, 'text-emerald-700 dark:text-emerald-400']] : []),
         ].map(([label, value, color]) => (
           <div key={label as string} className="rounded-md border p-3">
             <dt className="text-muted-foreground">{label as string}</dt>
@@ -370,7 +376,7 @@ function CollectionStep({ entity, month, onChanged }: { entity: LegalEntityCode;
             <th className="hidden p-2 font-medium sm:table-cell">Rok</th>
             <th className="p-2 text-right font-medium">Iznos</th>
             <th className="hidden p-2 text-right font-medium sm:table-cell">Uplaćeno</th>
-            <th className="p-2 text-right font-medium">Ostatak</th>
+            <th className="p-2 text-right font-medium">Saldo</th>
             <th className="p-2 font-medium">Status</th>
           </tr>
         </thead>

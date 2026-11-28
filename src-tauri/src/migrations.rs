@@ -22,6 +22,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (13, include_str!("../migrations/013_invoice_line_quantity.sql")),
     (14, include_str!("../migrations/014_invoice_line_unit_free.sql")),
     (15, include_str!("../migrations/015_toddler_group.sql")),
+    (16, include_str!("../migrations/016_child_prepayments.sql")),
 ];
 
 /// Latest schema version this build understands.
@@ -419,6 +420,37 @@ mod tests {
         assert_eq!(program("e-two"), "PRESCHOOLERS", "exactly 2 on the first day stays Preschoolers");
         assert_eq!(program("e-old"), "PRESCHOOLERS");
         assert_eq!(program("e-nodob"), "PRESCHOOLERS");
+    }
+
+    /// 016 (specs/family-advance): existing payments keep everything (relation „nije zabilježeno“ = ''), and an
+    /// excess already on an invoice (IMH-897/26: 1.000 KM due, 2 × 1.000 KM paid) is the child's prepayment.
+    #[test]
+    fn migration_016_keeps_payments_and_turns_an_existing_excess_into_the_childs_prepayment() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        for (version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v <= 15) {
+            let tx = conn.transaction().unwrap();
+            tx.execute_batch(sql).unwrap();
+            tx.pragma_update(None, "user_version", version).unwrap();
+            tx.commit().unwrap();
+        }
+        conn.execute_batch(
+            "INSERT INTO families(id, display_name, created_at) VALUES ('f', 'T', 'x');
+             INSERT INTO children(id, family_id, first_name, last_name, date_of_birth, residency, created_at)
+               VALUES ('c', 'f', 'A', 'T', '2022-01-01', 'DOMESTIC', 'x');
+             INSERT INTO invoices(id, number, entity, kind, family_id, child_id, buyer_name, issue_date, due_date, period_from, period_to,
+                                  total_fenings, status, created_at)
+               VALUES ('i', 'IMH-897/26', 'IMH', 'OTHER', 'f', 'c', 'B', '2026-11-27', '2026-12-05', '2026-11-01', '2026-11-30', 100000, 'ISSUED', 'x');
+             INSERT INTO payments(id, invoice_id, paid_on, amount, payer_name, created_at)
+               VALUES ('p1', 'i', '2026-11-27', 100000, 'B', 'x'), ('p2', 'i', '2026-11-27', 100000, 'B', 'x');",
+        )
+        .unwrap();
+        apply(&mut conn).unwrap();
+        let relations: Vec<String> =
+            conn.prepare("SELECT payer_relation FROM payments ORDER BY id").unwrap().query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect();
+        assert_eq!(relations, vec!["", ""]);
+        let card = crate::prepayments::child_balances(&conn, "f").unwrap();
+        assert_eq!(card.len(), 1);
+        assert_eq!((card[0].charged, card[0].received, card[0].prepaid, card[0].saldo), (100000, 200000, 100000, -100000));
     }
 
     #[test]

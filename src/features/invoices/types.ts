@@ -67,7 +67,7 @@ export const PAYMENT_STATUS_LABEL: Readonly<Record<PaymentStatus, string>> = {
   OPEN: 'Neplaćen',
   PARTIALLY_PAID: 'Djelimično plaćen',
   PAID: 'Plaćen',
-  OVERPAID: 'Preplaćen',
+  OVERPAID: 'Plaćen · višak u pretplati',
 };
 
 export const MONTH_NAME: ReadonlyArray<string> = [

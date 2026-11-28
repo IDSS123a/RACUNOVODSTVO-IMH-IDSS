@@ -4,7 +4,7 @@ import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { INSTITUTIONS_SEED } from '@/features/settings/institutions-seed';
 import { IMH_PDV_NOTE } from '@/constants';
-import { amountDue, BOTTOM_THIRD_LIMIT, hasPaymentSlip, invoiceFileName, recapitulationRows, renderInvoicePdf, slipAmount, type InvoicePdfData, type PdfAssets } from './pdf';
+import { amountDue, amountToPay, BOTTOM_THIRD_LIMIT, hasPaymentSlip, invoiceFileName, paidFromPrepayment, paymentReceiptFileName, recapitulationRows, renderPaymentReceiptPdf, remainderFigures, renderInvoicePdf, slipAmount, type InvoicePdfData, type PdfAssets } from './pdf';
 import { invoiceRecap } from './recap';
 
 const asset = (path: string) => new Uint8Array(readFileSync(resolve(__dirname, '../../assets', path)));
@@ -233,5 +233,59 @@ describe('remainder notice (Director, 2026-11-22: partial payment → the invoic
     expect(doc.getTitle()).toBe('Obavijest o neplaćenom ostatku — IMH-001/26');
     const paidInFull = { ...withPayments, detail: { ...withPayments.detail, payments: [pay('a', '2026-10-20', 100000)] } };
     await expect(renderRemainderNoticePdf(paidInFull, { issueDate: '2026-11-22', dueDate: '2026-11-30' }, ASSETS)).rejects.toThrow('nema neplaćen ostatak');
+  });
+});
+
+describe('prepayment applied to the invoice (specs/family-advance Q3)', () => {
+  const recap = invoiceRecap(data(1).detail.lines);
+  it('the recapitulation, the slip and the QR ask for the amount after the prepayment; payments are still no input', () => {
+    const partly = { kind: 'MONTHLY', total: 71000, credited: 0, appliedPrepayment: 20000 };
+    expect(recapitulationRows(recap, partly).slice(4)).toEqual([
+      ['Iznos računa:', 71000, false],
+      ['Umanjeno za primljenu pretplatu:', -20000, false],
+      ['UKUPNO ZA UPLATU:', 51000, true],
+    ]);
+    expect(amountToPay(partly)).toBe(51000);
+    expect(slipAmount(partly)).toBe(51000);
+    expect(amountDue(partly)).toBe(71000, 'the invoice itself is unchanged');
+    expect(hasPaymentSlip({ ...partly, status: 'ISSUED' })).toBe(true);
+    expect(paidFromPrepayment({ ...partly, status: 'ISSUED' })).toBe(false);
+    // with a credit note too: total − credit note − prepayment
+    expect(recapitulationRows(recap, { ...partly, credited: -21000 }, [{ number: 'IMH-KO-001/26', total: -21000 }]).slice(-3)).toEqual([
+      ['Knj. odobrenje IMH-KO-001/26:', -21000, false],
+      ['Umanjeno za primljenu pretplatu:', -20000, false],
+      ['UKUPNO ZA UPLATU:', 30000, true],
+    ]);
+    const full = { kind: 'MONTHLY', status: 'ISSUED', total: 71000, credited: 0, appliedPrepayment: 71000 };
+    expect(hasPaymentSlip(full)).toBe(false);
+    expect(paidFromPrepayment(full)).toBe(true);
+  });
+
+  it('a fully and a partly prepaid invoice are still one page; the remainder notice deducts the prepayment', async () => {
+    const d = data(1);
+    for (const applied of [20000, 71000]) {
+      const pdf: InvoicePdfData = { ...d, detail: { ...d.detail, invoice: { ...d.detail.invoice, appliedPrepayment: applied, paid: applied } } };
+      expect((await PDFDocument.load(await renderInvoicePdf(pdf, ASSETS))).getPageCount()).toBe(1);
+    }
+    const figures = remainderFigures({
+      invoice: { ...d.detail.invoice, appliedPrepayment: 20000 },
+      payments: [{ id: '00000000-0000-4000-8000-000000000001', invoiceId: 'i', paidOn: '2026-10-03', amount: 30000, payerName: 'Žana Test', reference: '', note: '' }],
+    });
+    expect(figures).toMatchObject({ due: 51000, remainder: 21000 });
+  });
+});
+
+describe('„Potvrda o uplati“ (specs/family-advance Q5)', () => {
+  it('one A4 page on the letterhead, with the payer, the relation and the saldo of the child; ASCII file name', async () => {
+    if (!IMH) throw new Error('seed missing');
+    const bytes = await renderPaymentReceiptPdf(IMH, 'Operater Test', {
+      issuedOn: '2026-11-28', invoiceNumber: null, paidOn: '2026-11-27', amount: 100000, payerName: 'Amir Begović', payerRelation: 'djed',
+      childName: 'Đurđa Čolić-Šećić', buyerName: 'Žana Test', purpose: 'Uplata unaprijed za decembar 2026', reference: 'Izvod br. 12 od 27.11.2026.', saldo: -100000,
+    }, ASSETS);
+    const doc = await PDFDocument.load(bytes);
+    expect(doc.getPageCount()).toBe(1);
+    expect(doc.getTitle()).toBe('Potvrda o uplati — Đurđa Čolić-Šećić — 27.11.2026.');
+    if (process.env.PDF_SAMPLE_DIR) (await import('node:fs')).writeFileSync(`${process.env.PDF_SAMPLE_DIR}/receipt.pdf`, bytes);
+    expect(paymentReceiptFileName('2026-11-27', 'Đurđa Čolić-Šećić')).toBe('Potvrda_uplate_2026-11-27_Djurdja_Colic_Secic.pdf');
   });
 });

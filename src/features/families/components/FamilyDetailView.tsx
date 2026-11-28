@@ -7,16 +7,18 @@ import { FormDialog } from '@/components/form-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { FamilyCreditCard } from '@/features/invoices/components/FamilyCreditCard';
+import { FamilySaldoCard } from '@/features/invoices/components/FamilySaldoCard';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PaymentPlanDialog } from '@/features/invoices/components/PaymentPlanDialog';
 import { listPriceItems, listSchoolYears } from '@/features/price-lists/repository';
 import { PROGRAM_ENTITY, PROGRAM_LABEL, type SchoolYear } from '@/features/price-lists/types';
 import { formatDate } from '@/lib/format';
 import { useAsyncResult } from '@/lib/use-async-result';
-import { changeEnrolmentStatus, saveFamilyWithGuardians, saveValidatedEnrolment } from '../actions';
-import { ACTIVE_STATUSES, allowedTransitions, buildFamilyPricing, enrolmentAgeProblem } from '../domain';
-import { changeEnrolmentGroup, deleteChild, deleteEnrolment, deleteFamily, getFamily, saveChild } from '../repository';
+import { changeEnrolmentStatus, loadAllFamilyDetails, saveFamilyWithGuardians, saveValidatedEnrolment } from '../actions';
+import { childDuplicates, familyDuplicates } from '../duplicates';
+import { useDuplicateGuard } from './DuplicateDialog';
+import { ACTIVE_STATUSES, allowedTransitions, buildFamilyPricing, enrolmentAgeProblem, groupChangeFrom } from '../domain';
+import { changeEnrolmentGroup, confirmNotDuplicate, deleteChild, deleteEnrolment, deleteFamily, getFamily, saveChild } from '../repository';
 import { Input } from '@/components/ui/input';
 import { ROLE_LABEL, STATUS_LABEL, type Child, type Enrolment, type EnrolmentStatus } from '../types';
 import { newChild, newEnrolment } from '../factories';
@@ -39,10 +41,13 @@ export function FamilyDetailView({
   defaultYear,
   onBack,
   startWithNewChild = null,
+  onOpenFamily,
 }: {
   familyId: string;
   defaultYear: SchoolYear;
   onBack: () => void;
+  /** Opens another family (from the duplicate warning, SPEC §B). */
+  onOpenFamily?: (familyId: string) => void;
   /** The display name of a family just created: its first-child form opens at once. */
   startWithNewChild?: string | null;
 }): React.JSX.Element {
@@ -57,6 +62,7 @@ export function FamilyDetailView({
     startWithNewChild !== null ? { kind: 'child', child: newChild(familyId, startWithNewChild) } : { kind: 'none' },
   );
   const [confirmDialog, confirm] = useConfirm();
+  const [duplicateDialog, askDuplicate] = useDuplicateGuard();
 
   const pricing = useMemo(() => {
     if (detail.state.status !== 'ready' || prices.state.status !== 'ready') return [];
@@ -122,6 +128,7 @@ export function FamilyDetailView({
   return (
     <div className="grid gap-6">
       {confirmDialog}
+      {duplicateDialog}
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" aria-label="Nazad na listu porodica" onClick={onBack}>
@@ -142,7 +149,7 @@ export function FamilyDetailView({
         </div>
       </header>
 
-      <FamilyCreditCard familyId={familyId} />
+      <FamilySaldoCard familyId={familyId} childList={children} guardians={guardians} />
 
       <Card>
         <CardHeader>
@@ -215,8 +222,13 @@ export function FamilyDetailView({
                     <span>{enrolment.schoolYear}</span>
                     <span className="text-muted-foreground">od {formatDate(enrolment.startsOn)}{enrolment.endsOn ? ` do ${formatDate(enrolment.endsOn)}` : ''}</span>
                     <Badge variant="outline">{STATUS_LABEL[enrolment.status]}</Badge>
+                    {ACTIVE_STATUSES.has(enrolment.status) && enrolmentAgeProblem(enrolment.program, child.dateOfBirth, enrolment.startsOn) && (
+                      <p role="alert" className="basis-full text-destructive">
+                        Upis ne odgovara starosti djeteta: {enrolmentAgeProblem(enrolment.program, child.dateOfBirth, enrolment.startsOn)}
+                      </p>
+                    )}
                     <div className="ml-auto flex flex-wrap gap-1">
-                      {(enrolment.program === 'TODDLERS' || enrolment.program === 'PRESCHOOLERS') && ACTIVE_STATUSES.has(enrolment.status) && (
+                      {ACTIVE_STATUSES.has(enrolment.status) && groupChangeFrom(enrolment, child.dateOfBirth) !== null && (
                         <Button size="sm" variant="outline" onClick={() => setDialog({ kind: 'group', enrolment })}>
                           Promijeni grupu → {enrolment.program === 'TODDLERS' ? 'Preschoolers' : 'Toddlers'}
                         </Button>
@@ -273,7 +285,17 @@ export function FamilyDetailView({
           guardians={guardians}
           submitLabel="Sačuvaj"
           onSubmit={async (f, g) => {
-            if (await run(saveFamilyWithGuardians(f, g), 'Porodica je sačuvana.')) close();
+            const all = await loadAllFamilyDetails();
+            if (!all.success) return void toast.error(all.error);
+            const similar = familyDuplicates({ family: f, guardians: g }, all.data);
+            if (similar.length > 0) {
+              const answer = await askDuplicate(similar, 'Porodica');
+              if (answer.kind === 'back') return;
+              if (answer.kind === 'open') return void onOpenFamily?.(answer.familyId);
+            }
+            if (!(await run(saveFamilyWithGuardians(f, g), 'Porodica je sačuvana.'))) return;
+            if (similar.length > 0) await confirmNotDuplicate('family', f.id, similar.map((m) => m.familyId));
+            close();
           }}
         />
       </FormDialog>
@@ -282,8 +304,19 @@ export function FamilyDetailView({
           <ChildForm
             child={dialog.child}
             onSubmit={async (child) => {
+              // possible duplicate child (SPEC §B): the same child twice in this family is refused, elsewhere a warning
+              const all = await loadAllFamilyDetails();
+              if (!all.success) return void toast.error(all.error);
+              const duplicate = childDuplicates(child, all.data);
+              if (duplicate.blocking) return void toast.error(duplicate.blocking);
+              if (duplicate.matches.length > 0) {
+                const answer = await askDuplicate(duplicate.matches, `Dijete ${child.firstName} ${child.lastName}`);
+                if (answer.kind === 'back') return;
+                if (answer.kind === 'open') return void onOpenFamily?.(answer.familyId);
+              }
               const isNew = !children.some((c) => c.id === child.id);
               if (!(await run(saveChild(child), 'Dijete je sačuvano.'))) return;
+              if (duplicate.matches.length > 0) await confirmNotDuplicate('child', child.id, duplicate.matches.map((m) => m.familyId));
               // a new child is enrolled next, without searching for the button (Director, 2026-11-21)
               if (isNew) setDialog({ kind: 'enrolment', enrolment: newEnrolment(child.id, year, child.dateOfBirth) });
               else close();
@@ -351,9 +384,11 @@ function GroupChange({
 }): React.JSX.Element {
   const to = enrolment.program === 'TODDLERS' ? 'PRESCHOOLERS' : 'TODDLERS';
   const today = new Date().toISOString().slice(0, 10);
-  const [from, setFrom] = useState(today < enrolment.startsOn ? enrolment.startsOn : today);
+  // the earliest day the child's age fits the other group; never before today
+  const earliest = groupChangeFrom(enrolment, dateOfBirth) ?? enrolment.startsOn;
+  const [from, setFrom] = useState(today < earliest ? earliest : today);
   const [busy, setBusy] = useState(false);
-  const problem = enrolmentAgeProblem(to, dateOfBirth, from);
+  const problem = enrolmentAgeProblem(to, dateOfBirth, from, 'change');
   return (
     <div className="grid gap-3">
       <p className="text-sm">
@@ -361,7 +396,7 @@ function GroupChange({
       </p>
       <div className="grid gap-1.5">
         <label htmlFor="group-from" className="text-sm font-medium">Od dana</label>
-        <Input id="group-from" type="date" className="h-9 w-44" min={enrolment.startsOn} value={from} onChange={(e) => setFrom(e.target.value || today)} />
+        <Input id="group-from" type="date" className="h-9 w-44" min={earliest} value={from} onChange={(e) => setFrom(e.target.value || today)} />
       </div>
       {problem && <p className="text-sm text-destructive">{problem}</p>}
       <div>

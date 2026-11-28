@@ -216,6 +216,17 @@ pub fn list_audit_log(state: State<'_, AppStore>, filter: crate::audit::AuditFil
     store.read(|c| crate::audit::list_audit(c, &filter))
 }
 
+/// The operator saved a record that looked like an existing one (SPEC registration-validation §B). Only ids are
+/// logged — the families it resembled — never names, telephones or e-mails (BR-22).
+#[tauri::command]
+pub fn confirm_not_duplicate(state: State<'_, AppStore>, entity: String, entity_id: String, similar_family_ids: Vec<String>) -> AppResult<()> {
+    if !matches!(entity.as_str(), "family" | "child") {
+        return Err(AppError::Validation("nepoznata vrsta zapisa".into()));
+    }
+    let store = state.get()?;
+    store.write(|tx| repo::audit(tx, "DUPLICATE_CONFIRMED", &entity, &entity_id, &format!("slično: {}", similar_family_ids.join(","))))
+}
+
 /// „Promijeni grupu“ (SPEC registration-validation A9): Toddlers ↔ Preschoolers from a day; written to the audit log.
 #[tauri::command]
 pub fn change_enrolment_group(state: State<'_, AppStore>, enrolment_id: String, program: String, from: String) -> AppResult<()> {
@@ -365,8 +376,105 @@ pub fn record_payment(state: State<'_, AppStore>, payment: Payment) -> AppResult
     let store = state.get()?;
     store.write(|tx| {
         invoices::record_payment(tx, &payment)?;
-        repo::audit(tx, "PAYMENT", "invoice", &payment.invoice_id, &payment.amount.to_string())
+        // amount and the payer's relation only — never the payer's name or the reference (BR-22)
+        repo::audit(tx, "PAYMENT", "invoice", &payment.invoice_id, &format!("{} · {}", payment.amount, payment.payer_relation.trim()))
     })
+}
+
+// ---------- Child prepayment (specs/family-advance, migration 016) ----------
+
+use crate::prepayments::{self, ChildBalance, NamedBalance, PrepaidSource, Prepayment, PrepaymentInput, PrepaymentUse};
+
+/// Every child's card of every family, optionally of one institution — reports and step E.
+#[tauri::command]
+pub fn list_all_child_balances(state: State<'_, AppStore>, entity: Option<String>) -> AppResult<Vec<NamedBalance>> {
+    let store = state.get()?;
+    store.read(|c| prepayments::all_child_balances(c, entity.as_deref()))
+}
+
+/// A payment without an invoice for one child in one institution (BR-24 amended, Q1).
+#[tauri::command]
+pub fn record_prepayment(state: State<'_, AppStore>, prepayment: PrepaymentInput) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        prepayments::record_prepayment(tx, &prepayment)?;
+        repo::audit(
+            tx,
+            "PREPAYMENT",
+            "child",
+            &prepayment.child_id,
+            &format!("{} {} · {}", prepayment.entity, prepayment.amount, prepayment.payer_relation.trim()),
+        )
+    })
+}
+
+/// Use a child's prepaid money on an invoice, or refund it when `invoice_id` is None (Q1, Q2).
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn use_prepaid(
+    state: State<'_, AppStore>,
+    family_id: String,
+    entity: String,
+    child_id: Option<String>,
+    invoice_id: Option<String>,
+    amount: i64,
+    used_on: String,
+    note: String,
+    sibling: bool,
+) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        prepayments::use_prepaid(tx, &family_id, &entity, child_id.as_deref(), invoice_id.as_deref(), amount, &used_on, &note, sibling)?;
+        let child = child_id.as_deref().unwrap_or("");
+        match &invoice_id {
+            Some(to) => repo::audit(tx, "PREPAYMENT_APPLIED", "invoice", to, &format!("{amount} ← {child}{}", if sibling { " (prenos)" } else { "" })),
+            None => repo::audit(tx, "PREPAYMENT_REFUND", "child", child, &format!("{entity} {amount}")),
+        }
+    })
+}
+
+#[tauri::command]
+pub fn reverse_prepayment(state: State<'_, AppStore>, prepayment_id: String, reversed_on: String, reason: String) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        prepayments::reverse_prepayment(tx, &prepayment_id, &reversed_on, &reason)?;
+        repo::audit(tx, "PREPAYMENT_REVERSAL", "prepayment", &prepayment_id, "")
+    })
+}
+
+#[tauri::command]
+pub fn reverse_prepayment_use(state: State<'_, AppStore>, use_id: String, reversed_on: String, reason: String) -> AppResult<()> {
+    let store = state.get()?;
+    store.write(|tx| {
+        prepayments::reverse_use(tx, &use_id, &reversed_on, &reason)?;
+        repo::audit(tx, "PREPAYMENT_USE_REVERSAL", "prepayment_use", &use_id, "")
+    })
+}
+
+#[tauri::command]
+pub fn list_prepayments(state: State<'_, AppStore>, family_id: String) -> AppResult<Vec<Prepayment>> {
+    let store = state.get()?;
+    store.read(|c| prepayments::list_prepayments(c, &family_id))
+}
+
+/// Every child's ledger card of a family, per institution.
+#[tauri::command]
+pub fn list_child_balances(state: State<'_, AppStore>, family_id: String) -> AppResult<Vec<ChildBalance>> {
+    let store = state.get()?;
+    store.read(|c| prepayments::child_balances(c, &family_id))
+}
+
+#[tauri::command]
+pub fn list_prepaid_sources(state: State<'_, AppStore>, family_id: String, entity: String, child_id: Option<String>) -> AppResult<Vec<PrepaidSource>> {
+    let store = state.get()?;
+    store.read(|c| prepayments::sources(c, &family_id, &entity, child_id.as_deref()))
+}
+
+/// Prepaid money used on an invoice, or taken from its excess (negative), for the invoice detail.
+#[tauri::command]
+pub fn list_invoice_prepayment_uses(state: State<'_, AppStore>, invoice_id: String) -> AppResult<Vec<PrepaymentUse>> {
+    let store = state.get()?;
+    store.read(|c| prepayments::invoice_uses(c, &invoice_id))
 }
 
 // ---------- Storno, credit notes, payment correction (specs/storno-credit-notes, migration 010) ----------
@@ -509,7 +617,8 @@ pub fn save_document(state: State<'_, AppStore>, path: String, bytes: Vec<u8>, r
         return Err(AppError::Validation("dokument je prazan".into()));
     }
     fs::write(&target, &bytes)?;
-    store.write(|tx| repo::audit(tx, "EXPORT", "document", &reference, &path))
+    // only the kind of document is logged: the path holds the user's folders and the file name a child's name (BR-22)
+    store.write(|tx| repo::audit(tx, "EXPORT", "document", &reference, &format!(".{extension}")))
 }
 
 const DRAFT_FOLDER: &str = "fakturisanje-nacrti";

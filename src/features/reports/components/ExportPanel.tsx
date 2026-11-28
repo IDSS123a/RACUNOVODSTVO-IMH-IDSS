@@ -8,6 +8,7 @@ import type { LegalEntityCode } from '@/features/price-lists/types';
 import { letterheadOf } from '@/features/settings/letterheads';
 import { useStepInvoices } from '@/features/workflow/style';
 import { formatDate } from '@/lib/format';
+import { listAllChildBalances } from '@/features/invoices/repository';
 import { buildRegisterCsv, buildRegisterDocx, buildRegisterXlsx, totals } from '../register-export';
 
 const pdfActions = () => import('@/features/invoices/pdf-actions');
@@ -37,10 +38,16 @@ export function ExportPanel({ entity }: { entity: LegalEntityCode }): React.JSX.
     setBusy(true);
     try {
       const meta = { title, createdOn: today() };
-      const bytes = kind === 'xlsx' ? buildRegisterXlsx(invoices, meta) : kind === 'csv' ? buildRegisterCsv(invoices) : buildRegisterDocx(invoices, meta, letterheadOf(entity));
+      let balances: Awaited<ReturnType<typeof listAllChildBalances>> | null = null;
+      if (kind === 'xlsx') {
+        balances = await listAllChildBalances(entity);
+        if (!balances.success) return void toast.error(balances.error);
+      }
+      const bytes = kind === 'xlsx' ? buildRegisterXlsx(invoices, meta, balances?.success ? balances.data : []) : kind === 'csv' ? buildRegisterCsv(invoices) : buildRegisterDocx(invoices, meta, letterheadOf(entity));
       const result = await (await pdfActions()).saveDocument(bytes, `${base}.${kind}`, `${kind.toUpperCase()} izvještaj ${title}`);
       if (!result.success) toast.error(result.error);
       else if (result.data) toast.success(`Sačuvano: ${result.data}`);
+      else toast.info('Spremanje otkazano — dokument nije sačuvan.');
     } finally {
       setBusy(false);
     }

@@ -8,7 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { SchoolYear } from '@/features/price-lists/types';
 import { useAsyncResult } from '@/lib/use-async-result';
-import { saveFamilyWithGuardians } from '../actions';
+import { loadAllFamilyDetails, saveFamilyWithGuardians } from '../actions';
+import { familyDuplicates } from '../duplicates';
+import { confirmNotDuplicate } from '../repository';
+import { useDuplicateGuard } from './DuplicateDialog';
 import { listFamilies } from '../repository';
 import type { Family } from '../types';
 import { BulkEnrolmentDialog } from './BulkEnrolmentDialog';
@@ -22,6 +25,7 @@ export function FamiliesPage({ defaultYear }: { defaultYear: SchoolYear }): Reac
   const families = useAsyncResult(loadFamilies);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
+  const [duplicateDialog, askDuplicate] = useDuplicateGuard();
   const [creating, setCreating] = useState<Family | null>(null);
   // a family just created opens with the form for its first child (Director, 2026-11-21: fewest steps)
   const [firstChildOf, setFirstChildOf] = useState<string | null>(null);
@@ -38,6 +42,11 @@ export function FamiliesPage({ defaultYear }: { defaultYear: SchoolYear }): Reac
   if (selected) {
     return (
       <FamilyDetailView
+        key={selected}
+        onOpenFamily={(id) => {
+          setFirstChildOf(null);
+          setSelected(id);
+        }}
         familyId={selected}
         defaultYear={defaultYear}
         startWithNewChild={firstChildOf}
@@ -103,6 +112,7 @@ export function FamiliesPage({ defaultYear }: { defaultYear: SchoolYear }): Reac
         </Table>
       )}
 
+      {duplicateDialog}
       <FormDialog open={creating !== null} onOpenChange={(open) => !open && setCreating(null)} title="Nova porodica" wide>
         {creating && (
           <FamilyForm
@@ -110,8 +120,22 @@ export function FamiliesPage({ defaultYear }: { defaultYear: SchoolYear }): Reac
             guardians={[newGuardian(creating.id, true)]}
             submitLabel="Sačuvaj porodicu"
             onSubmit={async (family, guardians) => {
+              // possible duplicate (SPEC §B): warn, the operator decides; never merged automatically
+              const all = await loadAllFamilyDetails();
+              if (!all.success) return void toast.error(all.error);
+              const similar = familyDuplicates({ family, guardians }, all.data);
+              if (similar.length > 0) {
+                const answer = await askDuplicate(similar, 'Nova porodica');
+                if (answer.kind === 'back') return;
+                if (answer.kind === 'open') {
+                  setCreating(null);
+                  setSelected(answer.familyId);
+                  return;
+                }
+              }
               const result = await saveFamilyWithGuardians(family, guardians);
               if (!result.success) return void toast.error(result.error);
+              if (similar.length > 0) await confirmNotDuplicate('family', family.id, similar.map((m) => m.familyId));
               toast.success('Porodica je sačuvana. Unesite dijete.');
               setCreating(null);
               setFirstChildOf(family.displayName);

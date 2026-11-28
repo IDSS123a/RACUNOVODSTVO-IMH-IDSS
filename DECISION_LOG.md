@@ -749,6 +749,17 @@
 
 ---
 
+**Amendment 1 (2026-11-27):** Source: the Director's screenshot. A start of attendance on 02.01.2025 was accepted for the school year 2026/2027, before the child's birth (13.11.2026), and the form showed „ima -2 god.“.
+- **Start date:**
+  - the start lies in the enrolment's school year (1 September – 31 August), and the end is not before the start;
+  - the date field allows only that school year;
+  - the form checks while typing and disables „Upiši dijete“;
+  - the backend checks again (`save_enrolment`, which had no such check).
+- **Before the birth:** the message names both dates: „Početak pohađanja (02.01.2025.) je prije rođenja djeteta (13.11.2026.)“. The age is shown as „2 god. i 3 mj.“ and never as a negative number.
+- **Verified:** Vitest 345/345 and cargo test 70/70, with the Director's case as a test on both sides.
+
+---
+
 ## DL-P026 — Notice of the unpaid remainder; the issued invoice stays as issued
 
 **Date:** 2026-11-22 · **Source:** Director, 2026-11-22: after a partial payment the invoice printed again „bio je na puni iznos“. Chosen: „Opomena za ostatak“ (the invoice stays a legal document, unchanged; a separate notice for the remainder).
@@ -885,6 +896,163 @@
   - migration 015: under 2 → Toddlers; exactly 2, older, and no date of birth unchanged.
 - Older tests that put 4–5-year-olds into Toddlers now use younger children; tests about other rules use a child without a date of birth.
 - **The Director checked it in the running app (2026-11-27, C-13): „Da, ispravno“.**
+
+
+**Amendment 1 (2026-11-28) — group change only when the age can fit; a date of birth must fit the open enrolments.**
+- **Trigger:** the Director, 2026-11-28: „app dozvolila ponovo upis starijeg djeteta kao toddler pa ga poslije ne prihvata“.
+- **Finding (database copy, technical fields only):**
+  - A child born 01.01.2020 was enrolled on 28.11. as **Preschoolers**. That is correct: 6 years on the first day, and Preschoolers is 2–6.
+  - The card still offered „Promijeni grupu → Toddlers“, which the age never allows. The dialog then refused it, with the wording „na dan početka“.
+  - An enrolment saved on 27.11., before the age checks, is still in the database: a child born 1998 in Preschoolers. Nothing reported it.
+- **Decision:**
+  - „Promijeni grupu“ is shown only when the other group fits the child's age on some day of the school year (`groupChangeFrom`). The dialog starts at that day, and the message says „na dan promjene“.
+  - Every active enrolment whose age does not fit is shown in red on the family card („Upis ne odgovara starosti djeteta: …“). It is also listed in step A of the monthly flow, so it is fixed before billing.
+  - The backend refuses a changed date of birth that no longer fits an open enrolment of the child; withdrawn and completed enrolments do not count.
+- **Verified:** Vitest 349/349 (`groupChangeFrom`: 6 and 4 years never Toddlers, 3 years still Toddlers, Preschoolers from the 2nd birthday, after the school year none; the wording), cargo test 77/77 (a corrected date of birth that no longer fits is refused). **Open:** the Director's check (C-13).
+---
+
+## DL-P031 — Possible duplicate family, parent or child: warn before saving
+
+**Date:** 2026-11-27 · **Spec:** `specs/registration-validation/` §B (approved; Q3: warn, block only the same child twice in a family)
+
+**Decision:**
+- **Before saving** a new family, an edited family, or a child, the app compares with every family. The comparison ignores case, accents and spaces, as in the invoice search.
+- **Possible duplicates** (`duplicates.ts`):
+
+| Record | Possible duplicate when |
+|---|---|
+| Family | the same family name; a parent with the same name; a parent with the same telephone or e-mail as a parent of **another** family. Two parents of one family may share a home telephone. |
+| Child | the same name and date of birth in another family; the same name in the same family (another birth date) |
+
+- **The warning „Možda već postoji“** lists each similar family with its reasons. The operator chooses:
+  - **Otvori postojeću**;
+  - **Ipak je drugi zapis — spremi**, written to the audit log as „Potvrđeno: nije duplikat“ with the ids of the similar families only, no names, telephones or e-mails (BR-22);
+  - **Nazad**.
+  Records are never merged automatically.
+- **Blocked:** the same child (name and date of birth) twice in the same family. The form refuses it, and the backend refuses it again (`save_child`; SQLite compares lower case, the form also ignores accents).
+
+**Verified:**
+- Vitest 343/343. The duplicate rules are tested with invented names:
+  - the proposal's example in three spellings;
+  - family name, telephone and e-mail;
+  - a family never matches itself, and shares its own home telephone;
+  - a child in the same or another family.
+- cargo test 69/69: the backend refuses the same child twice in one family; saving the same record again, or another birth date, is fine.
+- **Open:** the Director's check in the running app (C-13).
+
+---
+
+## DL-P032 — Saving a document always says what happened; no personal data in the export log
+
+**Date:** 2026-11-27 · **Source:** Director, 2026-11-27 (screenshot of „Račun — PDF“): „Račun se ne može sačuvati, a save je bez bilo kakve obavijesti“.
+
+**Cause:**
+- The PDF preview showed the built-in viewer's own toolbar, whose save and print buttons do nothing inside the app and give no message.
+- When the app's „Sačuvaj PDF“ save dialog was cancelled, nothing was said either.
+
+**Decision:**
+- The preview hides the viewer's toolbar (`#toolbar=0`). Only the app's „Štampaj“ and „Sačuvaj PDF“ remain.
+- Every save (invoice PDF, remainder notice, ZIP of the month, register exports, import report) reports one of three outcomes: „Sačuvano: …“, an error, or „Spremanje otkazano — dokument nije sačuvan“.
+- **BR-22:** the audit entry of a saved document held the full path, which contains the user's folders and a file name with the child's name. It now holds only the kind of document (e.g. „.pdf“). Older entries in the trial database keep their path.
+
+**Verified:** Vitest 345/345, cargo test 70/70. **Open:** the Director's check (C-13).
+
+---
+
+## DL-P033 — A payment on a paid invoice, an overpayment or the same payment again: said and confirmed
+
+**Date:** 2026-11-28 · **Trigger:** the Director paid 1.000 KM on IMH-897/26 (1.420 KM − KO 420 KM = 1.000 KM) and saw it as overpaid. The database held **two** payments of 1.000 KM with the same date and reference, entered 2 h 40 min apart. The second one was accepted without a word.
+
+**Decision:**
+- An overpayment stays possible: a parent can really pay twice, and the money must be booked. It becomes family credit (DL-P011). It is never recorded silently.
+- **Fully paid invoice:** instead of the payment form, „Račun je plaćen u cijelosti“ with **Ipak evidentiraj uplatu…**.
+- **Before saving**, the form shows each warning that applies (`paymentWarnings`, credit-notes.ts):
+  - the invoice is already paid: the whole payment becomes credit;
+  - the amount is above what is still open: the excess becomes credit;
+  - a payment with the same amount (and the same date, or another date) is already on the invoice. Reversed payments do not count.
+- While a warning is shown, **Evidentiraj uplatu** stays disabled until the operator ticks „Provjerio/la sam — ova uplata je stvarna i nije već unesena“. The tick resets when the warnings change.
+- **The existing double payment** on IMH-897/26 is corrected by the operator with „Storno uplate“ on one of the two payments (S4). Nothing is deleted.
+
+**Verified:** Vitest 346/346 (paymentWarnings: quiet for a normal or partial payment; paid invoice, overpayment, the same day, another day; a reversed payment does not count), cargo test 70/70, tsc, eslint, build. **Open:** the Director's check in the running app (C-13).
+
+---
+
+## DL-P034 — Saldo of the customer with a sign: negative = u pretplati
+
+**Date:** 2026-11-28 · **Director:** „nema zaduženja a korisnik plati = u pretplati … moralo pisati -1.000 KM“.
+
+**Decision:**
+- The app shows the customer's balance as on a customer ledger card: **saldo = zaduženo − uplaćeno**.
+  - Zaduženo means the invoices, reduced by their credit notes.
+  - A positive saldo is **duguje**, a negative saldo is **u pretplati**, and 0 is **izmireno**.
+  - Example, IMH-897/26: 1.000 KM charged, 2.000 KM paid, so the saldo is **−1.000,00 KM (u pretplati)**.
+- The word „kredit“ is replaced by **pretplata** everywhere it was shown: status, invoice detail, step E, family card, transfer and refund panel, audit labels and payment warnings. The status OVERPAID is labelled „U pretplati“.
+- **Invoice detail:** „Preostalo“ and „Kredit (višak uplate)“ are replaced by one line, **Saldo: …**.
+- **Step E:** the column „Ostatak“ becomes **Saldo**, with a sign. A tile **U pretplati** shows the total prepayment as a negative amount when there is one.
+- **Family card „Saldo porodice“:** zaduženo, uplaćeno and saldo per institution. IMH and IDSS are never mixed. Below them are the invoices that carry a prepayment.
+- **Register export (XLSX):** the column „Ostatak (KM)“ becomes **Saldo (KM)**, signed.
+- The stored data and the balance definition (NET_SQL / PAID_SQL, M-7) are unchanged. Only the display changes. „Otvoreno“ in the totals stays the sum of what is owed.
+- **Not covered yet:** a payment with no invoice at all, e.g. a parent pays before anything is charged. Every payment is still booked on an invoice (payments.invoice_id NOT NULL). An advance on the family account needs its own SPEC and migration, approved by the Director.
+
+**Verified:** Vitest 347/347 (saldo sign and labels, IMH-897/26 → −1.000,00 KM, per institution, credit-note documents not counted as charges), tsc, eslint, build. **Open:** the Director's check (C-13).
+
+---
+
+## DL-P035 — Child prepayment: payment without an invoice, excess as prepayment, payer from the wider family
+
+**Date:** 2026-11-28 · **Spec:** `specs/family-advance/` (SPEC, PLAN and TASKS). The Director approved the SPEC, the PLAN and the amendment of BR-24, and decided Q1–Q6 one by one (C-6). Migration 016.
+
+**Trigger:** the Director, 2026-11-28:
+- „nema zaduženja a korisnik plati = u pretplati … moralo pisati −1.000 KM“;
+- „predvidi uplatu koju izvrši neki drugi član obitelji (deda, baka, tetka i slično) za neko dijete“.
+
+**Decision:**
+- **Ledger card per child and institution (Q1).**
+  - saldo = zaduženo − uplaćeno + vraćeno; a negative saldo means **u pretplati**. IMH and IDSS are never mixed.
+  - The family's saldo is the sum of its children's.
+  - The one definition is `prepayments::child_balances` (M-7); the screens only display it.
+- **Payment without an invoice** („Evidentiraj uplatu bez računa (pretplata)…“ on the family card):
+  - fields: institution, child (required), date, amount, payer, relation to the child, reference and purpose;
+  - warnings, as in DL-P033: an unpaid invoice of the child, or the same payment again.
+- **Payer** (BR-24 amended, Q6): every payment, on an invoice or not, records the payer's name and relation (baka, djed, tetka …), typed each time. The payer never becomes a guardian or the buyer.
+- **Excess on an invoice is the child's prepayment (Q4; changes S3).**
+  - The invoice is „Plaćen · višak u pretplati“; its saldo is 0.
+  - The excess is computed, never copied, so IMH-897/26 needed no data change: its child is at −1.000,00 KM.
+- **Using prepaid money (Q2): proposed, applied only on the operator's click.** It is offered in three places:
+  - right after issuing one invoice, before its PDF;
+  - in „Štampaj fakture“ of the monthly and the other billing, before the PDFs are sent;
+  - in the invoice detail.
+
+  The amount is at most the smaller of the child's prepayment and what is open. The oldest money is used first: payments without an invoice and invoice excess.
+- **Transfer to a brother's or sister's invoice** needs an explicit transfer and a note (Q1).
+- **Refund and storno:** a refund needs a note. Every use, every refund and every payment without an invoice can be reversed with a reason. Nothing is deleted or changed in place, and database triggers refuse it.
+- **Invoice PDF (Q3; changes DL-P026 for prepayment only).**
+  - The recapitulation shows „Iznos računa“, „Umanjeno za primljenu pretplatu: −X“, and UKUPNO ZA UPLATU after it. The slip, the QR, the amount in words, the DOCX and the mail summary use that amount.
+  - When the prepayment covers the whole invoice, there is no slip and the PDF says „PLAĆENO IZ PRETPLATE — NE UPLAĆUJTE“.
+  - Ordinary payments are still never printed. The remainder notice deducts the prepayment.
+- **„Potvrda o uplati“ (Q5):** on request, for every payment. One A4 page on the letterhead, with the child's signed saldo on the day of the receipt, and no slip.
+- **Reports:**
+  - XLSX register: a sheet „Pretplate“ (children in prepayment, for the accountant, K1) and „U pretplati“ in the summary;
+  - step E: the „U pretplati“ total now includes payments without an invoice.
+- **Removed:**
+  - the word „kredit“ everywhere;
+  - the old credit panel of the invoice (move_credit stays in the backend for the records already made);
+  - the frontend wrappers that nothing calls any more.
+
+**Verified:**
+- **cargo test 78/78**, including:
+  - every refusal of SPEC §5;
+  - oldest-first across both kinds of source;
+  - reversals, and append-only also against direct SQL;
+  - migration 016 on a database with an existing excess;
+  - 40 random sequences of 30 operations, after each of which the fening identity holds for every card and no invoice has negative payments.
+- **Vitest 352/352**: the warnings, the recapitulation, the slip and QR amounts, the paid-from-prepayment notice, one page, the receipt, and the sheet „Pretplate“.
+- tsc, eslint and build pass.
+- Sample PDFs (invented data) were checked visually.
+
+**Open:**
+- the Director's check in the running app (C-13);
+- for the accountant: the account for prepayments (K1), and PDV / avansni račun (K2). Nothing is assumed.
 
 ---
 

@@ -3,7 +3,7 @@ import { PricingError } from '@/features/billing/pricing';
 import { listBoardRules, listBreakfast } from '@/features/board-rules/repository';
 import { getFamily, listFamilies } from '@/features/families/repository';
 import { listPriceItems } from '@/features/price-lists/repository';
-import { ACTIVE_STATUSES, birthday, schoolYearBounds } from '@/features/families/domain';
+import { ACTIVE_STATUSES, birthday, enrolmentAgeProblem, schoolYearBounds } from '@/features/families/domain';
 import { lastEntityByChild } from '@/features/families/bulk-enrolment';
 import { childBelongsTo, familyBelongsTo, institutionsOfChild } from '@/features/families/membership';
 import type { FamilyDetail } from '@/features/families/types';
@@ -99,6 +99,13 @@ export async function prepareMonth(month: BillingMonth, issueDate: string): Prom
     }
     for (const enrolment of detail.data.enrolments) {
       const child = detail.data.children.find((c) => c.id === enrolment.childId);
+      // an enrolment saved before the age checks (or with a date of birth corrected later) is said, not billed silently
+      const ageProblem = child && enrolment.schoolYear === schoolYear && ACTIVE_STATUSES.has(enrolment.status)
+        ? enrolmentAgeProblem(enrolment.program, child.dateOfBirth, enrolment.startsOn)
+        : null;
+      if (ageProblem && child) {
+        problems.push({ familyName: summary.displayName, reason: `${child.firstName} ${child.lastName}: upis ne odgovara starosti — ${ageProblem}`, entity: PROGRAM_ENTITY[enrolment.program] });
+      }
       if (enrolment.program !== 'TODDLERS' || enrolment.schoolYear !== schoolYear || !ACTIVE_STATUSES.has(enrolment.status) || !child?.dateOfBirth) continue;
       const fourthBirthday = birthday(child.dateOfBirth, 4);
       if (fourthBirthday <= schoolYearBounds(schoolYear).to) {

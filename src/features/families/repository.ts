@@ -38,6 +38,14 @@ export function saveEnrolment(enrolment: Enrolment): Promise<Result<null>> {
 }
 
 /**
+ * The operator saved a record although it looked like an existing one (SPEC §B). Written to the audit log with the
+ * ids of the families it resembled — no names, telephones or e-mails (BR-22).
+ */
+export function confirmNotDuplicate(entity: 'family' | 'child', entityId: string, similarFamilyIds: ReadonlyArray<string>): Promise<Result<null>> {
+  return call('confirm_not_duplicate', Nothing, { entity, entityId, similarFamilyIds: [...similarFamilyIds] });
+}
+
+/**
  * Move an active IMH kindergarten enrolment to the other group (Toddlers ↔ Preschoolers) from a day (SPEC A9). The
  * backend checks the age on that day and writes the change to the audit log; nothing billed changes.
  */

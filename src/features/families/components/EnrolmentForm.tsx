@@ -6,7 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { PROGRAM_ENTITY, PROGRAM_LABEL, programChoices, type ProgramCode, type SchoolYear } from '@/features/price-lists/types';
 import { Field } from '@/features/settings/components/OperatorForm';
 import { EnrolmentSchema } from '@/lib/validation/schemas';
-import { ageOn, enrolmentAgeProblem, schoolYearBounds, suggestedGroup } from '../domain';
+import { formatDate } from '@/lib/format';
+import { ageText, enrolmentAgeProblem, schoolYearBounds, suggestedGroup } from '../domain';
 import type { Enrolment } from '../types';
 
 /**
@@ -29,6 +30,14 @@ export function EnrolmentForm({
   const { errors, isSubmitting } = form.formState;
   const program = form.watch('program');
   const year = form.watch('schoolYear');
+  const startsOn = form.watch('startsOn') || enrolment.startsOn;
+  const bounds = schoolYearBounds(year as SchoolYear);
+  // checked while typing, not only when saving (Director, 2026-11-27: a start in 2025 was accepted for 2026/2027)
+  const problems = [
+    ...(startsOn < bounds.from || startsOn > bounds.to ? [`Početak pohađanja mora biti u školskoj godini ${year} (od ${formatDate(bounds.from)} do ${formatDate(bounds.to)}).`] : []),
+    ...(dateOfBirth ? [enrolmentAgeProblem(program, dateOfBirth, startsOn)].filter((p): p is string => p !== null) : []),
+  ];
+  const age = dateOfBirth ? ageText(dateOfBirth, startsOn) : null;
 
   return (
     <form className="grid gap-4 sm:grid-cols-2" onSubmit={form.handleSubmit(onSubmit)} noValidate>
@@ -67,21 +76,28 @@ export function EnrolmentForm({
         </Select>
       </Field>
       <Field id="enr-start" label="Početak pohađanja" error={errors.startsOn?.message}>
-        <Input id="enr-start" type="date" {...form.register('startsOn')} aria-invalid={Boolean(errors.startsOn)} />
+        <Input id="enr-start" type="date" min={bounds.from} max={bounds.to} {...form.register('startsOn')} aria-invalid={Boolean(errors.startsOn) || problems.length > 0} />
       </Field>
       <p className="self-end pb-2 text-sm text-muted-foreground">
         Ustanova: <strong>{PROGRAM_ENTITY[program]}</strong>
-        {dateOfBirth && (program === 'TODDLERS' || program === 'PRESCHOOLERS') && (
+        {age && (
           <>
-            {' · '}starost na dan početka {ageOn(dateOfBirth, form.watch('startsOn') || enrolment.startsOn)} god.; prijedlog: <strong>{PROGRAM_LABEL[suggestedGroup(dateOfBirth, form.watch('startsOn') || enrolment.startsOn)]}</strong>
+            {' · '}starost na dan početka {age}
+            {(program === 'TODDLERS' || program === 'PRESCHOOLERS') && dateOfBirth && (
+              <>
+                ; prijedlog: <strong>{PROGRAM_LABEL[suggestedGroup(dateOfBirth, startsOn)]}</strong>
+              </>
+            )}
           </>
         )}
       </p>
-      {dateOfBirth && enrolmentAgeProblem(program, dateOfBirth, form.watch('startsOn') || enrolment.startsOn) && (
-        <p className="text-sm text-destructive sm:col-span-2">{enrolmentAgeProblem(program, dateOfBirth, form.watch('startsOn') || enrolment.startsOn)}</p>
-      )}
+      {problems.map((p) => (
+        <p key={p} role="alert" className="text-sm text-destructive sm:col-span-2">
+          {p}
+        </p>
+      ))}
       <div className="sm:col-span-2">
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" disabled={isSubmitting || problems.length > 0}>
           {isSubmitting ? 'Spremanje…' : 'Upiši dijete'}
         </Button>
       </div>

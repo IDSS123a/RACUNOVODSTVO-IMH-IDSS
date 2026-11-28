@@ -15,6 +15,7 @@ mod invoices;
 mod keystore;
 mod legacy;
 mod migrations;
+mod prepayments;
 mod repository;
 mod rules;
 mod store;
@@ -62,6 +63,7 @@ pub fn run() {
             commands::list_billed_one_time,
             commands::list_billed_services,
             commands::change_enrolment_group,
+            commands::confirm_not_duplicate,
             commands::save_family,
             commands::save_child,
             commands::save_enrolment,
@@ -73,6 +75,15 @@ pub fn run() {
             commands::list_invoices,
             commands::get_invoice,
             commands::record_payment,
+            commands::record_prepayment,
+            commands::use_prepaid,
+            commands::reverse_prepayment,
+            commands::reverse_prepayment_use,
+            commands::list_prepayments,
+            commands::list_child_balances,
+            commands::list_all_child_balances,
+            commands::list_prepaid_sources,
+            commands::list_invoice_prepayment_uses,
             commands::issue_credit_note,
             commands::reverse_payment,
             commands::move_credit,

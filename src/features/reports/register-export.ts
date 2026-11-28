@@ -1,7 +1,7 @@
 import { formatKM, sum, type Fenings } from '@/features/billing/money';
 import { BALANCE_LABEL, invoiceBalance } from '@/features/invoices/credit-notes';
 import { amountDue } from '@/features/invoices/pdf';
-import type { InvoiceSummary } from '@/features/invoices/repository';
+import type { InvoiceSummary, NamedBalance } from '@/features/invoices/repository';
 import { para, table } from '@/lib/export/docx';
 import { onLetterhead } from '@/lib/export/letterhead';
 import { buildWorkbook, type Cell } from '@/lib/export/xlsx';
@@ -31,7 +31,7 @@ const km = (f: Fenings): number => f / 100;
 
 export const REGISTER_HEADER: ReadonlyArray<string> = [
   'Broj', 'Vrsta', 'Ustanova', 'Datum izdavanja', 'Rok plaćanja', 'Period od', 'Period do', 'Dijete', 'Kupac', 'Porodica',
-  'Iznos (KM)', 'Knjižna odobrenja (KM)', 'Za uplatu (KM)', 'Uplaćeno (KM)', 'Ostatak (KM)', 'Status', 'Izvor',
+  'Iznos (KM)', 'Knjižna odobrenja (KM)', 'Za uplatu (KM)', 'Uplaćeno (KM)', 'Saldo (KM)', 'Status', 'Izvor',
 ];
 
 /** One row per invoice, oldest first. */
@@ -56,7 +56,7 @@ export function registerRows(invoices: ReadonlyArray<InvoiceSummary>): Cell[][] 
         km(i.credited),
         km(amountDue(i)),
         isCredit ? null : km(b.paid),
-        isCredit ? null : km(b.open),
+        isCredit ? null : km(b.open), // an excess is the child's prepayment, not a negative invoice (Q4)
         isCredit ? 'Knjižno odobrenje' : BALANCE_LABEL[b.status],
         i.source === 'LEGACY' ? 'Uvezeno (Excel)' : 'Aplikacija',
       ];
@@ -104,7 +104,24 @@ export function openByFamily(invoices: ReadonlyArray<InvoiceSummary>): Array<{ f
 
 const monthText = (ym: string): string => `${ym.slice(5, 7)}.${ym.slice(0, 4)}.`;
 
-export function buildRegisterXlsx(invoices: ReadonlyArray<InvoiceSummary>, meta: ReportMeta): Uint8Array {
+/** The children in prepayment (saldo below zero) or with prepaid money, for the accountant (specs/family-advance, K1). */
+export function prepaymentRows(balances: ReadonlyArray<NamedBalance>): Cell[][] {
+  return balances
+    .filter((b) => b.saldo < 0 || b.prepaid > 0)
+    .sort((a, b) => a.entity.localeCompare(b.entity) || a.familyName.localeCompare(b.familyName, 'bs') || a.childName.localeCompare(b.childName, 'bs'))
+    .map((b) => [b.entity, b.familyName, b.childName || 'Računi bez djeteta', km(b.charged), km(b.received), km(b.transferredIn - b.transferredOut), km(b.refunded), km(b.prepaid), km(b.saldo)]);
+}
+
+export const PREPAYMENT_HEADER: ReadonlyArray<string> = [
+  'Ustanova', 'Porodica', 'Dijete', 'Zaduženo (KM)', 'Uplaćeno (KM)', 'Preneseno od/na brata/sestru (KM)', 'Vraćeno (KM)', 'Pretplata na raspolaganju (KM)', 'Saldo (KM)',
+];
+
+/** Σ of the negative saldos: what the institution holds in prepayments. */
+export function prepaidTotal(balances: ReadonlyArray<{ readonly saldo: number }>): Fenings {
+  return sum(balances.map((b) => Math.min(0, b.saldo)));
+}
+
+export function buildRegisterXlsx(invoices: ReadonlyArray<InvoiceSummary>, meta: ReportMeta, balances: ReadonlyArray<NamedBalance> = []): Uint8Array {
   const t = totals(invoices, meta.createdOn);
   return buildWorkbook([
     {
@@ -119,6 +136,7 @@ export function buildRegisterXlsx(invoices: ReadonlyArray<InvoiceSummary>, meta:
         ['Naplaćeno (KM)', km(t.paid)],
         ['Otvoreno (KM)', km(t.open)],
         ['Od toga dospjelo (KM)', km(t.overdue)],
+        ['U pretplati na dan izvještaja (KM)', km(prepaidTotal(balances))],
       ],
     },
     { name: 'Fakture', rows: [[...REGISTER_HEADER], ...registerRows(invoices)] },
@@ -133,6 +151,7 @@ export function buildRegisterXlsx(invoices: ReadonlyArray<InvoiceSummary>, meta:
       name: 'Otvoreno po porodicama',
       rows: [['Porodica', 'Kupac', 'Otvorenih faktura', 'Otvoreno (KM)'], ...openByFamily(invoices).map((f) => [f.family, f.buyer, f.count, km(f.open)])],
     },
+    { name: 'Pretplate', rows: [[...PREPAYMENT_HEADER], ...prepaymentRows(balances)] },
   ]);
 }
 

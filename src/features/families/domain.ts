@@ -123,6 +123,14 @@ export function birthday(dateOfBirth: string, years: number): string {
 /** Oldest age (completed years) of any child of the institutions on the day the record is saved. */
 export const CHILD_MAX_AGE = 16;
 
+/** Age as „2 god. i 3 mj.“ on a date; null before the birth (never a negative age). */
+export function ageText(dateOfBirth: string, date: string): string | null {
+  if (date < dateOfBirth) return null;
+  const months = (Number(date.slice(0, 4)) - Number(dateOfBirth.slice(0, 4))) * 12 + Number(date.slice(5, 7)) - Number(dateOfBirth.slice(5, 7)) - (date.slice(8) < dateOfBirth.slice(8) ? 1 : 0);
+  const years = Math.floor(months / 12);
+  return `${years} god. i ${months % 12} mj.`;
+}
+
 /** Completed years between a date of birth and a date (both ISO). */
 export function ageOn(dateOfBirth: string, date: string): number {
   const years = Number(date.slice(0, 4)) - Number(dateOfBirth.slice(0, 4));
@@ -130,12 +138,31 @@ export function ageOn(dateOfBirth: string, date: string): number {
 }
 
 /** The child's age does not fit the program on its first day; null = fits or the date of birth is not known. */
-export function enrolmentAgeProblem(program: ProgramCode, dateOfBirth: string | null, startsOn: string): string | null {
+export function enrolmentAgeProblem(program: ProgramCode, dateOfBirth: string | null, startsOn: string, on: 'start' | 'change' = 'start'): string | null {
   if (!dateOfBirth) return null;
+  const dmy = (d: string) => `${d.split('-').reverse().join('.')}.`;
+  // Director, 2026-11-27: a start before the birth showed „ima -2 god.“ — say what is wrong instead
+  if (startsOn < dateOfBirth) return `Početak pohađanja (${dmy(startsOn)}) je prije rođenja djeteta (${dmy(dateOfBirth)}). Provjerite datum početka ili datum rođenja.`;
   const age = ageOn(dateOfBirth, startsOn);
   const [min, max] = PROGRAM_AGE[program];
   if (age >= min && age <= max) return null;
-  return `Dijete rođeno ${dateOfBirth.split('-').reverse().join('.')}. ima ${age} god. na dan početka — za ${PROGRAM_LABEL[program]} dozvoljeno je ${min}–${max} god. Provjerite datum rođenja ili program.`;
+  return `Dijete rođeno ${dateOfBirth.split('-').reverse().join('.')}. ima ${age} god. na dan ${on === 'start' ? 'početka' : 'promjene'} — za ${PROGRAM_LABEL[program]} dozvoljeno je ${min}–${max} god. Provjerite datum rođenja ili program.`;
+}
+
+/**
+ * The first day from which an IMH kindergarten enrolment can move to the other group (Toddlers ↔ Preschoolers)
+ * within its school year, or null when the child's age never fits it (Director, 2026-11-28: a 6-year-old was
+ * offered „Promijeni grupu → Toddlers“, then refused). Without a date of birth the start is returned — the age
+ * cannot be checked.
+ */
+export function groupChangeFrom(enrolment: Pick<Enrolment, 'program' | 'schoolYear' | 'startsOn'>, dateOfBirth: string | null): string | null {
+  if (enrolment.program !== 'TODDLERS' && enrolment.program !== 'PRESCHOOLERS') return null;
+  const to: ProgramCode = enrolment.program === 'TODDLERS' ? 'PRESCHOOLERS' : 'TODDLERS';
+  if (!dateOfBirth) return enrolment.startsOn;
+  const [min, max] = PROGRAM_AGE[to];
+  const first = [enrolment.startsOn, birthday(dateOfBirth, min)].sort()[1] ?? enrolment.startsOn;
+  const end = schoolYearBounds(enrolment.schoolYear as SchoolYear).to;
+  return first <= end && ageOn(dateOfBirth, first) <= max ? first : null;
 }
 
 export function enrolmentProblems(enrolment: Enrolment, others: ReadonlyArray<Enrolment>, dateOfBirth: string | null = null): string[] {

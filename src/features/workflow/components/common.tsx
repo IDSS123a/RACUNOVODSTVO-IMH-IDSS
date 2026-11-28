@@ -4,7 +4,8 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { INVOICE_MAILBOX } from '@/constants';
 import { formatKM, sum } from '@/features/billing/money';
-import { amountDue } from '@/features/invoices/pdf';
+import { PrepaymentOffer } from '@/features/invoices/components/PrepaymentOffer';
+import { amountToPay } from '@/features/invoices/pdf';
 import type { PeriodFilter } from '@/features/invoices/pdf-actions';
 import type { InvoiceSummary } from '@/features/invoices/repository';
 import { ENTITY_STYLE, useStepInvoices } from '../style';
@@ -49,14 +50,15 @@ function Summary({ invoices, error }: { invoices: InvoiceSummary[] | null; error
   if (invoices === null) return <p className="text-sm text-muted-foreground">Učitavam…</p>;
   return (
     <p className="text-sm">
-      <strong className="tabular-nums">{invoices.length}</strong> faktura, ukupno <strong className="tabular-nums">{formatKM(sum(invoices.map(amountDue)))}</strong>
+      <strong className="tabular-nums">{invoices.length}</strong> faktura, ukupno <strong className="tabular-nums">{formatKM(sum(invoices.map(amountToPay)))}</strong>
     </p>
   );
 }
 
 /** Step „Štampaj fakture“: every invoice of the filter as PDFs in one .zip (DOCX follows the same path, DL-P019). */
 export function PrintStep({ filter, onDone }: { filter: PeriodFilter; onDone: () => void }): React.JSX.Element {
-  const { invoices, error } = useStepInvoices(filter, 0);
+  const [refresh, setRefresh] = useState(0);
+  const { invoices, error } = useStepInvoices(filter, refresh);
   const [progress, setProgress] = useState<string | null>(null);
   async function run(format: 'pdf' | 'docx'): Promise<void> {
     setProgress('Pripremam…');
@@ -68,7 +70,7 @@ export function PrintStep({ filter, onDone }: { filter: PeriodFilter; onDone: ()
       else if (result.data) {
         toast.success(`Sačuvano: ${result.data}`);
         onDone();
-      }
+      } else toast.info('Spremanje otkazano — dokument nije sačuvan.');
     } finally {
       setProgress(null);
     }
@@ -77,6 +79,9 @@ export function PrintStep({ filter, onDone }: { filter: PeriodFilter; onDone: ()
   return (
     <div className="grid gap-4">
       <Summary invoices={invoices} error={error} />
+      {invoices && invoices.length > 0 && (
+        <PrepaymentOffer invoiceIds={invoices.filter((i) => i.kind !== 'CREDIT_NOTE').map((i) => i.id)} onApplied={() => setRefresh((r) => r + 1)} />
+      )}
       <div className="flex flex-wrap gap-3">
         <Button size="lg" disabled={progress !== null || empty} onClick={() => void run('pdf')}>
           <FileArchiveIcon aria-hidden /> Sačuvaj sve kao PDF (.zip)

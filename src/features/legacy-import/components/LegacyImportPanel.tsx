@@ -66,6 +66,7 @@ export function LegacyImportPanel({ onImported }: { onImported?: () => void }): 
     const outcome = await saveFindingsReport(prepared.report.findings, prepared.report.fileName);
     if (!outcome.success) toast.error(outcome.error);
     else if (outcome.data) toast.success(`Izvještaj je sačuvan: ${outcome.data}`);
+    else toast.info('Spremanje otkazano — dokument nije sačuvan.');
   }
 
   const report = prepared?.report;

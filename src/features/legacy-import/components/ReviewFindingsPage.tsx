@@ -57,6 +57,7 @@ export function ReviewFindingsPage({ onChanged }: { onChanged?: () => void }): R
       const result = await saveStoredFindingsReport();
       if (!result.success) toast.error(result.error);
       else if (result.data) toast.success(`Izvještaj je sačuvan: ${result.data}`);
+      else toast.info('Spremanje otkazano — dokument nije sačuvan.');
     } finally {
       setBusy(null);
     }

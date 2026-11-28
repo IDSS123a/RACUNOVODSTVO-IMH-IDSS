@@ -1,4 +1,4 @@
-import { sum, type Fenings } from '@/features/billing/money';
+import { formatKM, sum, type Fenings } from '@/features/billing/money';
 
 /**
  * Storno, credit notes and payment correction — pure domain (specs/storno-credit-notes, Director S1–S6).
@@ -24,6 +24,8 @@ export interface InvoiceBalance {
   readonly paid: Fenings;
   readonly open: Fenings;
   readonly credit: Fenings;
+  /** Customer balance as on a customer ledger card: charged − paid. Positive = owes, negative = prepayment (u pretplati). */
+  readonly saldo: Fenings;
   readonly status: BalanceStatus;
 }
 
@@ -45,14 +47,61 @@ export function invoiceBalance(invoice: { readonly total: Fenings; readonly cred
           : invoice.paid === net
             ? 'PAID'
             : 'OVERPAID';
-  return { total: invoice.total, credited: invoice.credited, net, paid: invoice.paid, open, credit, status };
+  return { total: invoice.total, credited: invoice.credited, net, paid: invoice.paid, open, credit, saldo: net - invoice.paid, status };
+}
+
+/**
+ * What the operator must confirm before a payment is recorded (Director, 2026-11-28: the same 1.000 KM was booked twice
+ * on IMH-897/26, hours apart, without a word). An overpayment is real money and stays possible — it becomes family
+ * credit (DL-P011) — but it is never recorded silently.
+ * @param open    what is still to pay on the invoice
+ * @param amount  the payment being entered (fenings); 0 or less = nothing to say yet
+ * @param paidOn  its date (ISO)
+ * @param payments the payments already on the invoice; reversed ones do not count
+ */
+export function paymentWarnings(
+  open: Fenings,
+  amount: Fenings,
+  paidOn: string,
+  payments: ReadonlyArray<{ readonly paidOn: string; readonly amount: Fenings; readonly reversedOn?: string | null }>,
+): string[] {
+  if (amount <= 0) return [];
+  const warnings: string[] = [];
+  if (open === 0) warnings.push(`Račun je već plaćen u cijelosti. Cijela uplata od ${formatKM(amount)} biće pretplata porodice (saldo ${formatKM(-amount)}).`);
+  else if (amount > open)
+    warnings.push(`Iznos je veći od preostalog (${formatKM(open)}) za ${formatKM(amount - open)}; taj višak biće pretplata porodice.`);
+  const same = payments.filter((p) => !p.reversedOn && p.amount === amount);
+  const sameDay = same.filter((p) => p.paidOn === paidOn);
+  if (sameDay.length > 0)
+    warnings.push(`Uplata od ${formatKM(amount)} s datumom ${paidOn.split('-').reverse().join('.')}. je već evidentirana na ovom računu. Provjerite da je ne unosite dva puta.`);
+  else if (same.length > 0) warnings.push(`Uplata od ${formatKM(amount)} je već evidentirana na ovom računu (drugi datum). Provjerite da je ne unosite dva puta.`);
+  return warnings;
+}
+
+/**
+ * What the operator must confirm before a payment WITHOUT an invoice is recorded (specs/family-advance §2):
+ * an unpaid invoice of the child in that institution (the money is probably for it), and the same payment again.
+ */
+export function prepaymentWarnings(
+  amount: Fenings,
+  paidOn: string,
+  openInvoices: ReadonlyArray<{ readonly number: string; readonly open: Fenings }>,
+  earlier: ReadonlyArray<{ readonly paidOn: string; readonly amount: Fenings; readonly reversedOn?: string | null }>,
+): string[] {
+  if (amount <= 0) return [];
+  const warnings = openInvoices.map(
+    (i) => `Dijete ima neplaćen račun ${i.number} (otvoreno ${formatKM(i.open)}). Ako je uplata za taj račun, evidentirajte je na tom računu, ne kao pretplatu.`,
+  );
+  if (earlier.some((p) => !p.reversedOn && p.amount === amount && p.paidOn === paidOn))
+    warnings.push(`Uplata bez računa od ${formatKM(amount)} s datumom ${paidOn.split('-').reverse().join('.')}. je već evidentirana za ovo dijete. Provjerite da je ne unosite dva puta.`);
+  return warnings;
 }
 
 export const BALANCE_LABEL: Readonly<Record<BalanceStatus, string>> = {
   OPEN: 'Otvoren',
   PARTIALLY_PAID: 'Djelimično plaćen',
   PAID: 'Plaćen',
-  OVERPAID: 'Preplaćen (kredit)',
+  OVERPAID: 'Plaćen · višak u pretplati',
   CANCELLED: 'Storniran',
 };
 
@@ -112,9 +161,15 @@ export function creditNoteTotal(lines: ReadonlyArray<{ readonly amount: Fenings 
   return sum(lines.map((l) => l.amount));
 }
 
-/** Family credit per institution from the backend list (S3; entities are never mixed). */
-export function creditByEntity(rows: ReadonlyArray<{ readonly entity: string; readonly credit: Fenings }>): Map<string, Fenings> {
-  const out = new Map<string, Fenings>();
-  for (const r of rows) out.set(r.entity, (out.get(r.entity) ?? 0) + r.credit);
-  return out;
+/**
+ * Saldo as on a customer ledger card (Director, 2026-11-28: „nema zaduženja a korisnik plati = u pretplati“):
+ * charged (invoices net of credit notes) − paid. Positive: the customer owes; negative: prepayment; zero: settled.
+ */
+export function saldoLabel(saldo: Fenings): string {
+  return saldo > 0 ? 'duguje' : saldo < 0 ? 'u pretplati' : 'izmireno';
+}
+
+/** „−1.000,00 KM (u pretplati)“ — the signed saldo with its meaning. */
+export function saldoText(saldo: Fenings): string {
+  return `${formatKM(saldo)} (${saldoLabel(saldo)})`;
 }

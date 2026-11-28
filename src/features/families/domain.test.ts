@@ -187,3 +187,37 @@ describe('Toddlers / Preschoolers (Director, 2026-11-27, SPEC A9)', () => {
     expect(birthday('2023-02-29'.replace('2023', '2024'), 3)).toBe('2027-02-28');
   });
 });
+
+describe('start of attendance (Director, 2026-11-27: a start in 2025 for 2026/2027, before the birth, showed „-2 god.“)', () => {
+  it('a start before the birth says so; the age is never negative', async () => {
+    const { ageText, enrolmentAgeProblem } = await import('./domain');
+    expect(enrolmentAgeProblem('TODDLERS', '2026-11-13', '2025-01-02')).toBe(
+      'Početak pohađanja (02.01.2025.) je prije rođenja djeteta (13.11.2026.). Provjerite datum početka ili datum rođenja.',
+    );
+    expect(ageText('2026-11-13', '2025-01-02')).toBeNull();
+    expect(ageText('2024-06-15', '2026-09-01')).toBe('2 god. i 2 mj.');
+    expect(ageText('2024-09-02', '2026-09-01')).toBe('1 god. i 11 mj.');
+  });
+
+  it('a start outside the school year is refused', async () => {
+    const { enrolmentProblems } = await import('./domain');
+    const e = { id: 'e', childId: 'c', program: 'TODDLERS' as const, schoolYear: '2026/2027', startsOn: '2025-01-02', endsOn: null, status: 'AWAITING_ENROLMENT_PAYMENT' as const };
+    expect(enrolmentProblems(e, [], null)[0]).toContain('unutar školske godine 2026/2027');
+  });
+});
+
+describe('„Promijeni grupu“ only when the age can fit (Director, 2026-11-28: a 6-year-old was offered Toddlers, then refused)', () => {
+  it('returns the first possible day, or null when the other group never fits in the school year', async () => {
+    const { groupChangeFrom, enrolmentAgeProblem } = await import('./domain');
+    const e = (program: 'TODDLERS' | 'PRESCHOOLERS') => ({ program, schoolYear: '2026/2027', startsOn: '2026-09-01' });
+    expect(groupChangeFrom(e('PRESCHOOLERS'), '2020-01-01')).toBeNull(); // 6 years: never Toddlers (0–3)
+    expect(groupChangeFrom(e('PRESCHOOLERS'), '2022-01-01')).toBeNull(); // 4 years
+    expect(groupChangeFrom(e('PRESCHOOLERS'), '2023-05-01')).toBe('2026-09-01'); // 3 years: still Toddlers
+    expect(groupChangeFrom(e('TODDLERS'), '2024-06-15')).toBe('2026-09-01'); // already 2
+    expect(groupChangeFrom(e('TODDLERS'), '2025-03-01')).toBe('2027-03-01'); // from the 2nd birthday
+    expect(groupChangeFrom(e('TODDLERS'), '2026-03-01')).toBeNull(); // 2nd birthday after the school year
+    expect(groupChangeFrom(e('TODDLERS'), null)).toBe('2026-09-01');
+    expect(groupChangeFrom({ program: 'PRIMARY_1_4', schoolYear: '2026/2027', startsOn: '2026-09-01' }, '2019-01-01')).toBeNull();
+    expect(enrolmentAgeProblem('TODDLERS', '2020-01-01', '2026-11-28', 'change')).toContain('na dan promjene');
+  });
+});

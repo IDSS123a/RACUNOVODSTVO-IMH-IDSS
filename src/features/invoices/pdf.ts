@@ -319,12 +319,21 @@ export function amountDue(invoice: { readonly kind: string; readonly total: numb
   return invoice.kind === 'CREDIT_NOTE' ? invoice.total : invoice.total + invoice.credited;
 }
 
+/** What the documents sent to the parent ask for. */
+type Payable = { readonly kind: string; readonly total: number; readonly credited: number; readonly appliedPrepayment?: number | undefined };
+
 /**
- * Amount on the payment slip and in the QR: UKUPNO ZA UPLATU. Payments are deliberately not an input (no `paid`):
- * the invoice is issued before the parent pays and reads the same whenever printed (Director, 2026-11-21).
+ * UKUPNO ZA UPLATU on the invoice PDF/DOCX, its slip and QR: the amount due after credit notes, reduced by the
+ * prepayment applied to the invoice (specs/family-advance Q3: „Umanjeno za primljenu pretplatu“). Ordinary payments
+ * are still never an input (Director, 2026-11-21): only prepaid money the operator applied before sending.
  */
-export function slipAmount(invoice: { readonly kind: string; readonly total: number; readonly credited: number }): number {
-  return Math.max(0, amountDue(invoice));
+export function amountToPay(invoice: Payable): number {
+  return invoice.kind === 'CREDIT_NOTE' ? invoice.total : amountDue(invoice) - (invoice.appliedPrepayment ?? 0);
+}
+
+/** Amount on the payment slip and in the QR: UKUPNO ZA UPLATU (never negative). */
+export function slipAmount(invoice: Payable): number {
+  return Math.max(0, amountToPay(invoice));
 }
 
 /**
@@ -334,7 +343,7 @@ export function slipAmount(invoice: { readonly kind: string; readonly total: num
  */
 export function recapitulationRows(
   recap: InvoiceRecap,
-  invoice: { readonly kind: string; readonly total: number; readonly credited: number },
+  invoice: Payable,
   creditNotes: ReadonlyArray<{ readonly number: string; readonly total: number }> = [],
 ): Array<[label: string, amount: number, isTotal: boolean]> {
   const rows: Array<[string, number, boolean]> = [
@@ -344,14 +353,16 @@ export function recapitulationRows(
     ['Iznos PDV (0%):', recap.vat, false],
   ];
   if (invoice.kind === 'CREDIT_NOTE') return [...rows, ['UKUPNO ODOBRENO:', recap.total, true]];
+  const applied = invoice.appliedPrepayment ?? 0;
+  if (invoice.credited < 0 || applied > 0) rows.push(['Iznos računa:', recap.total, false]);
   if (invoice.credited < 0) {
-    rows.push(['Iznos računa:', recap.total, false]);
     const listed = creditNotes.reduce((a, cn) => a + cn.total, 0);
     // every credit note by number; should the list be missing or incomplete, the stored sum is still shown in full
     if (creditNotes.length > 0 && listed === invoice.credited) creditNotes.forEach((cn) => rows.push([`Knj. odobrenje ${cn.number}:`, cn.total, false]));
     else rows.push(['Umanjeno knjižnim odobrenjima:', invoice.credited, false]);
   }
-  return [...rows, ['UKUPNO ZA UPLATU:', amountDue(invoice), true]];
+  if (applied > 0) rows.push(['Umanjeno za primljenu pretplatu:', -applied, false]);
+  return [...rows, ['UKUPNO ZA UPLATU:', amountToPay(invoice), true]];
 }
 
 /**
@@ -372,7 +383,7 @@ function drawNoteAndRecap(w: Writer, data: InvoicePdfData, recap: InvoiceRecap):
     // printed once, also when the institution's own note already contains the sentence
     squash(pdvNote).includes(squash(INVOICE_VALIDITY_NOTE)) ? '' : INVOICE_VALIDITY_NOTE,
     // nothing is paid on a credit note
-    isCreditNote ? '' : `Uplatu izvršiti na TRN: ${institution.bankName} -> ${institution.bankAccount.replace(/\s+/g, '')}`,
+    isCreditNote || paidFromPrepayment(invoice) ? '' : `Uplatu izvršiti na TRN: ${institution.bankName} -> ${institution.bankAccount.replace(/\s+/g, '')}`,
   ].filter(Boolean);
   const noteLines = noteParagraphs.flatMap((p) => wrapText(p, w.regular, 7.5, noteWidth - 16));
   const recapRows = recapitulationRows(recap, invoice, data.detail.creditNotes);
@@ -400,7 +411,7 @@ function drawNoteAndRecap(w: Writer, data: InvoicePdfData, recap: InvoiceRecap):
   // Payments are never printed: the invoice is the demand the parent receives before paying, and it reads the same
   // whenever it is printed or sent (Director, 2026-11-21). Payment status lives in the register and the invoice detail.
   // The words state the final recap row: the amount due after credit notes; a credit note is negative ("minus …").
-  const due = amountDue(invoice);
+  const due = amountToPay(invoice);
   const words = `${due < 0 ? 'minus ' : ''}${amountInWords(Math.abs(due))}`;
   for (const line of wrapText(`Slovima: ${words}`, w.bold, 9, CONTENT_WIDTH)) {
     w.text(line, MARGIN, { size: 9, bold: true });
@@ -539,7 +550,7 @@ function drawPaymentQr(w: Writer, data: InvoicePdfData, open: number, x: number,
 }
 
 /** Signature row (F1 / SPEC C10): Fakturisao/la, M.P., Ovlašteno lice, Komitent. */
-function drawSignatures(w: Writer, data: InvoicePdfData): void {
+function drawSignatures(w: Writer, data: { readonly operatorName: string }): void {
   const y = SIGNATURES.bottom + SIGNATURES.height - 8;
   const columns: Array<[string, string]> = [
     ['Fakturisao / la:', data.operatorName],
@@ -572,9 +583,26 @@ function drawFooters(doc: PDFDocument, w: Writer, data: InvoicePdfData): void {
   });
 }
 
-/** True when the invoice carries a payment slip: an issued, not cancelled invoice with a positive total. */
-export function hasPaymentSlip(invoice: { readonly kind: string; readonly status: string; readonly total: number }): boolean {
-  return invoice.kind !== 'CREDIT_NOTE' && invoice.status !== 'CANCELLED' && invoice.total > 0;
+/** True when the invoice carries a payment slip: an issued, not cancelled invoice with something left to pay. */
+export function hasPaymentSlip(invoice: { readonly kind: string; readonly status: string; readonly total: number; readonly credited?: number; readonly appliedPrepayment?: number | undefined }): boolean {
+  return invoice.kind !== 'CREDIT_NOTE' && invoice.status !== 'CANCELLED' && invoice.total > 0 && slipAmount({ ...invoice, credited: invoice.credited ?? 0 }) > 0;
+}
+
+/** Paid in full from the prepayment (Q3): no slip, and the parent is told not to pay. */
+export function paidFromPrepayment(invoice: { readonly kind: string; readonly status: string; readonly total: number; readonly credited: number; readonly appliedPrepayment?: number | undefined }): boolean {
+  return invoice.kind !== 'CREDIT_NOTE' && invoice.status !== 'CANCELLED' && (invoice.appliedPrepayment ?? 0) > 0 && amountToPay(invoice) <= 0;
+}
+
+/** In place of the slip: „Plaćeno iz pretplate — ne uplaćujte“. */
+function drawPaidFromPrepayment(w: Writer, data: InvoicePdfData): void {
+  const { invoice } = data.detail;
+  const height = 70;
+  const bottom = SLIP_TOP - height;
+  w.page.drawRectangle({ x: MARGIN, y: bottom, width: CONTENT_WIDTH, height, borderColor: INK, borderWidth: 0.9, color: rgb(0.95, 0.98, 0.95) });
+  const title = 'PLAĆENO IZ PRETPLATE — NE UPLAĆUJTE';
+  w.text(title, PAGE.width / 2 - w.bold.widthOfTextAtSize(title, 13) / 2, { y: bottom + height - 26, size: 13, bold: true });
+  const line = `Iznos računa ${formatKM(amountDue(invoice))} pokriven je primljenom pretplatom (${formatKM(invoice.appliedPrepayment ?? 0)}).`;
+  w.text(line, PAGE.width / 2 - w.regular.widthOfTextAtSize(line, 9) / 2, { y: bottom + height - 46, size: 9, color: MUTED });
 }
 
 /** Render one invoice as a PDF. */
@@ -601,8 +629,10 @@ export async function renderInvoicePdf(data: InvoicePdfData, assets: PdfAssets):
   drawLines(w, data, recap);
   drawNoteAndRecap(w, data, recap);
   const withSlip = hasPaymentSlip(data.detail.invoice);
-  reserveBottom(w, withSlip);
+  const prepaid = paidFromPrepayment(data.detail.invoice);
+  reserveBottom(w, withSlip || prepaid);
   if (withSlip) drawPaymentSlip(w, data);
+  else if (prepaid) drawPaidFromPrepayment(w, data);
   drawSignatures(w, data);
   drawFooters(doc, w, data);
   return doc.save();
@@ -622,7 +652,8 @@ export interface RemainderNotice {
 
 /** The figures of the notice: amount due after credit notes, each payment that was not reversed, and what is left. */
 export function remainderFigures(detail: Pick<InvoiceDetail, 'invoice' | 'payments'>): { due: number; payments: Array<{ paidOn: string; amount: number }>; remainder: number } {
-  const due = amountDue(detail.invoice);
+  // after the prepayment applied to it (Q3): the payments listed are the parent's, the prepayment is already deducted
+  const due = amountToPay(detail.invoice);
   const payments = detail.payments.filter((p) => !p.reversedOn).map((p) => ({ paidOn: p.paidOn, amount: p.amount })).sort((a, b) => a.paidOn.localeCompare(b.paidOn));
   const paid = payments.reduce((s, p) => s + p.amount, 0);
   return { due, payments, remainder: Math.max(0, due - paid) };
@@ -716,6 +747,101 @@ export async function renderRemainderNoticePdf(data: InvoicePdfData & { readonly
   drawSignatures(w, data);
   drawFooters(doc, w, data);
   return doc.save();
+}
+
+/** One payment, as confirmed to the parent (specs/family-advance Q5). */
+export interface PaymentReceipt {
+  /** Day the receipt is made; the saldo is as of this day. */
+  readonly issuedOn: string;
+  /** The invoice the payment was booked on; null = a payment without an invoice (prepayment). */
+  readonly invoiceNumber: string | null;
+  readonly paidOn: string;
+  readonly amount: number;
+  readonly payerName: string;
+  readonly payerRelation: string;
+  readonly childName: string;
+  readonly buyerName: string;
+  readonly purpose: string;
+  readonly reference: string;
+  /** The child's saldo in the institution on `issuedOn`: positive owes, negative u pretplati. */
+  readonly saldo: number;
+}
+
+/** „Potvrda o uplati“: one A4 page on the institution's letterhead, no payment slip (Q5). */
+export async function renderPaymentReceiptPdf(institution: Institution, operatorName: string, receipt: PaymentReceipt, assets: PdfAssets): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const [regular, bold, logo] = await Promise.all([doc.embedFont(assets.regularFont), doc.embedFont(assets.boldFont), doc.embedPng(assets.logoPng)]);
+  doc.setTitle(`Potvrda o uplati — ${receipt.childName} — ${formatDate(receipt.paidOn)}`);
+  doc.setAuthor(institution.shortName);
+  doc.setCreator('Fakturisanje IMH & IDSS');
+  doc.setProducer('Fakturisanje IMH & IDSS (pdf-lib)');
+  doc.setLanguage('bs');
+
+  const w = new Writer(doc, regular, bold);
+  drawLetterhead(w, institution, logo);
+  w.text('POTVRDA O UPLATI', MARGIN, { size: 15, bold: true });
+  w.rightText(`${ISSUE_PLACE}, ${formatDate(receipt.issuedOn)}`, PAGE.width - MARGIN, { size: 9 });
+  w.y -= 16;
+  w.text(receipt.invoiceNumber ? `po računu br. ${receipt.invoiceNumber}` : 'uplata bez računa — pretplata', MARGIN, { size: 10, bold: true });
+  w.y -= 22;
+
+  const facts: Array<[string, string]> = [
+    ['Datum uplate:', formatDate(receipt.paidOn)],
+    ['Iznos:', formatKM(receipt.amount)],
+    ['Uplatio/la:', `${receipt.payerName}${receipt.payerRelation ? ` (${receipt.payerRelation})` : ''}`],
+    ['Za dijete:', receipt.childName || '—'],
+    ['Kupac na računu:', receipt.buyerName || '—'],
+    ['Svrha:', receipt.purpose || '—'],
+    ['Referenca:', receipt.reference || '—'],
+  ];
+  const boxHeight = facts.length * 15 + 12;
+  w.page.drawRectangle({ x: MARGIN, y: w.y - boxHeight + 6, width: CONTENT_WIDTH, height: boxHeight, color: rgb(0.97, 0.98, 0.99), borderColor: RULE, borderWidth: 0.7 });
+  facts.forEach(([label, value], i) => {
+    const y = w.y - 8 - i * 15;
+    w.text(label, MARGIN + 10, { y, size: 9.5, color: MUTED });
+    w.text(wrapText(value, w.bold, 10, CONTENT_WIDTH - 150)[0] ?? '', MARGIN + 140, { y, size: 10, bold: true });
+  });
+  w.y -= boxHeight + 10;
+  w.text(`Slovima: ${amountInWords(receipt.amount)}`, MARGIN, { size: 9, bold: true });
+  w.y -= 26;
+
+  // the child's saldo on the day of the receipt, with its sign (DL-P034, Q1)
+  const saldoLabel = receipt.saldo > 0 ? 'duguje' : receipt.saldo < 0 ? 'u pretplati' : 'izmireno';
+  const rowHeight = 20;
+  w.page.drawRectangle({ x: MARGIN, y: w.y - rowHeight + 6, width: CONTENT_WIDTH, height: rowHeight, color: DARK });
+  w.text(`SALDO DJETETA NA DAN ${formatDate(receipt.issuedOn)}:`, MARGIN + 8, { y: w.y - rowHeight + 12, size: 10, bold: true, color: WHITE });
+  w.rightText(`${formatKM(receipt.saldo)} (${saldoLabel})`, PAGE.width - MARGIN - 8, { y: w.y - rowHeight + 12, size: 10.5, bold: true, color: WHITE });
+  w.y -= rowHeight + 14;
+  const explain = receipt.saldo < 0
+    ? `Negativan saldo znači da je uplaćeno ${formatKM(-receipt.saldo)} više nego što je zaduženo; taj iznos se primjenjuje na sljedeće račune djeteta ili se vraća.`
+    : receipt.saldo > 0
+      ? `Po svim računima djeteta u ustanovi ostalo je za uplatu ${formatKM(receipt.saldo)}.`
+      : 'Svi računi djeteta u ustanovi su izmireni.';
+  for (const line of wrapText(explain, w.regular, 9, CONTENT_WIDTH)) {
+    w.text(line, MARGIN, { size: 9, color: MUTED });
+    w.y -= 12;
+  }
+  w.y -= 6;
+  for (const line of wrapText('Potvrda je izrađena na računaru i punovažna je bez potpisa i pečata. Ne služi kao račun.', w.regular, 8.5, CONTENT_WIDTH)) {
+    w.text(line, MARGIN, { size: 8.5, color: MUTED });
+    w.y -= 11;
+  }
+
+  reserveBottom(w, false);
+  drawSignatures(w, { operatorName });
+  const pages = doc.getPages();
+  pages.forEach((page, index) => {
+    page.drawLine({ start: { x: MARGIN, y: MARGIN + 10 }, end: { x: PAGE.width - MARGIN, y: MARGIN + 10 }, thickness: 0.6, color: RULE });
+    page.drawText(`${institution.shortName} · Potvrda o uplati · strana ${index + 1}/${pages.length}`, { x: MARGIN, y: MARGIN, size: 7, font: w.regular, color: MUTED });
+  });
+  return doc.save();
+}
+
+/** File name of a receipt: „Potvrda_uplate_2026-11-28_Ime_Prezime.pdf“ (ASCII). */
+export function paymentReceiptFileName(paidOn: string, childName: string): string {
+  const child = asciiName(childName);
+  return `Potvrda_uplate_${paidOn}${child ? `_${child}` : ''}.pdf`;
 }
 
 /** File name of the remainder notice: „Obavijest_IMH-012-26_Ime_Prezime.pdf“. */

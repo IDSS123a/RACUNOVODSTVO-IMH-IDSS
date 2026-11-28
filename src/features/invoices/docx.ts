@@ -4,12 +4,12 @@ import { amountInWords } from '@/features/billing/amount-in-words';
 import { formatKM } from '@/features/billing/money';
 import { INVOICE_VALIDITY_NOTE, ISSUE_PLACE, PAYMENT_METHOD } from '@/constants';
 import { formatDate } from '@/lib/format';
-import { amountDue, recapitulationRows, type InvoicePdfData } from './pdf';
+import { amountToPay, recapitulationRows, type InvoicePdfData } from './pdf';
 import { formatDiscount, invoiceRecap } from './recap';
 
 /**
  * The invoice as a Word document (.docx; DEFINICIJA-APLIKACIJE M5). Same content and the same figures as the PDF
- * (one recapitulation, `recapitulationRows` / `amountDue`, M-7). A .docx is a zip of WordprocessingML; it is written
+ * (one recapitulation, `recapitulationRows` / `amountToPay`, M-7). A .docx is a zip of WordprocessingML; it is written
  * here with fflate, already a dependency (no new library, M-12). On the institution's letterhead (Director,
  * 2026-11-21) the logo is in its header and the institution data in its footer; the payment slip stays in the PDF.
  */
@@ -22,7 +22,7 @@ export function invoiceParts(data: InvoicePdfData, onTemplate: boolean): string[
   const { institution } = data;
   const isCreditNote = invoice.kind === 'CREDIT_NOTE';
   const recap = invoiceRecap(data.detail.lines);
-  const due = amountDue(invoice);
+  const due = amountToPay(invoice);
   const parts: string[] = [];
 
   if (!onTemplate) {
@@ -64,7 +64,7 @@ export function invoiceParts(data: InvoicePdfData, onTemplate: boolean): string[
   parts.push(para(''));
   if (institution.invoiceNote.trim()) parts.push(para(institution.invoiceNote.trim(), { size: 9 }));
   parts.push(para(INVOICE_VALIDITY_NOTE, { size: 9 }));
-  if (!isCreditNote) parts.push(para(`Uplatu izvršiti na TRN: ${institution.bankName} → ${institution.bankAccount}, svrha: račun ${invoice.number}`, { size: 9 }));
+  if (!isCreditNote && due > 0) parts.push(para(`Uplatu izvršiti na TRN: ${institution.bankName} → ${institution.bankAccount}, svrha: račun ${invoice.number}`, { size: 9 }));
   parts.push(para(''));
   parts.push(para(`Fakturisao/la: ${data.operatorName}                    M.P.                    Ovlašteno lice: ________________`, { size: 9 }));
 

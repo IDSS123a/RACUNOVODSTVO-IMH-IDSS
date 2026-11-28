@@ -261,6 +261,18 @@ const CHILD_MAX_AGE: i32 = 16;
 pub fn save_child(tx: &Transaction, c: &Child) -> AppResult<()> {
     crate::formats::check_name(&c.first_name, "ime djeteta")?;
     crate::formats::check_name(&c.last_name, "prezime djeteta")?;
+    // the same child twice in one family (same name and date of birth) is always a mistake (SPEC §B)
+    if let Some(dob) = c.date_of_birth.as_deref() {
+        let twins: i64 = tx.query_row(
+            "SELECT count(*) FROM children WHERE family_id = ?1 AND id <> ?2 AND date_of_birth = ?3
+               AND lower(trim(first_name)) = lower(trim(?4)) AND lower(trim(last_name)) = lower(trim(?5))",
+            params![c.family_id, c.id, dob, c.first_name, c.last_name],
+            |r| r.get(0),
+        )?;
+        if twins > 0 {
+            return Err(AppError::Conflict("isto dijete (ime, prezime i datum rođenja) već postoji u ovoj porodici".into()));
+        }
+    }
     if let Some(dob) = c.date_of_birth.as_deref() {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         if dob > today.as_str() {
@@ -268,6 +280,22 @@ pub fn save_child(tx: &Transaction, c: &Child) -> AppResult<()> {
         }
         if age_on(dob, &today).is_some_and(|age| age > CHILD_MAX_AGE) {
             return Err(AppError::Validation(format!("dijete bi imalo više od {CHILD_MAX_AGE} godina — provjerite datum rođenja")));
+        }
+        // a changed date of birth must still fit every open enrolment of the child (Director, 2026-11-28)
+        let mut stmt = tx.prepare(
+            "SELECT program, school_year, starts_on FROM enrolments WHERE child_id = ?1 AND status NOT IN ('WITHDRAWN', 'COMPLETED')",
+        )?;
+        let open = stmt
+            .query_map(params![c.id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        for (program, school_year, starts_on) in open {
+            if let (Some((min, max)), Some(age)) = (program_age(&program), age_on(dob, &starts_on)) {
+                if age < min || age > max {
+                    return Err(AppError::Validation(format!(
+                        "s ovim datumom rođenja dijete ima {age} god. na početku upisa {school_year} — za taj program dozvoljeno je {min}–{max} god.; provjerite datum rođenja ili prvo promijenite upis"
+                    )));
+                }
+            }
         }
     }
     let affected = tx.execute(
@@ -293,6 +321,18 @@ pub fn save_enrolment(tx: &Transaction, e: &Enrolment) -> AppResult<()> {
         .query_row("SELECT date_of_birth FROM children WHERE id = ?1", params![e.child_id], |r| r.get(0))
         .optional()?
         .flatten();
+    // the start lies in the school year of the enrolment (September to August), the end not before the start
+    let start_year: i32 = e.school_year.get(0..4).and_then(|y| y.parse().ok()).ok_or_else(|| AppError::Validation("neispravna školska godina".into()))?;
+    let (from, to) = (format!("{start_year}-09-01"), format!("{}-08-31", start_year + 1));
+    if e.starts_on.as_str() < from.as_str() || e.starts_on.as_str() > to.as_str() {
+        return Err(AppError::Validation(format!("početak pohađanja mora biti u školskoj godini {} (od {from} do {to})", e.school_year)));
+    }
+    if e.ends_on.as_deref().is_some_and(|end| end < e.starts_on.as_str()) {
+        return Err(AppError::Validation("datum završetka ne može biti prije početka".into()));
+    }
+    if dob.as_deref().is_some_and(|d| e.starts_on.as_str() < d) {
+        return Err(AppError::Validation("početak pohađanja je prije rođenja djeteta — provjerite datum početka ili datum rođenja".into()));
+    }
     if let (Some(dob), Some((min, max))) = (dob.as_deref(), program_age(&e.program)) {
         if let Some(age) = age_on(dob, &e.starts_on) {
             if age < min || age > max {
@@ -553,6 +593,57 @@ mod tests {
         // a withdrawn enrolment keeps its group
         save_enrolment(&tx, &enrolment("e1", "TODDLERS", "WITHDRAWN")).unwrap();
         assert!(change_enrolment_group(&tx, "e1", "PRESCHOOLERS", "2026-12-01").is_err());
+    }
+
+    /// SPEC §B: the same child (name and date of birth) twice in one family is refused by the backend; a different
+    /// birth date, or saving the child itself again, is fine.
+    #[test]
+    fn the_same_child_twice_in_one_family_is_refused() {
+        let mut conn = db();
+        let tx = conn.transaction().unwrap();
+        save_family(&tx, &family(), &[guardian("g1", true)]).unwrap();
+        save_child(&tx, &child("c1")).unwrap();
+        save_child(&tx, &child("c1")).unwrap(); // the same record again
+        assert!(matches!(save_child(&tx, &Child { id: "c2".into(), ..child("c2") }), Err(AppError::Conflict(_))));
+        assert!(save_child(&tx, &Child { id: "c3".into(), date_of_birth: Some("2024-06-01".into()), ..child("c3") }).is_ok());
+    }
+
+    /// Director, 2026-11-27: a start in 2025 for the school year 2026/2027, before the child's birth, was accepted.
+    #[test]
+    fn enrolment_start_inside_the_school_year_and_after_the_birth() {
+        let mut conn = db();
+        let tx = conn.transaction().unwrap();
+        save_family(&tx, &family(), &[guardian("g1", true)]).unwrap();
+        save_child(&tx, &Child { date_of_birth: Some("2026-11-13".into()), ..child("c1") }).unwrap();
+        let mut early = enrolment("e1", "TODDLERS", "AWAITING_ENROLMENT_PAYMENT");
+        early.starts_on = "2025-01-02".into();
+        assert!(matches!(save_enrolment(&tx, &early), Err(AppError::Validation(ref m)) if m.contains("školskoj godini")));
+        let mut before_birth = enrolment("e1", "TODDLERS", "AWAITING_ENROLMENT_PAYMENT");
+        before_birth.starts_on = "2026-10-01".into();
+        assert!(matches!(save_enrolment(&tx, &before_birth), Err(AppError::Validation(ref m)) if m.contains("prije rođenja")));
+        let mut fine = enrolment("e1", "TODDLERS", "AWAITING_ENROLMENT_PAYMENT");
+        fine.starts_on = "2027-02-01".into();
+        assert!(save_enrolment(&tx, &fine).is_ok());
+        let mut backwards = fine.clone();
+        backwards.ends_on = Some("2027-01-01".into());
+        assert!(save_enrolment(&tx, &backwards).is_err());
+    }
+
+    /// Director, 2026-11-28: a date of birth corrected after the enrolment must still fit it — otherwise a Toddler of
+    /// 6 years appears, and every later change is refused.
+    #[test]
+    fn a_changed_date_of_birth_must_fit_the_open_enrolments() {
+        let mut conn = db();
+        let tx = conn.transaction().unwrap();
+        save_family(&tx, &family(), &[guardian("g1", true)]).unwrap();
+        save_child(&tx, &child("c1")).unwrap();
+        save_enrolment(&tx, &enrolment("e1", "TODDLERS", "ACTIVE")).unwrap();
+        let older = Child { date_of_birth: Some("2020-01-01".into()), ..child("c1") };
+        assert!(matches!(save_child(&tx, &older), Err(AppError::Validation(ref m)) if m.contains("0–3")));
+        assert!(save_child(&tx, &Child { date_of_birth: Some("2023-09-01".into()), ..child("c1") }).is_ok(), "still fits");
+        // a withdrawn enrolment does not block the correction
+        save_enrolment(&tx, &enrolment("e1", "TODDLERS", "WITHDRAWN")).unwrap();
+        assert!(save_child(&tx, &older).is_ok());
     }
 
     fn family() -> Family {
