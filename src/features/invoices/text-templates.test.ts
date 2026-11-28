@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PARENT_RELATION,
+  relationForPayer,
   BASIS_TEMPLATES,
   PREPAYMENT_PURPOSE_TEMPLATES,
   CREDIT_NOTE_REASON_TEMPLATES,
@@ -82,5 +84,19 @@ describe('every template field can also be written differently (Director, 2026-1
     expect(formatFreeText(' ')).toBeNull();
     expect(formatFreeText('x'.repeat(FREE_TEXT_MAX + 1))).toBeNull();
     expect(formatFreeText(`a${String.fromCharCode(7)}b`)).toBeNull();
+  });
+});
+
+describe('relation of the payer (C-13, 2026-11-28: grandfather saved as „roditelj / staratelj“)', () => {
+  const parents = ['Amra Begović'];
+  it('another payer than a parent from the record loses the proposed parent relation', () => {
+    expect(relationForPayer('Amir Begović', parents, PARENT_RELATION)).toBe('');
+  });
+  it('a relation the operator typed stays', () => {
+    expect(relationForPayer('Amir Begović', parents, 'djed')).toBe('djed');
+    expect(relationForPayer('Amra Begović', parents, 'tetka')).toBe('tetka');
+  });
+  it('a parent from the record gets the parent relation, whatever the spacing or case', () => {
+    expect(relationForPayer('  amra   begović ', parents, '')).toBe(PARENT_RELATION);
   });
 });

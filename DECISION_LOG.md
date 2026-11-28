@@ -1055,6 +1055,37 @@
 - for the accountant: the account for prepayments (K1).
 - **K2 closed (Director, 2026-11-28):** IMH and IDSS are not PDV payers, as the Director had already stated and the invoice note says. A prepayment needs no avansni račun and no PDV.
 
+
+## DL-P036 — Director's C-13 check of DL-P035: payer relation, TRN line, the child's invoices on the family card
+
+**Source:** Director, 2026-11-28, C-13 in the running app. He sent the receipt for IDSS-582/26 and the PDF of the cancelled IDSS-584/26, and asked: „ne mogu da nađem u app“, then „dodaj spisak računa. Operater mora se lagano i logično kretati kroz cijelu aplikaciju. Workflow je izuzetno važan.“
+
+**Found (on a copy of the database, technical fields only):**
+- The grandfather's 4.000 KM on IDSS-582/26 was recorded twice (02:52 and 14:34, same payer and reference). The second time the duplicate warning (DL-P033) was confirmed because the morning instruction said to tick it, without first checking that the payment was already recorded. The Director reversed the second payment, and the child's saldo is now 1.830,00 KM (duguje). That is correct: manual invoices 569, 573, 574 and 575 and the remainder on 581 are open.
+- **Defect 1:** the relation field was filled with „roditelj / staratelj“ and kept it when another payer was typed. The browser list then also hid „djed“. Both payments were saved with the wrong relation.
+- **Defect 2:** a cancelled invoice (0,00 KM to pay) still printed „Uplatu izvršiti na TRN …“.
+- **Defect 3 (workflow):** a child's invoices could only be found in Izvještaji → Registar faktura. Step E shows one billing month only, and the family card had no invoices.
+
+**Decided and done:**
+- **Relation:** `relationForPayer`, one definition, used in both payment forms.
+  - A parent from the record gets „roditelj / staratelj“.
+  - Anyone else gets an empty, required field.
+  - A relation the operator typed is kept.
+- **TRN line:** printed only when the invoice carries a payment slip, i.e. something is left to pay (`hasPaymentSlip`). Credit notes, cancelled invoices and invoices paid from the prepayment never get it.
+- **Family card:** „Saldo porodice“ now lists every child's invoices under its saldo, per institution.
+  - Each invoice shows its number, month, amount, status, what is left, and its credit notes.
+  - A click opens the invoice (payment, credit note, remainder notice), and „PDF“ shows it.
+  - The list is open when something is unpaid, folded otherwise.
+  - Pure helper `family-invoices.ts` (tested).
+- Two old type errors in the tests, which broke `npm run build`, were fixed.
+
+**Verified:**
+- Vitest 358/358, tsc, eslint and build pass.
+- The PDF of IDSS-584/26 no longer has the TRN line (checked by the Director's own export).
+
+**Open:**
+- the Director's check of the family card (C-13).
+
 ---
 
 *Commander v1.8.1 — IDSS123a Organisation*

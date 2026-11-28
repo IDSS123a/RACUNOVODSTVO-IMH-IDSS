@@ -371,7 +371,6 @@ export function recapitulationRows(
 function drawNoteAndRecap(w: Writer, data: InvoicePdfData, recap: InvoiceRecap): void {
   const { invoice } = data.detail;
   const { institution } = data;
-  const isCreditNote = invoice.kind === 'CREDIT_NOTE';
   const noteWidth = CONTENT_WIDTH * 0.52;
   const recapX = MARGIN + noteWidth + 12;
   const recapWidth = CONTENT_WIDTH - noteWidth - 12;
@@ -382,8 +381,8 @@ function drawNoteAndRecap(w: Writer, data: InvoicePdfData, recap: InvoiceRecap):
     pdvNote,
     // printed once, also when the institution's own note already contains the sentence
     squash(pdvNote).includes(squash(INVOICE_VALIDITY_NOTE)) ? '' : INVOICE_VALIDITY_NOTE,
-    // nothing is paid on a credit note
-    isCreditNote || paidFromPrepayment(invoice) ? '' : `Uplatu izvršiti na TRN: ${institution.bankName} -> ${institution.bankAccount.replace(/\s+/g, '')}`,
+    // only when something is to be paid: not on a credit note, a cancelled invoice or one paid from the prepayment (C-13, 2026-11-28)
+    !hasPaymentSlip(invoice) ? '' : `Uplatu izvršiti na TRN: ${institution.bankName} -> ${institution.bankAccount.replace(/\s+/g, '')}`,
   ].filter(Boolean);
   const noteLines = noteParagraphs.flatMap((p) => wrapText(p, w.regular, 7.5, noteWidth - 16));
   const recapRows = recapitulationRows(recap, invoice, data.detail.creditNotes);

@@ -23,7 +23,7 @@ import { PrepaymentOffer } from './PrepaymentOffer';
 import { PayerRelationInput } from './PayerRelationInput';
 import { CreditNotePanel } from './CreditNotePanel';
 import { TemplateText } from './TemplateText';
-import { PAYMENT_PURPOSE_TEMPLATES, PAYMENT_REFERENCE_TEMPLATES, REVERSAL_REASON_TEMPLATES } from '../text-templates';
+import { PARENT_RELATION, PAYMENT_PURPOSE_TEMPLATES, PAYMENT_REFERENCE_TEMPLATES, REVERSAL_REASON_TEMPLATES, relationForPayer } from '../text-templates';
 import { MONTH_NAME } from '../types';
 
 const PaymentFormSchema = z.object({
@@ -171,7 +171,7 @@ function InvoiceContent({ detail, onPaid, onShowPdf, readOnly }: { detail: Invoi
       paidOn: new Date().toISOString().slice(0, 10),
       amountKm: formatKM(summary.open).replace(' KM', ''),
       payerName: invoice.buyerName,
-      payerRelation: 'roditelj / staratelj',
+      payerRelation: PARENT_RELATION,
       reference: '',
       note: '',
     },
@@ -351,7 +351,13 @@ function InvoiceContent({ detail, onPaid, onShowPdf, readOnly }: { detail: Invoi
             <Input id="pay-amount" inputMode="decimal" {...form.register('amountKm')} aria-invalid={Boolean(errors.amountKm)} />
           </Field>
           <Field id="pay-payer" label="Uplatio/la" hint={FORMAT.fullName} error={errors.payerName?.message}>
-            <Input id="pay-payer" {...form.register('payerName')} />
+            <Input
+              id="pay-payer"
+              {...form.register('payerName', {
+                onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
+                  form.setValue('payerRelation', relationForPayer(e.target.value, [invoice.buyerName], form.getValues('payerRelation'))),
+              })}
+            />
           </Field>
           <Field id="pay-relation" label="Odnos prema djetetu" error={errors.payerRelation?.message}>
             <PayerRelationInput
