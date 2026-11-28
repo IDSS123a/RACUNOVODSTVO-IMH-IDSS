@@ -37,6 +37,22 @@ export function saveEnrolment(enrolment: Enrolment): Promise<Result<null>> {
   return call('save_enrolment', Nothing, { enrolment: EnrolmentSchema.parse(enrolment) });
 }
 
+/**
+ * The operator saved a record although it looked like an existing one (SPEC §B). Written to the audit log with the
+ * ids of the families it resembled — no names, telephones or e-mails (BR-22).
+ */
+export function confirmNotDuplicate(entity: 'family' | 'child', entityId: string, similarFamilyIds: ReadonlyArray<string>): Promise<Result<null>> {
+  return call('confirm_not_duplicate', Nothing, { entity, entityId, similarFamilyIds: [...similarFamilyIds] });
+}
+
+/**
+ * Move an active IMH kindergarten enrolment to the other group (Toddlers ↔ Preschoolers) from a day (SPEC A9). The
+ * backend checks the age on that day and writes the change to the audit log; nothing billed changes.
+ */
+export function changeEnrolmentGroup(enrolmentId: string, program: 'TODDLERS' | 'PRESCHOOLERS', from: string): Promise<Result<null>> {
+  return call('change_enrolment_group', Nothing, { enrolmentId, program, from });
+}
+
 /** „Upis uvezene djece“: children and their new enrolments in ONE transaction; returns how many were saved. */
 export function saveEnrolmentsBulk(items: ReadonlyArray<[Child, Enrolment]>): Promise<Result<number>> {
   return call('save_enrolments_bulk', z.number().int(), {

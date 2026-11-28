@@ -13,8 +13,8 @@ import { call, type Result } from '@/lib/tauri/invoke';
 import { buildEml, chunkBySize, zipFiles } from './bundle';
 import { letterheadOf } from '@/features/settings/letterheads';
 import { renderInvoiceDocx } from './docx';
-import { amountDue, invoiceFileName, remainderFigures, remainderNoticeFileName, renderInvoicePdf, renderRemainderNoticePdf, type InvoicePdfData, type PdfAssets } from './pdf';
-import { getInvoice, listInvoices, type InvoiceDetail, type InvoiceSummary } from './repository';
+import { amountToPay, paymentReceiptFileName, renderPaymentReceiptPdf, type PaymentReceipt, invoiceFileName, remainderFigures, remainderNoticeFileName, renderInvoicePdf, renderRemainderNoticePdf, type InvoicePdfData, type PdfAssets } from './pdf';
+import { getInvoice, listChildBalances, listInvoices, type InvoiceDetail, type InvoiceSummary } from './repository';
 
 /**
  * Application layer for invoice PDFs (DL-P007): render one invoice, export a period as .zip (BR-31),
@@ -187,11 +187,11 @@ export async function exportPeriodDocxZip(filter: PeriodFilter, onProgress?: (do
 
 function mailBody(pdfs: ReadonlyArray<InvoicePdf>, filter: PeriodFilter, zip: string, operatorName: string): string {
   // the same amount as UKUPNO ZA UPLATU on each PDF: after credit notes
-  const rows = pdfs.map((p) => `${p.number} | ${p.summary.childName || '—'} | ${p.summary.buyerName} | ${formatKM(amountDue(p.summary))}`);
+  const rows = pdfs.map((p) => `${p.number} | ${p.summary.childName || '—'} | ${p.summary.buyerName} | ${formatKM(amountToPay(p.summary))}`);
   return [
     'Poštovani,',
     '',
-    `u prilogu su računi (${periodLabel(filter)}): ${pdfs.length} računa, ukupno ${formatKM(sum(pdfs.map((p) => amountDue(p.summary))))}.`,
+    `u prilogu su računi (${periodLabel(filter)}): ${pdfs.length} računa, ukupno ${formatKM(sum(pdfs.map((p) => amountToPay(p.summary))))}.`,
     `Svaki račun je zaseban PDF za prosljeđivanje roditelju; isti računi su i u datoteci ${zip}.`,
     '',
     'Broj računa | Dijete | Kupac | Iznos',
@@ -255,5 +255,27 @@ export async function buildRemainderNotice(invoiceId: string, issueDate: string,
     return { success: true, data: { bytes, fileName: remainderNoticeFileName(detail.data.invoice.number, detail.data.invoice.childName), number: detail.data.invoice.number } };
   } catch (error: unknown) {
     return fail(`obavijest za račun ${detail.data.invoice.number} nije napravljena: ${error instanceof Error ? error.message : String(error)}`, 'PDF');
+  }
+}
+
+/** „Potvrda o uplati“ (specs/family-advance Q5): a payment on an invoice or without one, with the child's saldo today. */
+export async function buildPaymentReceipt(input: {
+  readonly entity: LegalEntityCode;
+  readonly familyId: string;
+  readonly childId: string | null;
+  readonly receipt: Omit<PaymentReceipt, 'saldo' | 'issuedOn'>;
+}): Promise<Result<{ bytes: Uint8Array; fileName: string }>> {
+  const [context, balances] = await Promise.all([loadContext(), listChildBalances(input.familyId)]);
+  if (!context.success) return context;
+  if (!balances.success) return balances;
+  const institution = context.data.institutions.find((i) => i.code === input.entity);
+  if (!institution) return fail(`podaci ustanove ${input.entity} nisu uneseni`, 'NOT_FOUND');
+  const saldo = balances.data.find((b) => b.entity === input.entity && b.childId === input.childId)?.saldo ?? 0;
+  const issuedOn = new Date().toISOString().slice(0, 10);
+  try {
+    const bytes = await renderPaymentReceiptPdf(institution, context.data.operatorName, { ...input.receipt, saldo, issuedOn }, assetsFor(input.entity));
+    return { success: true, data: { bytes, fileName: paymentReceiptFileName(input.receipt.paidOn, input.receipt.childName) } };
+  } catch (error: unknown) {
+    return fail(`potvrda o uplati nije napravljena: ${error instanceof Error ? error.message : String(error)}`, 'PDF');
   }
 }

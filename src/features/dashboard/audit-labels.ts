@@ -10,8 +10,8 @@ export const ACTION_LABEL: Readonly<Record<string, string>> = {
   PAYMENT_REVERSAL: 'Storno uplate',
   CREDIT_NOTE: 'Izdato knjižno odobrenje',
   CREDIT_NOTE_LINK: 'Povezano uvezeno knjižno odobrenje',
-  CREDIT_MOVE: 'Prenesen kredit porodice',
-  CREDIT_REFUND: 'Povrat kredita porodice',
+  CREDIT_MOVE: 'Prenesena pretplata porodice',
+  CREDIT_REFUND: 'Povrat pretplate porodice',
   SAVE: 'Sačuvano',
   UPSERT: 'Sačuvano',
   UPDATE: 'Izmijenjeno',
@@ -26,6 +26,13 @@ export const ACTION_LABEL: Readonly<Record<string, string>> = {
   ACKNOWLEDGE: 'Potvrđen ključ za oporavak',
   BREAKFAST_ON: 'Doručak uključen',
   BREAKFAST_OFF: 'Doručak isključen',
+  GROUP_CHANGE: 'Promijenjena grupa (Toddlers / Preschoolers)',
+  DUPLICATE_CONFIRMED: 'Potvrđeno: nije duplikat',
+  PREPAYMENT: 'Evidentirana uplata bez računa (pretplata)',
+  PREPAYMENT_APPLIED: 'Primijenjena pretplata na račun',
+  PREPAYMENT_REFUND: 'Povrat pretplate',
+  PREPAYMENT_REVERSAL: 'Storno uplate bez računa',
+  PREPAYMENT_USE_REVERSAL: 'Storno primjene ili povrata pretplate',
 };
 
 export const ENTITY_LABEL: Readonly<Record<string, string>> = {
@@ -45,6 +52,8 @@ export const ENTITY_LABEL: Readonly<Record<string, string>> = {
   reference_data: 'Cjenovnik i ustanove',
   ministry_approval: 'Saglasnost ministarstva',
   board_rules: 'Pravila naplate (odbor)',
+  prepayment: 'Uplata bez računa',
+  prepayment_use: 'Primjena / povrat pretplate',
 };
 
 export const actionLabel = (code: string): string => ACTION_LABEL[code] ?? code;

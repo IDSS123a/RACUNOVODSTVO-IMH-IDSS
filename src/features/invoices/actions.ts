@@ -3,7 +3,7 @@ import { PricingError } from '@/features/billing/pricing';
 import { listBoardRules, listBreakfast } from '@/features/board-rules/repository';
 import { getFamily, listFamilies } from '@/features/families/repository';
 import { listPriceItems } from '@/features/price-lists/repository';
-import { ACTIVE_STATUSES } from '@/features/families/domain';
+import { ACTIVE_STATUSES, birthday, enrolmentAgeProblem, schoolYearBounds } from '@/features/families/domain';
 import { lastEntityByChild } from '@/features/families/bulk-enrolment';
 import { childBelongsTo, familyBelongsTo, institutionsOfChild } from '@/features/families/membership';
 import type { FamilyDetail } from '@/features/families/types';
@@ -34,6 +34,11 @@ export interface MonthlyPreview {
   readonly withoutEnrolment: ReadonlyArray<{ familyName: string; childName: string; importReview: boolean; entity: LegalEntityCode | null }>;
   /** IDSS pupils of the month without a tuition plan, with the plan the system proposes for the operator to approve. */
   readonly planProposals: ReadonlyArray<PlanProposal>;
+  /**
+   * IMH children in Toddlers who turn 4 before the end of the school year (SPEC A9): Toddlers is allowed only until
+   * the 4th birthday, so the operator moves them to Preschoolers („Promijeni grupu“) when the pedagogue decides.
+   */
+  readonly groupWarnings: ReadonlyArray<{ familyName: string; childName: string; fourthBirthday: string }>;
 }
 
 export interface PlanProposal {
@@ -82,6 +87,7 @@ export async function prepareMonth(month: BillingMonth, issueDate: string): Prom
   const invoices: PreviewInvoice[] = [];
   const problems: { familyName: string; reason: string; entity: LegalEntityCode | null }[] = [];
   const withoutEnrolment: { familyName: string; childName: string; importReview: boolean; entity: LegalEntityCode | null }[] = [];
+  const groupWarnings: { familyName: string; childName: string; fourthBirthday: string }[] = [];
   const planProposals: PlanProposal[] = [];
   const idssDeadline = rules.data.find((r) => r.entity === 'IDSS')?.lastInstalmentBy ?? null;
 
@@ -90,6 +96,21 @@ export async function prepareMonth(month: BillingMonth, issueDate: string): Prom
     if (!detail.success) {
       problems.push({ familyName: summary.displayName, reason: detail.error, entity: null });
       continue;
+    }
+    for (const enrolment of detail.data.enrolments) {
+      const child = detail.data.children.find((c) => c.id === enrolment.childId);
+      // an enrolment saved before the age checks (or with a date of birth corrected later) is said, not billed silently
+      const ageProblem = child && enrolment.schoolYear === schoolYear && ACTIVE_STATUSES.has(enrolment.status)
+        ? enrolmentAgeProblem(enrolment.program, child.dateOfBirth, enrolment.startsOn)
+        : null;
+      if (ageProblem && child) {
+        problems.push({ familyName: summary.displayName, reason: `${child.firstName} ${child.lastName}: upis ne odgovara starosti — ${ageProblem}`, entity: PROGRAM_ENTITY[enrolment.program] });
+      }
+      if (enrolment.program !== 'TODDLERS' || enrolment.schoolYear !== schoolYear || !ACTIVE_STATUSES.has(enrolment.status) || !child?.dateOfBirth) continue;
+      const fourthBirthday = birthday(child.dateOfBirth, 4);
+      if (fourthBirthday <= schoolYearBounds(schoolYear).to) {
+        groupWarnings.push({ familyName: summary.displayName, childName: `${child.firstName} ${child.lastName}`, fourthBirthday });
+      }
     }
     for (const child of detail.data.children) {
       if (!detail.data.enrolments.some((e) => e.childId === child.id && e.schoolYear === schoolYear)) {
@@ -152,7 +173,8 @@ export async function prepareMonth(month: BillingMonth, issueDate: string): Prom
     return false;
   });
   fresh.sort((a, b) => a.header.entity.localeCompare(b.header.entity));
-  return { success: true, data: { invoices: fresh, problems, withoutEnrolment, planProposals } };
+  groupWarnings.sort((a, b) => a.fourthBirthday.localeCompare(b.fourthBirthday));
+  return { success: true, data: { invoices: fresh, problems, withoutEnrolment, planProposals, groupWarnings } };
 }
 
 /** Save the proposed plans the operator approved; stops at the first refusal. Returns how many were saved. */

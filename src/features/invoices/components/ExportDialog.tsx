@@ -76,6 +76,7 @@ function ExportBody({ request }: { request: ExportRequest }): React.JSX.Element 
       const result = await (await pdfActions()).exportPeriodZip(filter, onProgress);
       if (!result.success) toast.error(result.error);
       else if (result.data) toast.success(`Sačuvano: ${result.data}`);
+      else toast.info('Spremanje otkazano — dokument nije sačuvan.');
     } finally {
       setProgress(null);
     }

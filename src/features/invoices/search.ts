@@ -32,7 +32,7 @@ export const STATUS_FILTER_LABEL: Readonly<Record<StatusFilter, string>> = {
   OPEN: 'Otvoren',
   PARTIALLY_PAID: 'Djelimično plaćen',
   PAID: 'Plaćen',
-  OVERPAID: 'Preplaćen (kredit)',
+  OVERPAID: 'Plaćen · višak u pretplati',
   CANCELLED: 'Storniran',
   CREDIT_NOTE: 'Knjižno odobrenje',
   OVERDUE: 'Dospjelo, a neplaćeno',

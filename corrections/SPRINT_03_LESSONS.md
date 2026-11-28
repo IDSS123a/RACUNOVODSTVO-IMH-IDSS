@@ -162,3 +162,15 @@
   - A persistence test must cover the lifecycle the user lives: open, write, close, reopen, write, close, reopen.
   - A fix for an unlikely failure (a disk write error) must not be accepted without checking the common path it changes.
   - When a record „does not exist“, check the database before assuming a user mistake.
+
+## L-S3-20 — Money that can legitimately exceed the expected amount still needs a confirmation
+
+**What happened:** recording a payment on an already paid invoice, with the same amount, date and reference as the first, was accepted without a word. The Director took the resulting „Preplaćen“ for a calculation error.
+**Rule:** when an input is allowed but unusual (overpayment, a payment on a paid invoice, a repeated payment), the form names it and asks for an explicit confirmation before saving. Blocking would be wrong, because the money can be real. Silence is wrong too.
+**Check:** for every money input, list the values that are allowed but suspicious, and test that each one is said.
+
+## L-S3-21 — A balance is shown the way the accounting standard shows it, not the way the data stores it
+
+**What happened:** an overpayment was shown as „Kredit (višak uplate)“ on the invoice, with „Preostalo 0,00“. The data was right, but the Director read it as a debt to the customer. The customer ledger convention is: no charge, the customer pays, so the saldo is negative, „u pretplati“.
+**Rule:** before inventing a display for money, take the convention of a customer ledger card: saldo = charged − paid + refunded, with a sign. The meaning (duguje / izmireno / u pretplati) is written next to it. A rule the constitution states (here BR-24: always against an invoice) is changed only through a SPEC and the Director's approval, never around it.
+**Check:** every money screen shows a saldo with its sign and meaning, from one backend definition, and a random test holds the fening identity.

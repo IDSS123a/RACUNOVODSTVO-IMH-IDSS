@@ -67,7 +67,7 @@ export function CreditNotePanel({ detail, onIssued, onCancel }: { detail: Invoic
     <section className="grid gap-4 rounded-lg border border-destructive/40 p-4" aria-label="Knjižno odobrenje">
       <div>
         <p className="font-medium">Knjižno odobrenje (storno) za račun {detail.invoice.number}</p>
-        <p className="text-sm text-muted-foreground">Račun ostaje u evidenciji; knjižno odobrenje dobija svoj broj. Uplaćeni novac nikad ne nestaje — višak postaje kredit porodice.</p>
+        <p className="text-sm text-muted-foreground">Račun ostaje u evidenciji; knjižno odobrenje dobija svoj broj. Uplaćeni novac nikad ne nestaje — višak postaje pretplata porodice.</p>
       </div>
       <div className="flex flex-wrap gap-4 text-sm" role="radiogroup" aria-label="Obim">
         <label className="flex items-center gap-2">

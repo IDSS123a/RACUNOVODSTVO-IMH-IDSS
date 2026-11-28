@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BASIS_TEMPLATES,
-  CREDIT_MOVE_TEMPLATES,
+  PREPAYMENT_PURPOSE_TEMPLATES,
   CREDIT_NOTE_REASON_TEMPLATES,
   CREDIT_REFUND_TEMPLATES,
   defaultValues,
@@ -28,7 +28,6 @@ describe('text templates (Director, 2026-11-21: identical syntax for every entry
     expect(renderTemplate(byId(BASIS_TEMPLATES, 'uo'), { broj: '12/26', datum: '2026-06-01' })).toBe('Odluka UO IMH br. 12/26 od 01.06.2026.');
     expect(renderTemplate(byId(CREDIT_NOTE_REASON_TEMPLATES, 'withdrawal'), { datum: '2026-10-15' })).toBe('Ispis djeteta od 15.10.2026.');
     expect(renderTemplate(byId(CREDIT_NOTE_REASON_TEMPLATES, 'duplicate'), {})).toBe('Dupli račun za isti period');
-    expect(renderTemplate(byId(CREDIT_MOVE_TEMPLATES, 'move'), { racun: 'IMH-012/26' })).toBe('Prenos preplate na račun IMH-012/26');
     expect(renderTemplate(byId(CREDIT_REFUND_TEMPLATES, 'refund'), { broj: '9', datum: '2026-11-30' })).toBe('Povrat preplate uplatiocu, izvod br. 9 od 30.11.2026.');
     // extra spaces typed by the operator never change the text
     expect(renderTemplate(byId(SERVICE_TEMPLATES, 'trip'), { naziv: '  Zoo   vrt ', datum: '2027-05-10' })).toBe('Izlet — Zoo vrt (10.05.2027.)');
@@ -57,7 +56,7 @@ describe('text templates (Director, 2026-11-21: identical syntax for every entry
   });
 
   it('every template renders with its defaults filled, and ids are unique per list', () => {
-    const lists = [SERVICE_TEMPLATES, BASIS_TEMPLATES, PAYMENT_PURPOSE_TEMPLATES, PAYMENT_REFERENCE_TEMPLATES, CREDIT_NOTE_REASON_TEMPLATES, REVERSAL_REASON_TEMPLATES, CREDIT_MOVE_TEMPLATES, CREDIT_REFUND_TEMPLATES];
+    const lists = [SERVICE_TEMPLATES, BASIS_TEMPLATES, PAYMENT_PURPOSE_TEMPLATES, PAYMENT_REFERENCE_TEMPLATES, CREDIT_NOTE_REASON_TEMPLATES, REVERSAL_REASON_TEMPLATES, PREPAYMENT_PURPOSE_TEMPLATES, CREDIT_REFUND_TEMPLATES];
     const sample: Record<string, string> = { naziv: 'Test', opis: 'Test', ime: 'Ana Test', broj: '1', racun: 'IMH-001/26', sedmica: '1' };
     for (const list of lists) {
       expect(new Set(list.map((t) => t.id)).size).toBe(list.length);

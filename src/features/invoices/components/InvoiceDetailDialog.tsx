@@ -15,9 +15,12 @@ import { formatDate } from '@/lib/format';
 import { useAsyncResult } from '@/lib/use-async-result';
 import { z } from 'zod';
 import { FORMAT, fullNameField, isRealDate } from '@/lib/validation/formats';
-import { BALANCE_LABEL, invoiceBalance } from '../credit-notes';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { BALANCE_LABEL, invoiceBalance, paymentWarnings, saldoText } from '../credit-notes';
 import { getInvoice, recordPayment, reversePayment, type InvoiceDetail, type Payment } from '../repository';
-import { CreditMovePanel } from './CreditMovePanel';
+import { InvoicePrepaymentUses, ReceiptButton } from './PrepaymentActions';
+import { PrepaymentOffer } from './PrepaymentOffer';
+import { PayerRelationInput } from './PayerRelationInput';
 import { CreditNotePanel } from './CreditNotePanel';
 import { TemplateText } from './TemplateText';
 import { PAYMENT_PURPOSE_TEMPLATES, PAYMENT_REFERENCE_TEMPLATES, REVERSAL_REASON_TEMPLATES } from '../text-templates';
@@ -35,6 +38,8 @@ const PaymentFormSchema = z.object({
     }
   }, `unesite iznos od 0,01 do ${formatKM(MAX_AMOUNT)}, npr. 710,00`),
   payerName: fullNameField(),
+  // who paid, as relation to the child: a parent, a grandparent, an aunt … (specs/family-advance §1, BR-24)
+  payerRelation: z.string().trim().min(1, 'izaberite ili upišite odnos uplatioca prema djetetu'),
   // both come from a template (identical syntax); empty = a template field is still missing
   reference: z.string().trim().min(1, 'popunite šablon reference'),
   note: z.string().trim().min(1, 'popunite šablon svrhe uplate'),
@@ -114,6 +119,7 @@ function RemainderNoticePanel({ invoiceId, open, paid, onClose }: { invoiceId: s
         toast.success(`Sačuvano: ${saved.data}`);
         onClose();
       }
+      else toast.info('Spremanje otkazano — dokument nije sačuvan.');
     } finally {
       setBusy(false);
     }
@@ -165,11 +171,25 @@ function InvoiceContent({ detail, onPaid, onShowPdf, readOnly }: { detail: Invoi
       paidOn: new Date().toISOString().slice(0, 10),
       amountKm: formatKM(summary.open).replace(' KM', ''),
       payerName: invoice.buyerName,
+      payerRelation: 'roditelj / staratelj',
       reference: '',
       note: '',
     },
   });
   const { errors, isSubmitting } = form.formState;
+  // a paid invoice, an overpayment or the same payment again: said before saving and confirmed (Director, 2026-11-28)
+  const [payAnyway, setPayAnyway] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const enteredAmount = (() => {
+    try {
+      return kmToFenings(form.watch('amountKm'));
+    } catch {
+      return 0;
+    }
+  })();
+  const warnings = paymentWarnings(summary.open, enteredAmount, form.watch('paidOn'), payments);
+  const warningKey = warnings.join('|');
+  useEffect(() => setConfirmed(false), [warningKey]);
   const setReference = useCallback((text: string | null) => form.setValue('reference', text ?? ''), [form]);
   const setNote = useCallback((text: string | null) => form.setValue('note', text ?? ''), [form]);
   // what the payment templates already know: this invoice and the month it covers
@@ -189,6 +209,7 @@ function InvoiceContent({ detail, onPaid, onShowPdf, readOnly }: { detail: Invoi
       paidOn: values.paidOn,
       amount: kmToFenings(values.amountKm),
       payerName: values.payerName,
+      payerRelation: values.payerRelation,
       reference: values.reference,
       note: values.note,
     });
@@ -287,17 +308,40 @@ function InvoiceContent({ detail, onPaid, onShowPdf, readOnly }: { detail: Invoi
       {!isCreditNote && (
         <div className="grid gap-1 text-sm">
           <p>Uplaćeno: <strong className="tabular-nums">{formatKM(summary.paid)}</strong></p>
-          <p>Preostalo: <strong className="tabular-nums">{formatKM(summary.open)}</strong></p>
-          {summary.credit > 0 && <p>Kredit (višak uplate): <strong className="tabular-nums">{formatKM(summary.credit)}</strong></p>}
+          <p>
+            Saldo računa: <strong className="tabular-nums">{saldoText(summary.open)}</strong>
+          </p>
+          {summary.credit > 0 && (
+            <p className="text-emerald-700 dark:text-emerald-400">
+              Višak <strong className="tabular-nums">{formatKM(summary.credit)}</strong> je pretplata djeteta (saldo djeteta: kartica porodice → „Saldo porodice“).
+            </p>
+          )}
+          {(invoice.appliedPrepayment ?? 0) > 0 && (
+            <p>
+              Plaćeno iz pretplate: <strong className="tabular-nums">{formatKM(invoice.appliedPrepayment ?? 0)}</strong>
+            </p>
+          )}
           {payments.map((p) => (
-            <PaymentRow key={p.id} payment={p} onReversed={onPaid} readOnly={readOnly} />
+            <PaymentRow key={p.id} payment={p} invoice={invoice} onReversed={onPaid} readOnly={readOnly} />
           ))}
         </div>
       )}
 
-      {!readOnly && !isCreditNote && summary.credit > 0 && <CreditMovePanel invoice={invoice} credit={summary.credit} onMoved={onPaid} />}
+      {!isCreditNote && <InvoicePrepaymentUses invoiceId={invoice.id} readOnly={readOnly} onChanged={onPaid} />}
+      {canPay && summary.open > 0 && <PrepaymentOffer invoiceIds={[invoice.id]} onApplied={onPaid} />}
 
-      {canPay && (
+      {canPay && summary.open === 0 && !payAnyway && (
+        <Alert>
+          <AlertTitle>Račun je plaćen u cijelosti</AlertTitle>
+          <AlertDescription>
+            <p>Nova uplata nije potrebna. Ako je roditelj zaista uplatio još jednom, uplata postaje pretplata porodice (negativan saldo).</p>
+            <Button className="mt-2" variant="outline" size="sm" onClick={() => setPayAnyway(true)}>
+              Ipak evidentiraj uplatu…
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+      {canPay && (summary.open > 0 || payAnyway) && (
         <form className="grid gap-4 rounded-lg border p-4 md:grid-cols-4" onSubmit={form.handleSubmit(submit)} noValidate>
           <p className="text-sm font-medium md:col-span-4">Evidentiraj uplatu (uplatiti može bilo ko iz porodice)</p>
           <Field id="pay-date" label="Datum uplate" error={errors.paidOn?.message}>
@@ -309,6 +353,14 @@ function InvoiceContent({ detail, onPaid, onShowPdf, readOnly }: { detail: Invoi
           <Field id="pay-payer" label="Uplatio/la" hint={FORMAT.fullName} error={errors.payerName?.message}>
             <Input id="pay-payer" {...form.register('payerName')} />
           </Field>
+          <Field id="pay-relation" label="Odnos prema djetetu" error={errors.payerRelation?.message}>
+            <PayerRelationInput
+              id="pay-relation"
+              value={form.watch('payerRelation')}
+              onChange={(v) => form.setValue('payerRelation', v, { shouldValidate: true })}
+              invalid={Boolean(errors.payerRelation)}
+            />
+          </Field>
           <div className="grid gap-1 md:col-span-2">
             <TemplateText id="pay-ref" label="Referenca" templates={PAYMENT_REFERENCE_TEMPLATES} onChange={setReference} />
             {errors.reference && <p className="text-xs text-destructive">{errors.reference.message}</p>}
@@ -317,8 +369,19 @@ function InvoiceContent({ detail, onPaid, onShowPdf, readOnly }: { detail: Invoi
             <TemplateText id="pay-note" label="Svrha uplate" templates={PAYMENT_PURPOSE_TEMPLATES} known={known} onChange={setNote} />
             {errors.note && <p className="text-xs text-destructive">{errors.note.message}</p>}
           </div>
+          {warnings.length > 0 && (
+            <div role="alert" className="grid gap-2 rounded-md border border-amber-500/60 bg-amber-50 p-3 text-sm md:col-span-4 dark:bg-amber-950/30">
+              {warnings.map((w) => (
+                <p key={w}>{w}</p>
+              ))}
+              <label className="flex items-center gap-2 font-medium">
+                <input type="checkbox" className="size-4" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+                Provjerio/la sam — ova uplata je stvarna i nije već unesena
+              </label>
+            </div>
+          )}
           <div className="md:col-span-4">
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || (warnings.length > 0 && !confirmed)}>
               {isSubmitting ? 'Spremanje…' : 'Evidentiraj uplatu'}
             </Button>
           </div>
@@ -329,7 +392,7 @@ function InvoiceContent({ detail, onPaid, onShowPdf, readOnly }: { detail: Invoi
 }
 
 /** One payment, with „Storno uplate“ (S4): a counter-entry with a reason; the payment itself stays visible. */
-function PaymentRow({ payment, onReversed, readOnly }: { payment: Payment; onReversed: () => void; readOnly: boolean }): React.JSX.Element {
+function PaymentRow({ payment, invoice, onReversed, readOnly }: { payment: Payment; invoice: InvoiceDetail['invoice']; onReversed: () => void; readOnly: boolean }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -351,9 +414,33 @@ function PaymentRow({ payment, onReversed, readOnly }: { payment: Payment; onRev
     <div className="text-muted-foreground">
       <span className={payment.reversedOn ? 'line-through' : undefined}>
         {formatDate(payment.paidOn)} · {formatKM(payment.amount)} · uplatio/la {payment.payerName}
+        {payment.payerRelation ? ` (${payment.payerRelation})` : ''}
         {payment.reference ? ` · ${payment.reference}` : ''}
       </span>
       {payment.reversedOn && ` · stornirano ${formatDate(payment.reversedOn)}: ${payment.reversalReason ?? ''}`}
+      {!payment.reversedOn && (
+        <>
+          {' · '}
+          <ReceiptButton
+            request={{
+              entity: invoice.entity,
+              familyId: invoice.familyId,
+              childId: invoice.childId || null,
+              receipt: {
+                invoiceNumber: invoice.number,
+                paidOn: payment.paidOn,
+                amount: payment.amount,
+                payerName: payment.payerName,
+                payerRelation: payment.payerRelation ?? '',
+                childName: invoice.childName,
+                buyerName: invoice.buyerName,
+                purpose: payment.note,
+                reference: payment.reference,
+              },
+            }}
+          />
+        </>
+      )}
       {!readOnly && !payment.reversedOn && !open && (
         <Button variant="link" size="sm" className="h-auto px-2 py-0" onClick={() => setOpen(true)}>
           Storno uplate…

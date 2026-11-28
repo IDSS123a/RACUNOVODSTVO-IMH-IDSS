@@ -113,6 +113,8 @@ pub struct InvoiceSummary {
     pub credits_invoice_id: Option<String>,
     /// For a credit note: the reason.
     pub reason: String,
+    /// Prepayment applied to this invoice — „Umanjeno za primljenu pretplatu“ on its PDF (specs/family-advance Q3).
+    pub applied_prepayment: i64,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
@@ -123,6 +125,9 @@ pub struct Payment {
     pub paid_on: String,
     pub amount: i64,
     pub payer_name: String,
+    /// Relation of the payer to the child (roditelj, baka, tetka …); '' on payments recorded before migration 016.
+    #[serde(default)]
+    pub payer_relation: String,
     pub reference: String,
     pub note: String,
     /// Set when the payment was reversed by a counter-entry (S4); it then no longer counts.
@@ -562,12 +567,14 @@ const SUMMARY_SELECT: &str = "SELECT i.id, i.number, i.entity, i.kind, i.family_
         __PAID__, i.status,
         COALESCE(i.child_id, ''), COALESCE(c.first_name || ' ' || c.last_name, ''), i.source,
         COALESCE((SELECT sum(cn.total_fenings) FROM invoices cn WHERE cn.credits_invoice_id = i.id), 0),
-        i.credits_invoice_id, i.reason
+        i.credits_invoice_id, i.reason, __APPLIED__
  FROM invoices i JOIN families f ON f.id = i.family_id LEFT JOIN children c ON c.id = i.child_id";
 
 /// The summary query with the single effective-paid definition (credit_notes::PAID_SQL, M-7).
 fn summary_select() -> String {
-    SUMMARY_SELECT.replace("__PAID__", crate::credit_notes::PAID_SQL)
+    SUMMARY_SELECT
+        .replace("__PAID__", crate::credit_notes::PAID_SQL)
+        .replace("__APPLIED__", crate::credit_notes::APPLIED_PREPAYMENT_SQL)
 }
 
 fn map_summary(r: &rusqlite::Row<'_>) -> rusqlite::Result<InvoiceSummary> {
@@ -593,6 +600,7 @@ fn map_summary(r: &rusqlite::Row<'_>) -> rusqlite::Result<InvoiceSummary> {
         credited: r.get(18)?,
         credits_invoice_id: r.get(19)?,
         reason: r.get(20)?,
+        applied_prepayment: r.get(21)?,
     })
 }
 
@@ -636,7 +644,7 @@ pub fn get_invoice(conn: &Connection, invoice_id: &str) -> AppResult<Option<Invo
         })?
         .collect::<Result<Vec<_>, _>>()?;
     let mut stmt = conn.prepare(
-        "SELECT p.id, p.invoice_id, p.paid_on, p.amount, p.payer_name, p.reference, p.note, r.reversed_on, r.reason
+        "SELECT p.id, p.invoice_id, p.paid_on, p.amount, p.payer_name, p.reference, p.note, r.reversed_on, r.reason, p.payer_relation
          FROM payments p LEFT JOIN payment_reversals r ON r.payment_id = p.id
          WHERE p.invoice_id = ?1 ORDER BY p.paid_on, p.created_at",
     )?;
@@ -652,6 +660,7 @@ pub fn get_invoice(conn: &Connection, invoice_id: &str) -> AppResult<Option<Invo
                 note: r.get(6)?,
                 reversed_on: r.get(7)?,
                 reversal_reason: r.get(8)?,
+                payer_relation: r.get(9)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -691,11 +700,11 @@ pub fn record_payment(tx: &Transaction, payment: &Payment) -> AppResult<()> {
         return Err(AppError::Validation("iznos uplate je veći od 100.000,00 KM — provjerite iznos".into()));
     }
     tx.execute(
-        "INSERT INTO payments(id, invoice_id, paid_on, amount, payer_name, reference, note, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO payments(id, invoice_id, paid_on, amount, payer_name, reference, note, created_at, payer_relation)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             payment.id, payment.invoice_id, payment.paid_on, payment.amount, payment.payer_name,
-            payment.reference, payment.note, now()
+            payment.reference, payment.note, now(), payment.payer_relation.trim()
         ],
     )?;
     Ok(())
@@ -724,7 +733,7 @@ mod tests {
         .unwrap();
         save_child(&tx, &Child {
             id: "c1".into(), family_id: F.into(), first_name: "A".into(), last_name: "T".into(),
-            date_of_birth: Some("2022-01-01".into()), residency: "DOMESTIC".into(), citizen_bih: true, residence_ks: true, import_review: false,
+            date_of_birth: Some("2024-01-01".into()), residency: "DOMESTIC".into(), citizen_bih: true, residence_ks: true, import_review: false,
         })
         .unwrap();
         save_enrolment(&tx, &Enrolment {
@@ -856,7 +865,7 @@ mod tests {
         assert!(issue_invoice(&tx, &limit).is_ok());
         let pay = |id: &str, amount: i64| Payment {
             id: id.into(), invoice_id: "m-limit".into(), paid_on: "2027-09-02".into(), amount, payer_name: "Majka".into(),
-            reference: String::new(), note: String::new(), reversed_on: None, reversal_reason: None,
+            payer_relation: String::new(), reference: String::new(), note: String::new(), reversed_on: None, reversal_reason: None,
         };
         assert!(record_payment(&tx, &pay("p1", MAX_AMOUNT + 1)).is_err());
         assert!(record_payment(&tx, &pay("p2", MAX_AMOUNT)).is_ok());
@@ -1060,6 +1069,8 @@ mod tests {
 
     fn idss_enrolment(conn: &mut Connection) {
         let tx = conn.transaction().unwrap();
+        // these tests are about IDSS plans, not the age: the test child (a toddler) gets no date of birth here
+        tx.execute("UPDATE children SET date_of_birth = NULL WHERE id = 'c1'", []).unwrap();
         save_enrolment(&tx, &Enrolment {
             id: "e9".into(), child_id: "c1".into(), program: "PRIMARY_1_4".into(), school_year: "2027/2028".into(),
             starts_on: "2027-09-01".into(), ends_on: None, status: "ACTIVE".into(),
@@ -1150,7 +1161,7 @@ mod tests {
         issue_invoice(&tx, &d).unwrap();
         let payment = Payment {
             id: "p1".into(), invoice_id: "i1".into(), paid_on: "2026-10-04".into(), amount: 50000,
-            payer_name: "Baka".into(), reference: "Sparkasse 123".into(), note: "".into(),
+            payer_name: "Baka".into(), payer_relation: "baka".into(), reference: "Sparkasse 123".into(), note: "".into(),
             reversed_on: None, reversal_reason: None,
         };
         record_payment(&tx, &payment).unwrap();

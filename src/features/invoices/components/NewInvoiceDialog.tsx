@@ -25,6 +25,7 @@ import { issueInvoices, listBilledOneTime, listBilledServices, listInvoices, lis
 import { BASIS_TEMPLATES, SERVICE_TEMPLATES } from '../text-templates';
 import type { BillingMonth } from '../types';
 import { InvoicePdfDialog } from './InvoicePdfDialog';
+import { PrepaymentOffer } from './PrepaymentOffer';
 import { PreviewInvoiceTable } from './PreviewInvoiceTable';
 import { UnitInput } from './UnitInput';
 import { TemplateText } from './TemplateText';
@@ -53,6 +54,8 @@ export function NewInvoiceDialog({
   lockEntity?: boolean;
 }): React.JSX.Element {
   const [createdId, setCreatedId] = useState<string | null>(null);
+  // Q2 (specs/family-advance): a child in prepayment — the offer to apply it comes before the PDF is shown
+  const [offerId, setOfferId] = useState<string | null>(null);
   return (
     <>
       <FormDialog open={open} onOpenChange={onOpenChange} title="Novi račun" description="Odaberite porodicu i dijete — sistem predlaže račun, vi ga provjerite i kreirate." wide>
@@ -63,11 +66,30 @@ export function NewInvoiceDialog({
             onCreated={(id) => {
               onOpenChange(false);
               onCreated();
-              setCreatedId(id);
+              setOfferId(id);
             }}
           />
         )}
       </FormDialog>
+      {offerId && (
+        <PrepaymentOffer
+          asDialog
+          invoiceIds={[offerId]}
+          onApplied={() => {
+            onCreated();
+            setCreatedId(offerId);
+            setOfferId(null);
+          }}
+          onNothing={() => {
+            setCreatedId(offerId);
+            setOfferId(null);
+          }}
+          onSkip={() => {
+            setCreatedId(offerId);
+            setOfferId(null);
+          }}
+        />
+      )}
       <InvoicePdfDialog invoiceId={createdId} onClose={() => setCreatedId(null)} />
     </>
   );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { creditByEntity, creditableLines, creditNoteLines, creditNoteTotal, CreditNoteError, invoiceBalance } from './credit-notes';
+import { BALANCE_LABEL, creditableLines, creditNoteLines, creditNoteTotal, CreditNoteError, invoiceBalance } from './credit-notes';
 import { summarisePayments } from './domain';
 import { creditNoteSequenceOf } from '@/features/legacy-import/domain';
 
@@ -59,22 +59,53 @@ describe('credit-note lines (S2)', () => {
   });
 });
 
-describe('family credit per institution (S3)', () => {
-  it('sums per entity and never mixes IMH and IDSS', () => {
-    const credit = creditByEntity([
-      { entity: 'IDSS', credit: 70000 },
-      { entity: 'IMH', credit: 5000 },
-      { entity: 'IDSS', credit: 1000 },
-    ]);
-    expect([...credit]).toEqual([['IDSS', 71000], ['IMH', 5000]]);
-  });
-});
-
 describe('legacy credit-note numbers (S1)', () => {
   it('KO-35/26 continues the IDSS series in 2026', () => {
     expect(creditNoteSequenceOf('KO-35/26')).toEqual({ sequence: 35, year: 2026 });
     expect(creditNoteSequenceOf('ko-033/26')).toEqual({ sequence: 33, year: 2026 });
     expect(creditNoteSequenceOf('363/26')).toBeNull();
     expect(creditNoteSequenceOf('KO-35')).toBeNull();
+  });
+});
+
+describe('payment warnings (Director, 2026-11-28: 1.000 KM booked twice on a paid invoice without a word)', () => {
+  it('a paid invoice, an overpayment and the same payment again are each said; a normal payment is quiet', async () => {
+    const { paymentWarnings } = await import('./credit-notes');
+    const first = [{ paidOn: '2026-11-27', amount: 100000, reversedOn: null }];
+    expect(paymentWarnings(100000, 100000, '2026-11-27', [])).toEqual([]);
+    expect(paymentWarnings(100000, 40000, '2026-11-27', [])).toEqual([]);
+    const paid = paymentWarnings(0, 100000, '2026-11-27', first);
+    expect(paid[0]).toContain('već plaćen u cijelosti');
+    expect(paid[1]).toContain('s datumom 27.11.2026. je već evidentirana');
+    expect(paymentWarnings(50000, 80000, '2026-11-28', [])[0]).toContain('veći od preostalog');
+    expect(paymentWarnings(50000, 100000, '2026-11-28', first)[1]).toContain('(drugi datum)');
+    // a reversed payment does not count
+    expect(paymentWarnings(100000, 100000, '2026-11-27', [{ ...first[0], reversedOn: '2026-11-28' }])).toEqual([]);
+    expect(paymentWarnings(0, 0, '2026-11-27', first)).toEqual([]);
+  });
+});
+
+describe('saldo as on a customer ledger card (Director, 2026-11-28: „nema zaduženja a korisnik plati = u pretplati“)', () => {
+  it('charged − paid: positive owes, negative is a prepayment shown with a minus, zero settled', async () => {
+    const { saldoText } = await import('./credit-notes');
+    // IMH-897/26: 1.420 KM − KO 420 KM = 1.000 KM charged, 2.000 KM paid → the invoice is paid, its 1.000 KM excess
+    // is the child's prepayment (Q4); the child's saldo −1.000,00 KM comes from the backend (prepayments.rs)
+    expect(invoiceBalance({ total: 142000, credited: -42000, paid: 200000 })).toMatchObject({ open: 0, credit: 100000, status: 'OVERPAID' });
+    expect(BALANCE_LABEL.OVERPAID).toBe('Plaćen · višak u pretplati');
+    expect(saldoText(-100000).replace(/\u2212/g, '-')).toBe('-1.000,00 KM (u pretplati)');
+    expect(saldoText(42000)).toBe('420,00 KM (duguje)');
+    expect(saldoText(0)).toBe('0,00 KM (izmireno)');
+  });
+});
+
+describe('payment without an invoice — warnings (specs/family-advance §2)', () => {
+  it('an unpaid invoice of the child and the same payment again are said; otherwise quiet', async () => {
+    const { prepaymentWarnings } = await import('./credit-notes');
+    expect(prepaymentWarnings(100000, '2026-11-28', [], [])).toEqual([]);
+    expect(prepaymentWarnings(0, '2026-11-28', [{ number: 'IMH-001/26', open: 71000 }], [])).toEqual([]);
+    const w = prepaymentWarnings(100000, '2026-11-28', [{ number: 'IMH-001/26', open: 71000 }], [{ paidOn: '2026-11-28', amount: 100000, reversedOn: null }]);
+    expect(w[0]).toContain('neplaćen račun IMH-001/26');
+    expect(w[1]).toContain('28.11.2026. je već evidentirana');
+    expect(prepaymentWarnings(100000, '2026-11-28', [], [{ paidOn: '2026-11-28', amount: 100000, reversedOn: '2026-11-29' }])).toEqual([]);
   });
 });

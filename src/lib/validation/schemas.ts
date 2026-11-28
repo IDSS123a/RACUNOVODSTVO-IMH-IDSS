@@ -277,6 +277,8 @@ export const InvoiceSummarySchema = z.object({
   credited: fenings.max(0),
   creditsInvoiceId: z.string().nullable(),
   reason: z.string(),
+  /** Prepayment applied to this invoice — „Umanjeno za primljenu pretplatu“ on its PDF (specs/family-advance Q3). */
+  appliedPrepayment: fenings.min(0).optional(),
 });
 
 export const PaymentSchema = z.object({
@@ -285,6 +287,8 @@ export const PaymentSchema = z.object({
   paidOn: isoDate,
   amount: fenings.positive('iznos mora biti veći od nule'),
   payerName: z.string().trim().min(1, 'unesite ko je uplatio'),
+  /** Relation of the payer to the child (roditelj, baka, tetka …); empty on older payments (migration 016). */
+  payerRelation: z.string().trim().optional(),
   reference: z.string().trim(),
   note: z.string().trim(),
   /** Set by the backend when the payment was reversed (S4); never sent when booking a payment. */
@@ -424,18 +428,6 @@ export const PaymentReversalSchema = z.object({
   reason: operatorText('razlog storna uplate'),
 });
 
-export const CreditMoveSchema = z.object({
-  fromInvoiceId: z.string().min(1),
-  toInvoiceId: z.string().min(1).nullable(),
-  amount: fenings.positive('iznos mora biti veći od nule'),
-  movedOn: isoDate,
-  note: operatorText('napomenu'),
-});
-
-export const FamilyCreditSchema = z.array(
-  z.object({ invoiceId: z.string(), number: z.string(), entity: LegalEntityCodeSchema, credit: fenings.positive() }),
-);
-
 // ---------- Form input schemas: canonical formats (Director, 2026-11-21; DL-P017) ----------
 // Stored data is read with the lenient schemas above; everything the operator types is validated and normalized here,
 // so every saved value has exactly one format.
@@ -494,4 +486,70 @@ export const MinistryApprovalFormSchema = MinistryApprovalSchema.extend({
   documentNumber: requiredField(normalizeDocumentNumber, `Neispravan broj akta. Format: ${FORMAT.documentNumber}.`),
   documentDate: pastDate('unesite stvarni datum akta (ne u budućnosti)'),
   note: optionalTextField(200),
+});
+
+// ---------- Child prepayment (specs/family-advance, migration 016) ----------
+
+/** One child's ledger card in one institution; childId null = invoices without a child. saldo < 0 = u pretplati. */
+export const ChildBalanceSchema = z.object({
+  entity: LegalEntityCodeSchema,
+  childId: z.string().nullable(),
+  charged: fenings,
+  received: fenings,
+  transferredIn: fenings,
+  transferredOut: fenings,
+  refunded: fenings,
+  prepaid: fenings.min(0),
+  saldo: fenings,
+});
+
+/** A child's card with the names (reports). */
+export const NamedBalanceSchema = ChildBalanceSchema.extend({ familyId: z.string(), familyName: z.string(), childName: z.string() });
+
+export const PrepaymentUseSchema = z.object({
+  id: z.string(),
+  invoiceId: z.string().nullable(),
+  invoiceNumber: z.string().nullable(),
+  amount: fenings,
+  usedOn: isoDate,
+  note: z.string(),
+  reversedOn: isoDate.nullable(),
+  reversalReason: z.string().nullable(),
+});
+
+export const PrepaymentRowSchema = z.object({
+  id: z.string(),
+  entity: LegalEntityCodeSchema,
+  childId: z.string(),
+  paidOn: isoDate,
+  amount: fenings.positive(),
+  payerName: z.string(),
+  payerRelation: z.string(),
+  reference: z.string(),
+  note: z.string(),
+  reversedOn: isoDate.nullable(),
+  reversalReason: z.string().nullable(),
+  remaining: fenings.min(0),
+  uses: z.array(PrepaymentUseSchema),
+});
+
+export const PrepaidSourceSchema = z.object({
+  kind: z.enum(['PREPAYMENT', 'EXCESS']),
+  id: z.string(),
+  date: isoDate,
+  label: z.string(),
+  remaining: fenings.positive(),
+});
+
+export const PrepaymentInputSchema = z.object({
+  id: uuid,
+  familyId: z.string().min(1),
+  entity: LegalEntityCodeSchema,
+  childId: z.string().min(1, 'izaberite dijete'),
+  paidOn: isoDate,
+  amount: fenings.positive('iznos mora biti veći od nule'),
+  payerName: z.string().trim().min(1, 'unesite ko je uplatio'),
+  payerRelation: z.string().trim().min(1, 'izaberite ili upišite odnos prema djetetu'),
+  reference: z.string().trim(),
+  note: z.string().trim(),
 });

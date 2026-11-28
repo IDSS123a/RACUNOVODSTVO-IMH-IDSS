@@ -19,6 +19,8 @@ import { monthLabel, schoolYearOfMonth } from '@/features/invoices/domain';
 import { finalDrafts, previewProblem, previewTotal, type PreviewInvoice } from '@/features/invoices/monthly';
 import { amountDue } from '@/features/invoices/pdf';
 import { matchesQuery } from '@/features/invoices/search';
+import { listAllChildBalances } from '@/features/invoices/repository';
+import { prepaidTotal } from '@/features/reports/register-export';
 import type { PeriodFilter } from '@/features/invoices/pdf-actions';
 import type { BillingMonth } from '@/features/invoices/types';
 import type { LegalEntityCode } from '@/features/price-lists/types';
@@ -59,6 +61,7 @@ export function BillingFlow({ entity, onOpenFamilies }: { entity: LegalEntityCod
       problems: data.problems.filter((p) => p.entity === null || p.entity === entity),
       withoutEnrolment: data.withoutEnrolment.filter((c) => c.entity === entity),
       unknownInstitution: data.withoutEnrolment.filter((c) => c.entity === null).length,
+      groupWarnings: entity === 'IMH' ? data.groupWarnings : [],
     };
   }, [preview.state, entity]);
 
@@ -137,6 +140,7 @@ function ChildrenStep({
     problems: MonthlyPreview['problems'];
     withoutEnrolment: MonthlyPreview['withoutEnrolment'];
     unknownInstitution: number;
+    groupWarnings: MonthlyPreview['groupWarnings'];
   };
   onChanged: () => void;
   onOpenFamilies: () => void;
@@ -199,6 +203,21 @@ function ChildrenStep({
         </Alert>
       )}
       {data.withoutEnrolment.length > 0 && <WithoutEnrolment month={month} children={data.withoutEnrolment} />}
+      {data.groupWarnings.length > 0 && (
+        <Alert>
+          <AlertTitle>{data.groupWarnings.length} djece u Toddlers puni 4 godine ove školske godine</AlertTitle>
+          <AlertDescription>
+            <p>Toddlers je dozvoljen do 4. rođendana. Kada pedagog odluči, prebacite dijete u Preschoolers: Porodice i djeca → dijete → „Promijeni grupu“.</p>
+            <ul className="list-disc pl-5">
+              {data.groupWarnings.map((w) => (
+                <li key={`${w.familyName}-${w.childName}`}>
+                  {w.childName} ({w.familyName}) — 4. rođendan {formatDate(w.fourthBirthday)}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
       {data.unknownInstitution > 0 && (
         <p className="text-sm text-muted-foreground">
           Još {data.unknownInstitution} djece nema poznatu ustanovu (npr. samo u registru starog Excela, bez ijedne fakture i upisa), pa nisu ni na spisku IMH ni na spisku IDSS.
@@ -308,6 +327,9 @@ function CollectionStep({ entity, month, onChanged }: { entity: LegalEntityCode;
   const total = sum(balances.map((b) => b.balance.net));
   const paid = sum(balances.map((b) => Math.min(b.balance.paid, b.balance.net)));
   const open = sum(balances.map((b) => b.balance.open));
+  const loadPrepaid = useCallback(() => listAllChildBalances(entity), [entity, refresh]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cards = useAsyncResult(loadPrepaid);
+  const prepaid = cards.state.status === 'ready' ? prepaidTotal(cards.state.data) : 0;
   const overdue = sum(balances.filter((b) => b.balance.open > 0 && b.invoice.dueDate < today()).map((b) => b.balance.open));
   return (
     <div className="grid gap-4">
@@ -337,6 +359,7 @@ function CollectionStep({ entity, month, onChanged }: { entity: LegalEntityCode;
           ['Naplaćeno', paid, 'text-emerald-600 dark:text-emerald-400'],
           ['Otvoreno', open, 'text-amber-600 dark:text-amber-400'],
           ['Od toga dospjelo', overdue, 'text-rose-600 dark:text-rose-400'],
+          ...(prepaid < 0 ? [['U pretplati', prepaid, 'text-emerald-700 dark:text-emerald-400']] : []),
         ].map(([label, value, color]) => (
           <div key={label as string} className="rounded-md border p-3">
             <dt className="text-muted-foreground">{label as string}</dt>
@@ -353,7 +376,7 @@ function CollectionStep({ entity, month, onChanged }: { entity: LegalEntityCode;
             <th className="hidden p-2 font-medium sm:table-cell">Rok</th>
             <th className="p-2 text-right font-medium">Iznos</th>
             <th className="hidden p-2 text-right font-medium sm:table-cell">Uplaćeno</th>
-            <th className="p-2 text-right font-medium">Ostatak</th>
+            <th className="p-2 text-right font-medium">Saldo</th>
             <th className="p-2 font-medium">Status</th>
           </tr>
         </thead>

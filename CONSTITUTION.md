@@ -70,7 +70,7 @@ All of this happens without a single amount being computed in two different ways
 
 ### 4.2a Invoices (Director, 2026-10-21)
 - **BR-23** Invoice numbers: `IDSS-001/26` (school) and `IMH-001/26` (kindergarten): entity prefix, a three-digit sequence, `/`, and the last two digits of the year. The sequence restarts at 001 every calendar year, by the invoice date (Director, 2026-10-21).
-- **BR-24** The invoice is addressed to the family's **"kupac na računu"** (one guardian). A payment may come from **any family member**; it is always booked against the invoice.
+- **BR-24** The invoice is addressed to the family's **"kupac na računu"** (one guardian). A payment may come from **any family member or relative** (grandparent, aunt …), recorded with the payer's name, relation and the child it is for; the payer never becomes the buyer. It is booked against an invoice, or — when no invoice exists yet — on the family's account of **one** institution as a prepayment, which is later applied to that institution's invoices or refunded (Director, 2026-11-28, specs/family-advance).
 - **BR-26** Monthly billing is a **bulk** action for the next month, for **both IMH and IDSS**. The operator reviews every proposed invoice and **approves**; only then are the invoices created (Director, 2026-10-21).
 - **BR-27** **One invoice per child** (not per family), per legal entity and month.
   - All costs of the child go on that one invoice. Example: tuition for December 2026 plus the enrolment fee and materials. One-time items (BR-9, BR-10) are added to the child's monthly invoice while not yet billed.

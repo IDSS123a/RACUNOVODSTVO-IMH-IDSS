@@ -7,11 +7,15 @@ import {
   PaymentPlanSchema,
   PaymentPlansSchema,
   PaymentSchema,
-  CreditMoveSchema,
   CreditNoteDraftSchema,
-  FamilyCreditSchema,
   IssuedCreditNoteSchema,
   PaymentReversalSchema,
+  ChildBalanceSchema,
+  NamedBalanceSchema,
+  PrepaidSourceSchema,
+  PrepaymentInputSchema,
+  PrepaymentRowSchema,
+  PrepaymentUseSchema,
 } from '@/lib/validation/schemas';
 import type { LegalEntityCode, SchoolYear } from '@/features/price-lists/types';
 import type { PaymentPlan } from './plans';
@@ -78,7 +82,6 @@ export function listPaymentPlans(schoolYear: SchoolYear): Promise<Result<Payment
 
 export type CreditNoteDraftPayload = z.infer<typeof CreditNoteDraftSchema>;
 export type IssuedCreditNote = z.infer<typeof IssuedCreditNoteSchema>;
-export type FamilyCredit = z.infer<typeof FamilyCreditSchema>[number];
 
 /** Issue a credit note (S1, S2); the backend numbers it and cancels the invoice when its net reaches 0. */
 export function issueCreditNote(draft: CreditNoteDraftPayload): Promise<Result<IssuedCreditNote>> {
@@ -94,18 +97,69 @@ export function reversePayment(input: z.input<typeof PaymentReversalSchema>): Pr
   return call('reverse_payment', z.null(), parsed.data);
 }
 
-/** Move family credit to an open invoice of the same family and institution, or record a refund (S3). */
-export function moveCredit(input: z.input<typeof CreditMoveSchema>): Promise<Result<null>> {
-  const parsed = CreditMoveSchema.safeParse(input);
-  if (!parsed.success) return Promise.resolve({ success: false, error: parsed.error.issues[0]?.message ?? 'neispravni podaci', code: 'VALIDATION' });
-  return call('move_credit', z.null(), parsed.data);
-}
-
 /** Link a credit note imported from the old workbook to the invoice it cancels (S5). */
 export function linkLegacyCreditNote(creditNoteId: string, invoiceId: string): Promise<Result<null>> {
   return call('link_legacy_credit_note', z.null(), { creditNoteId, invoiceId });
 }
 
-export function listFamilyCredit(familyId: string): Promise<Result<FamilyCredit[]>> {
-  return call('list_family_credit', FamilyCreditSchema, { familyId });
+// ---------- Child prepayment (specs/family-advance, migration 016) ----------
+
+export type ChildBalance = z.infer<typeof ChildBalanceSchema>;
+export type PrepaymentRow = z.infer<typeof PrepaymentRowSchema>;
+export type PrepaymentUse = z.infer<typeof PrepaymentUseSchema>;
+export type PrepaidSource = z.infer<typeof PrepaidSourceSchema>;
+export type PrepaymentInput = z.infer<typeof PrepaymentInputSchema>;
+
+/** Every child's ledger card of a family, per institution — the one definition is in the backend (M-7). */
+export function listChildBalances(familyId: string): Promise<Result<ChildBalance[]>> {
+  return call('list_child_balances', z.array(ChildBalanceSchema), { familyId });
+}
+
+export type NamedBalance = z.infer<typeof NamedBalanceSchema>;
+
+/** Every child's card of every family, optionally of one institution (reports, step E). */
+export function listAllChildBalances(entity: LegalEntityCode | null): Promise<Result<NamedBalance[]>> {
+  return call('list_all_child_balances', z.array(NamedBalanceSchema), { entity });
+}
+
+export function listPrepayments(familyId: string): Promise<Result<PrepaymentRow[]>> {
+  return call('list_prepayments', z.array(PrepaymentRowSchema), { familyId });
+}
+
+export function listPrepaidSources(familyId: string, entity: LegalEntityCode, childId: string | null): Promise<Result<PrepaidSource[]>> {
+  return call('list_prepaid_sources', z.array(PrepaidSourceSchema), { familyId, entity, childId });
+}
+
+/** Prepaid money used on an invoice (positive) or taken from its excess (negative). */
+export function listInvoicePrepaymentUses(invoiceId: string): Promise<Result<PrepaymentUse[]>> {
+  return call('list_invoice_prepayment_uses', z.array(PrepaymentUseSchema), { invoiceId });
+}
+
+/** A payment without an invoice for one child in one institution (BR-24, Q1). */
+export function recordPrepayment(input: PrepaymentInput): Promise<Result<null>> {
+  const parsed = PrepaymentInputSchema.safeParse(input);
+  if (!parsed.success) return Promise.resolve({ success: false, error: parsed.error.issues[0]?.message ?? 'neispravni podaci', code: 'VALIDATION' });
+  return call('record_prepayment', z.null(), { prepayment: parsed.data });
+}
+
+/** Use a child's prepaid money on an invoice, or refund it (`invoiceId` null). A brother's or sister's invoice needs `sibling`. */
+export function applyPrepaid(input: {
+  familyId: string;
+  entity: LegalEntityCode;
+  childId: string | null;
+  invoiceId: string | null;
+  amount: number;
+  usedOn: string;
+  note: string;
+  sibling: boolean;
+}): Promise<Result<null>> {
+  return call('use_prepaid', z.null(), input);
+}
+
+export function reversePrepayment(prepaymentId: string, reversedOn: string, reason: string): Promise<Result<null>> {
+  return call('reverse_prepayment', z.null(), { prepaymentId, reversedOn, reason });
+}
+
+export function reversePrepaymentUse(useId: string, reversedOn: string, reason: string): Promise<Result<null>> {
+  return call('reverse_prepayment_use', z.null(), { useId, reversedOn, reason });
 }

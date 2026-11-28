@@ -1,7 +1,7 @@
 import type { Result } from '@/lib/tauri/invoke';
 import { canTransition, enrolmentProblems, formatIban, guardianProblems } from './domain';
-import { saveEnrolment, saveFamily } from './repository';
-import type { Enrolment, EnrolmentStatus, Family, Guardian } from './types';
+import { getFamily, listFamilies, saveEnrolment, saveFamily } from './repository';
+import type { Enrolment, EnrolmentStatus, Family, FamilyDetail, Guardian } from './types';
 
 /**
  * Application layer for families: run domain validation, then persist.
@@ -36,4 +36,14 @@ export async function changeEnrolmentStatus(
   if (!canTransition(enrolment.status, to)) return failure(['Ova promjena statusa nije dozvoljena.']);
   const next: Enrolment = { ...enrolment, status: to, endsOn: to === 'WITHDRAWN' || to === 'COMPLETED' ? endsOn : enrolment.endsOn };
   return saveValidatedEnrolment(next, others);
+}
+
+/** Every family with its parents and children, for the duplicate check before saving (SPEC §B). */
+export async function loadAllFamilyDetails(): Promise<Result<FamilyDetail[]>> {
+  const list = await listFamilies();
+  if (!list.success) return list;
+  const details = await Promise.all(list.data.map((f) => getFamily(f.id)));
+  const failed = details.find((d) => !d.success);
+  if (failed && !failed.success) return failed;
+  return { success: true, data: details.flatMap((d) => (d.success ? [d.data] : [])) };
 }

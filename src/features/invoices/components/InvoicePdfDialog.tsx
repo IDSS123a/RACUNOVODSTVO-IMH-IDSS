@@ -48,6 +48,7 @@ function PdfPreview({ pdf }: { pdf: InvoicePdf }): React.JSX.Element {
       const result = await (await pdfActions()).saveDocument(pdf.bytes, pdf.fileName, pdf.number);
       if (!result.success) toast.error(result.error);
       else if (result.data) toast.success(`Sačuvano: ${result.data}`);
+      else toast.info('Spremanje otkazano — dokument nije sačuvan.');
     } finally {
       setSaving(false);
     }
@@ -63,7 +64,7 @@ function PdfPreview({ pdf }: { pdf: InvoicePdf }): React.JSX.Element {
           <DownloadIcon aria-hidden /> {saving ? 'Spremanje…' : 'Sačuvaj PDF'}
         </Button>
       </div>
-      <iframe ref={frame} title={`Račun ${pdf.number}`} src={url} className="h-[70vh] w-full rounded-md border bg-white" />
+      <iframe ref={frame} title={`Račun ${pdf.number}`} src={`${url}#toolbar=0&navpanes=0`} className="h-[70vh] w-full rounded-md border bg-white" />
     </div>
   );
 }

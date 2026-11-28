@@ -16,11 +16,23 @@ const TEXT_MAX: usize = 500;
 pub const NET_SQL: &str =
     "(i.total_fenings + COALESCE((SELECT sum(cn.total_fenings) FROM invoices cn WHERE cn.credits_invoice_id = i.id), 0))";
 
-/// Effective paid on invoice `i`: payments without a reversal, plus credit moved in, minus credit moved out.
+/// Effective paid on invoice `i`: payments without a reversal, plus credit moved in, minus credit moved out
+/// (S3, existing records), plus prepayment used on it, minus its excess used elsewhere or refunded (migration 016;
+/// a reversed use does not count).
 pub const PAID_SQL: &str = "(COALESCE((SELECT sum(p.amount) FROM payments p WHERE p.invoice_id = i.id
         AND NOT EXISTS (SELECT 1 FROM payment_reversals r WHERE r.payment_id = p.id)), 0)
    + COALESCE((SELECT sum(m.amount) FROM credit_movements m WHERE m.to_invoice_id = i.id), 0)
-   - COALESCE((SELECT sum(m.amount) FROM credit_movements m WHERE m.from_invoice_id = i.id), 0))";
+   - COALESCE((SELECT sum(m.amount) FROM credit_movements m WHERE m.from_invoice_id = i.id), 0)
+   + COALESCE((SELECT sum(u.amount) FROM prepayment_uses u WHERE u.invoice_id = i.id
+        AND NOT EXISTS (SELECT 1 FROM prepayment_use_reversals ur WHERE ur.use_id = u.id)), 0)
+   - COALESCE((SELECT sum(u.amount) FROM prepayment_uses u WHERE u.source_invoice_id = i.id
+        AND NOT EXISTS (SELECT 1 FROM prepayment_use_reversals ur WHERE ur.use_id = u.id)), 0))";
+
+/// Prepayment applied to invoice `i` — the line „Umanjeno za primljenu pretplatu“ on its PDF (Q3):
+/// credit moved in (S3) plus prepayment uses on it that are not reversed.
+pub const APPLIED_PREPAYMENT_SQL: &str = "(COALESCE((SELECT sum(m.amount) FROM credit_movements m WHERE m.to_invoice_id = i.id), 0)
+   + COALESCE((SELECT sum(u.amount) FROM prepayment_uses u WHERE u.invoice_id = i.id
+        AND NOT EXISTS (SELECT 1 FROM prepayment_use_reversals ur WHERE ur.use_id = u.id)), 0))";
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -65,7 +77,7 @@ pub fn balance(conn: &Connection, invoice_id: &str) -> AppResult<(i64, i64)> {
     })?)
 }
 
-fn required_text(value: &str, what: &str) -> AppResult<String> {
+pub(crate) fn required_text(value: &str, what: &str) -> AppResult<String> {
     let text = value.trim();
     if text.is_empty() {
         return Err(AppError::Validation(format!("upišite {what}")));
@@ -76,7 +88,7 @@ fn required_text(value: &str, what: &str) -> AppResult<String> {
     Ok(text.to_string())
 }
 
-fn valid_date(value: &str) -> AppResult<()> {
+pub(crate) fn valid_date(value: &str) -> AppResult<()> {
     let ok = value.len() == 10
         && value.as_bytes().iter().enumerate().all(|(i, b)| if i == 4 || i == 7 { *b == b'-' } else { b.is_ascii_digit() });
     if ok { Ok(()) } else { Err(AppError::Validation("neispravan datum".into())) }
@@ -245,7 +257,7 @@ pub fn reverse_payment(tx: &Transaction, payment_id: &str, reversed_on: &str, re
     let (_, paid) = balance(tx, &invoice_id)?;
     if paid - amount < 0 {
         return Err(AppError::Conflict(
-            "novac ove uplate je već prebačen kao kredit na drugi račun ili vraćen roditelju — uplata se ne može stornirati".into(),
+            "novac ove uplate je već primijenjen kao pretplata na drugi račun ili vraćen — prvo stornirajte tu primjenu".into(),
         ));
     }
     tx.execute(

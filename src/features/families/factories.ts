@@ -1,5 +1,5 @@
 import type { SchoolYear } from '@/features/price-lists/types';
-import { schoolYearBounds } from './domain';
+import { schoolYearBounds, suggestedGroup } from './domain';
 import type { Child, Enrolment, Guardian } from './types';
 
 /** Blank records for "new" forms. IDs are generated client-side (UUID v4). */
@@ -23,11 +23,12 @@ export function newChild(familyId: string, lastName: string): Child {
 }
 
 /** A new enrolment starts at the beginning of the school year, awaiting enrolment payments (BR-9). */
-export function newEnrolment(childId: string, schoolYear: SchoolYear): Enrolment {
+export function newEnrolment(childId: string, schoolYear: SchoolYear, dateOfBirth: string | null = null): Enrolment {
   return {
     id: crypto.randomUUID(),
     childId,
-    program: 'PRESCHOOLERS',
+    // the group the system proposes by age on the first day (SPEC A9); the operator may change it
+    program: suggestedGroup(dateOfBirth, schoolYearBounds(schoolYear).from),
     schoolYear,
     startsOn: schoolYearBounds(schoolYear).from,
     endsOn: null,

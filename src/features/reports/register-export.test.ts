@@ -64,3 +64,16 @@ describe('reporting exports (DEFINICIJA M7)', () => {
     expect(strFromU8(files['word/footer1.xml'] ?? new Uint8Array())).toContain('International Montessori House');
   });
 });
+
+describe('list „Pretplate“ (specs/family-advance, for the accountant K1)', () => {
+  it('only children in prepayment or with prepaid money; the total is the sum of the negative saldos', async () => {
+    const { prepaymentRows, prepaidTotal } = await import('./register-export');
+    const card = (childName: string, saldo: number, prepaid: number) => ({
+      entity: 'IMH' as const, childId: childName, familyId: 'f', familyName: 'Begović', childName,
+      charged: 71000, received: 71000 - saldo, transferredIn: 0, transferredOut: 0, refunded: 0, prepaid, saldo,
+    });
+    const rows = prepaymentRows([card('Amir', -100000, 100000), card('Lejla', 0, 0), card('Emir', 20000, 0)]);
+    expect(rows).toEqual([['IMH', 'Begović', 'Amir', 710, 1710, 0, 0, 1000, -1000]]);
+    expect(prepaidTotal([card('Amir', -100000, 100000), card('Emir', 20000, 0)])).toBe(-100000);
+  });
+});

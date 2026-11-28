@@ -73,6 +73,14 @@ export const PAYMENT_PURPOSE_TEMPLATES: ReadonlyArray<TextTemplate> = [
   { id: 'partial', label: 'Djelimična uplata po računu', params: [p('racun', 'Broj računa', 'number')], pattern: 'Djelimična uplata po računu {racun}' },
 ];
 
+/** Purpose of a payment without an invoice (prepayment, specs/family-advance). */
+export const PREPAYMENT_PURPOSE_TEMPLATES: ReadonlyArray<TextTemplate> = [
+  { id: 'month', label: 'Uplata unaprijed za mjesec', params: [MONTH, YEAR], pattern: 'Uplata unaprijed za {mjesec} {godina}' },
+  { id: 'year', label: 'Uplata unaprijed za školsku godinu', params: [SCHOOL_YEAR], pattern: 'Uplata unaprijed za školsku {skolska}' },
+  { id: 'summer', label: 'Uplata unaprijed za ljetnu školu', params: [YEAR], pattern: 'Uplata unaprijed za ljetnu školu {godina}' },
+  { id: 'unknown', label: 'Uplata bez navedene svrhe', params: [], pattern: 'Uplata bez navedene svrhe — pretplata' },
+];
+
 /** Reference of a payment (where it was booked from). */
 export const PAYMENT_REFERENCE_TEMPLATES: ReadonlyArray<TextTemplate> = [
   { id: 'statement', label: 'Bankovni izvod', params: [NUMBER, DATE], pattern: 'Izvod br. {broj} od {datum}' },
@@ -97,10 +105,7 @@ export const REVERSAL_REASON_TEMPLATES: ReadonlyArray<TextTemplate> = [
   { id: 'returned', label: 'Uplata vraćena uplatiocu', params: [DATE], pattern: 'Uplata vraćena uplatiocu {datum}' },
 ];
 
-/** Note of a family-credit movement: to another invoice, or a refund. */
-export const CREDIT_MOVE_TEMPLATES: ReadonlyArray<TextTemplate> = [
-  { id: 'move', label: 'Prenos preplate na račun', params: [p('racun', 'Broj računa', 'number')], pattern: 'Prenos preplate na račun {racun}' },
-];
+/** Note of a refund of prepaid money. */
 export const CREDIT_REFUND_TEMPLATES: ReadonlyArray<TextTemplate> = [
   { id: 'refund', label: 'Povrat preplate uplatiocu', params: [NUMBER, DATE], pattern: 'Povrat preplate uplatiocu, izvod br. {broj} od {datum}' },
 ];
@@ -177,3 +182,14 @@ export function defaultValues(template: TextTemplate, today: string, known: Temp
   }
   return values;
 }
+
+/** Relation of the payer to the child (specs/family-advance §1, Q6): a proposal, or typed freely. */
+export const PAYER_RELATIONS: ReadonlyArray<string> = [
+  'roditelj / staratelj',
+  'djed',
+  'baka',
+  'tetka',
+  'ujak',
+  'stric',
+  'brat / sestra',
+];

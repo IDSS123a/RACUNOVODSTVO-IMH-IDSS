@@ -46,7 +46,7 @@ describe('Upis uvezene djece', () => {
     expect(rowProblems({ ...row, program: 'TODDLERS', dateOfBirth: '2027-01-01' }, '2026/2027', TODAY)).toEqual(['datum rođenja mora biti u prošlosti']);
     expect(rowProblems({ ...row, program: 'PRESCHOOLERS', dateOfBirth: '2023-03-03', startsOn: '2027-09-01' }, '2026/2027', TODAY)[0]).toContain('školske godine');
     expect(rowProblems({ ...row, program: 'PRESCHOOLERS', dateOfBirth: '2023-03-03' }, '2026/2027', TODAY)).toEqual([]);
-    expect(programsOf('IMH')).toEqual(['PRESCHOOLERS', 'IDSS_PRESCHOOLERS']); // Toddlers / Preschoolers is one choice
+    expect(programsOf('IMH')).toEqual(['TODDLERS', 'PRESCHOOLERS', 'IDSS_PRESCHOOLERS']); // Toddlers / Preschoolers is one choice
     expect(programsOf('IDSS')).toEqual(['PRIMARY_1_4', 'PRIMARY_5_9']);
   });
 
